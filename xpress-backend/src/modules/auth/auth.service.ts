@@ -2,7 +2,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
-import { AccountStatus, PresenceStatus, User } from './types/user.type';
+import { AccountStatus, PresenceStatus, User } from './interfaces/user.interface';
 import { UsersRepository } from './users.repository';
 
 @Injectable()

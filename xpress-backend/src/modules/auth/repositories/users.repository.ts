@@ -6,7 +6,7 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { Injectable } from '@nestjs/common';
-import { User } from './types/user.type';
+import { User } from './interfaces/user.interface';
 
 @Injectable()
 export class UsersRepository {
