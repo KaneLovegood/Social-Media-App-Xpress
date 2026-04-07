@@ -20,10 +20,10 @@ Ngoài ra, mỗi dev sẽ tạo branch riêng:
 ### Quy tắc đặt tên branch:
 
 Ví dụ:
-- `feature/login-api`
-- `feature/ui-homepage`
-- `fix/auth-bug`
-- `hotfix/crash-server`
+- `fullstack/feature/login`
+- `fe/feature/ui-homepage`
+- `be/fix/auth-bug`
+- `be/hotfix/crash-server`
 
 ### Các loại branch:
 - `feature/`: phát triển tính năng mới
