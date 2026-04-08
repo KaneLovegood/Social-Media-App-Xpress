@@ -1,9 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
-
-export enum UserRole {
-  CUSTOMER = 'customer',
-  DRIVER = 'driver',
-}
+import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -11,13 +6,10 @@ export class RegisterDto {
   name: string;
 
   @IsString()
-  @Matches(/^(0|\+84)\d{9,10}$/, { message: 'Phone không hợp lệ' })
+  @Matches(/^(0|\+84)[0-9]{9,10}$/, { message: 'phone không hợp lệ' })
   phone: string;
 
   @IsString()
-  @MinLength(8, { message: 'Password tối thiểu 8 ký tự' })
+  @MinLength(8)
   password: string;
-
-  @IsEnum(UserRole)
-  role: UserRole;
 }

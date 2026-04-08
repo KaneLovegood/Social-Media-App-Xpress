@@ -1,24 +1,21 @@
-import { UserRole } from '../dto/register.dto';
+export type UserRole = 'CUSTOMER' | 'DRIVER' | 'ADMIN';
+export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'BANNED';
 
-export enum PresenceStatus {
-  ONLINE = 'online',
-  OFFLINE = 'offline',
-}
+export interface UserEntity {
+  PK: string;
+  SK: string;
+  GSI1PK: string;
+  GSI1SK: string;
 
-export enum AccountStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-  BANNED = 'banned',
-}
-
-export interface User {
+  entityType: 'USER';
   userId: string;
-  phone: string;
   name: string;
-  role: UserRole;
-  status: PresenceStatus;
-  accountStatus: AccountStatus;
+  phone: string;
   passwordHash: string;
+  role: UserRole;
+  status: UserStatus;
+  refreshTokenHash?: string;
+  refreshTokenExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
