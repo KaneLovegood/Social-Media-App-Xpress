@@ -45,8 +45,7 @@ import { JwtUtilService } from '../utils/jwt.util';
 	}),
 )
 export class CallGateway
-	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+	implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
 	private readonly logger = new Logger(CallGateway.name);
 
 	@WebSocketServer()
@@ -56,7 +55,7 @@ export class CallGateway
 		private readonly callService: CallService,
 		private readonly socketService: SocketService,
 		private readonly jwtUtilService: JwtUtilService,
-	) {}
+	) { }
 
 	afterInit(): void {
 		this.socketService.setServer(this.server);
