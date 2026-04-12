@@ -19,7 +19,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login({ phone, password });
-      router.push("/");
+      router.push("/chat/me");
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Đăng nhập thất bại.");

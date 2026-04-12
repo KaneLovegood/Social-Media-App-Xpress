@@ -20,6 +20,12 @@ export default async function Home() {
         </p>
         <div className="mt-6">
           <Link
+            href="/chat"
+            className="mr-3 inline-flex h-10 items-center rounded-md border border-zinc-300 px-4 text-sm font-medium text-zinc-800"
+          >
+            Open chat demo
+          </Link>
+          <Link
             href="/login"
             className="inline-flex h-10 items-center rounded-md bg-[#f25019] px-4 text-sm font-medium text-white"
           >
