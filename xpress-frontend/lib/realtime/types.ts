@@ -33,6 +33,12 @@ export interface TypingPayload {
   isTyping: boolean;
 }
 
+export interface PresencePayload {
+  userId: string;
+  isOnline: boolean;
+  lastSeenAt: string | null;
+}
+
 export interface CallOfferPayload {
   senderId: string;
   receiverId: string;

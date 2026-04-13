@@ -26,7 +26,7 @@ export default function MessageList({
   return (
     <ul
       ref={listRef}
-      className={`flex min-h-80 flex-col gap-3 overflow-y-auto rounded-[24px] bg-[#eef0f3] px-3 py-4 lg:min-h-0 lg:px-5 lg:py-5 ${isEmpty ? 'items-center justify-center' : ''} ${className ?? ''}`}
+      className={`flex min-h-80 flex-col gap-4 overflow-y-auto rounded-2xl bg-[#f3f4f6] px-3 py-4 lg:min-h-0 lg:px-5 lg:py-5 ${isEmpty ? 'items-center justify-center' : ''} ${className ?? ''}`}
     >
       {isEmpty ? (
         <li className="flex flex-col items-center justify-center py-8 text-center">

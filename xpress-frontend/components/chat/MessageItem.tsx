@@ -23,8 +23,10 @@ export default function MessageItem({
     <li className={`group flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <article className={`flex max-w-[85%] flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
         <div
-          className={`rounded-[20px] px-4 py-3 text-[15px] shadow-[0_8px_16px_rgba(20,20,40,0.08)] ${
-            isOwn ? 'bg-[#d67a00] text-white' : 'bg-[#d8dde2] text-zinc-800'
+          className={`rounded-2xl px-4 py-3 text-[14px] shadow-sm ${
+            isOwn
+              ? 'rounded-br-md bg-gradient-to-br from-[#0052cc] to-[#0068ff] text-white'
+              : 'rounded-tl-md bg-white text-[#191c1e]'
           }`}
         >
           {message.replyPreview ? <ReplyPreview reply={message.replyPreview} /> : null}
@@ -34,7 +36,7 @@ export default function MessageItem({
           ) : message.isRecalled ? (
             <p className={`italic ${isOwn ? 'text-orange-100' : 'text-zinc-500'}`}>Message recalled</p>
           ) : (
-            <p className="wrap-break-word whitespace-pre-wrap">{message.content}</p>
+            <p className="break-words whitespace-pre-wrap">{message.content}</p>
           )}
         </div>
 

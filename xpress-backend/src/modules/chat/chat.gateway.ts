@@ -73,7 +73,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const payload = this.jwtService.verify<JwtPayload>(token);
       client.data.userId = payload.sub;
 
-      this.chatService.registerConnection(payload.sub, client.id);
+      const becameOnline = this.chatService.registerConnection(payload.sub, client.id);
+      if (becameOnline) {
+        this.server.emit(CHAT_EVENTS.PRESENCE, this.chatService.getPresence(payload.sub));
+      }
     } catch (error) {
       this.logger.warn(`Socket auth failed: ${String(error)}`);
       client.emit(CHAT_EVENTS.ERROR, { message: 'Unauthorized' });
@@ -85,7 +88,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
 
-    this.chatService.unregisterConnection(userId, client.id);
+    const becameOffline = this.chatService.unregisterConnection(userId, client.id);
+    if (becameOffline) {
+      this.server.emit(CHAT_EVENTS.PRESENCE, this.chatService.getPresence(userId));
+    }
   }
 
   @SubscribeMessage(CHAT_EVENTS.SEND)
@@ -161,12 +167,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(CHAT_EVENTS.TYPING)
-  onTyping(
+  async onTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: TypingDto,
-  ): void {
+  ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = this.chatService.validateTyping(
+    const { receiverId, eventPayload } = await this.chatService.validateTyping(
       userId,
       payload.receiverId,
       payload.isTyping,
@@ -176,12 +182,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(CALL_EVENTS.OFFER)
-  onCallOffer(
+  async onCallOffer(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CallOfferDto,
-  ): void {
+  ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = this.chatService.validateCallOffer(
+    const { receiverId, eventPayload } = await this.chatService.validateCallOffer(
       userId,
       payload,
     );
@@ -190,12 +196,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(CALL_EVENTS.ANSWER)
-  onCallAnswer(
+  async onCallAnswer(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CallAnswerDto,
-  ): void {
+  ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = this.chatService.validateCallAnswer(
+    const { receiverId, eventPayload } = await this.chatService.validateCallAnswer(
       userId,
       payload,
     );
@@ -204,12 +210,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(CALL_EVENTS.ICE)
-  onCallIce(
+  async onCallIce(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CallIceDto,
-  ): void {
+  ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = this.chatService.validateCallIce(
+    const { receiverId, eventPayload } = await this.chatService.validateCallIce(
       userId,
       payload,
     );
@@ -218,12 +224,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(CALL_EVENTS.END)
-  onCallEnd(
+  async onCallEnd(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CallEndDto,
-  ): void {
+  ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = this.chatService.validateCallEnd(
+    const { receiverId, eventPayload } = await this.chatService.validateCallEnd(
       userId,
       payload,
     );

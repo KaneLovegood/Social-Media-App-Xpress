@@ -20,17 +20,15 @@ export default function ChatHeader({
   onOpenVideoCall,
 }: ChatHeaderProps) {
   return (
-    <header className="border-b border-zinc-200/80 bg-white px-4 py-4 lg:px-6">
+    <header className="border-b border-[#c2c6d8]/40 bg-[#f8f9fb]/95 px-4 py-3 backdrop-blur lg:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0b7a75] text-sm font-bold text-white">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-sm font-bold text-[#294486]">
             {initials(peerName)}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[28px] font-bold leading-none text-zinc-800 lg:text-[34px]">{orderTitle}</p>
-            <p className="truncate text-xs text-zinc-500 lg:text-sm">
-              Chatting with {peerName} • {typingText || 'Est. Arrival 12:45 PM'}
-            </p>
+            <p className="truncate text-base font-bold leading-tight text-zinc-900 lg:text-lg">{peerName}</p>
+            <p className="truncate text-[11px] text-[#727687]">{typingText || 'Active now'} • {orderTitle}</p>
           </div>
         </div>
 
@@ -38,7 +36,7 @@ export default function ChatHeader({
           <button
             type="button"
             onClick={onOpenVoiceCall}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-[#d67a00] hover:bg-zinc-200"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#e1e2e4]"
             aria-label="Open voice call"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.9">
@@ -48,7 +46,7 @@ export default function ChatHeader({
           <button
             type="button"
             onClick={onOpenVideoCall}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-[#0b7a75] hover:bg-zinc-200"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#e1e2e4]"
             aria-label="Open video call"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
