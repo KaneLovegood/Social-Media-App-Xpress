@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PresenceService } from '../../common/presence/presence.service';
-import { SocialService } from '../social/social.service';
+import { ChatFriendUser, SocialService } from '../social/social.service';
 import { DeleteMessageDto } from './dto/delete-message.dto';
 import { ChatActionDto, ChatActionName } from './dto/chat-action.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
@@ -74,7 +74,6 @@ interface ChatRoomSummary {
 @Injectable()
 export class ChatService {
   private readonly callSessionByKey = new Map<string, CallSession>();
-  private readonly supportTicketByOrder = new Map<string, string>();
   private readonly logger = new Logger(ChatService.name);
 
   constructor(
@@ -246,21 +245,27 @@ export class ChatService {
   }
 
   async getChatRoomsForUser(userId: string): Promise<ChatRoomSummary[]> {
-    const messages = await this.messagesRepository.findMessagesByUser(userId);
+    const [messages, friends] = await Promise.all([
+      this.messagesRepository.findMessagesByUser(userId),
+      this.socialService.listAllFriendUsers(userId),
+    ]);
     const rooms = new Map<string, ChatRoomSummary>();
+
+    this.seedPrivateRoomsFromFriends(userId, friends, rooms);
 
     for (const message of messages) {
       const peerUserId =
         message.senderId === userId ? message.receiverId : message.senderId;
       const roomId = this.toConversationId(userId, peerUserId);
       const existed = rooms.get(roomId);
+      const peerName = existed?.peerName ?? this.toPeerName(peerUserId);
 
       if (!existed || message.createdAt > existed.lastMessageAt) {
         rooms.set(roomId, {
           roomId,
-          title: this.toRoomTitle(roomId),
+          title: existed?.title ?? peerName,
           peerUserId,
-          peerName: this.toPeerName(peerUserId),
+          peerName,
           preview: message.content,
           lastMessageAt: message.createdAt,
         });
@@ -270,6 +275,28 @@ export class ChatService {
     return Array.from(rooms.values()).sort((a, b) =>
       b.lastMessageAt.localeCompare(a.lastMessageAt),
     );
+  }
+
+  private seedPrivateRoomsFromFriends(
+    userId: string,
+    friends: ChatFriendUser[],
+    rooms: Map<string, ChatRoomSummary>,
+  ): void {
+    for (const friend of friends) {
+      const roomId = this.toConversationId(userId, friend.userId);
+      if (rooms.has(roomId)) {
+        continue;
+      }
+
+      rooms.set(roomId, {
+        roomId,
+        title: friend.name,
+        peerUserId: friend.userId,
+        peerName: friend.name,
+        preview: 'Bat dau tro chuyen',
+        lastMessageAt: friend.connectedAt,
+      });
+    }
   }
 
   mapSignal<TPayload extends CallSignalBase>(
@@ -343,16 +370,11 @@ export class ChatService {
 
   handleAction(actorUserId: string, dto: ChatActionDto) {
     const at = new Date().toISOString();
-    const actionKey = this.toActionKey(
-      actorUserId,
-      dto.peerUserId,
-      dto.orderId,
-    );
+    const actionKey = this.toActionKey(actorUserId, dto.peerUserId);
     const basePayload = {
       action: dto.action,
       actorUserId,
       peerUserId: dto.peerUserId,
-      orderId: dto.orderId,
       at,
       metadata: dto.metadata ?? {},
     };
@@ -366,7 +388,7 @@ export class ChatService {
     );
 
     this.logger.log(
-      `[chat-action] actor=${actorUserId} action=${dto.action} orderId=${dto.orderId} peer=${dto.peerUserId}`,
+      `[chat-action] actor=${actorUserId} action=${dto.action} peer=${dto.peerUserId}`,
     );
 
     return {
@@ -394,19 +416,6 @@ export class ChatService {
         return this.declineCallSession(actorUserId, dto, actionKey, at);
       case 'end_call':
         return this.endCallSession(actorUserId, dto, actionKey, at);
-      case 'call_driver':
-        return {
-          channel: 'driver_phone',
-          status: 'queued',
-          requestedAt: at,
-          note: 'Driver callback has been requested.',
-        };
-      case 'view_order':
-        return this.buildOrderSummary(dto.orderId);
-      case 'view_receipt':
-        return this.buildReceipt(dto.orderId, at);
-      case 'contact_support':
-        return this.createSupportTicket(actorUserId, dto.orderId, at);
       default:
         throw new BadRequestException('Unsupported action');
     }
@@ -430,7 +439,7 @@ export class ChatService {
     const session: CallSession = {
       sessionId: randomUUID(),
       actionKey,
-      orderId: dto.orderId,
+      orderId: actionKey,
       peerUserId: dto.peerUserId,
       actorUserId,
       mode,
@@ -460,8 +469,6 @@ export class ChatService {
       state: 'active',
       acceptedAt: at,
       updatedAt: at,
-      orderId: dto.orderId,
-      peerUserId: dto.peerUserId,
     };
     this.callSessionByKey.set(actionKey, next);
     return next;
@@ -484,8 +491,6 @@ export class ChatService {
       state: 'declined',
       endedAt: at,
       updatedAt: at,
-      orderId: dto.orderId,
-      peerUserId: dto.peerUserId,
     };
     this.callSessionByKey.set(actionKey, next);
     return next;
@@ -511,66 +516,13 @@ export class ChatService {
       state: 'ended',
       endedAt: at,
       updatedAt: at,
-      orderId: dto.orderId,
-      peerUserId: dto.peerUserId,
     };
     this.callSessionByKey.set(actionKey, next);
     return next;
   }
 
-  private buildOrderSummary(orderId: string): OrderSummary {
-    return {
-      orderId,
-      status: 'in_progress',
-      etaMinutes: 12,
-      totalUsd: 23.5,
-      items: [
-        { name: 'Pepperoni Pizza', quantity: 1, priceUsd: 18.5 },
-        { name: 'Cola', quantity: 2, priceUsd: 2.5 },
-      ],
-      address: '882 Maple Street, Apt 4B, Oakwood Heights, NY 10012',
-    };
-  }
-
-  private buildReceipt(orderId: string, at: string) {
-    return {
-      orderId,
-      issuedAt: at,
-      currency: 'USD',
-      subtotal: 23.5,
-      deliveryFee: 0,
-      tax: 0,
-      total: 23.5,
-    };
-  }
-
-  private createSupportTicket(
-    actorUserId: string,
-    orderId: string,
-    at: string,
-  ) {
-    const existing = this.supportTicketByOrder.get(orderId);
-    const ticketId =
-      existing ?? `SUP-${randomUUID().slice(0, 8).toUpperCase()}`;
-
-    this.supportTicketByOrder.set(orderId, ticketId);
-
-    return {
-      ticketId,
-      orderId,
-      actorUserId,
-      status: 'open',
-      createdAt: at,
-      message: 'Support ticket has been created.',
-    };
-  }
-
-  private toActionKey(
-    actorUserId: string,
-    peerUserId: string,
-    orderId: string,
-  ): string {
-    return `${this.toConversationId(actorUserId, peerUserId)}:${orderId}`;
+  private toActionKey(actorUserId: string, peerUserId: string): string {
+    return this.toConversationId(actorUserId, peerUserId);
   }
 
   private toConversationId(userA: string, userB: string): string {
@@ -580,7 +532,7 @@ export class ChatService {
 
   private toPeerName(peerUserId: string): string {
     const segments = peerUserId.split(/[._-]+/).filter(Boolean);
-    if (segments.length === 0) return 'Delivery Partner';
+    if (segments.length === 0) return 'User';
 
     return segments
       .slice(0, 2)
@@ -589,8 +541,7 @@ export class ChatService {
   }
 
   private toRoomTitle(roomId: string): string {
-    const compact = roomId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const shortId = compact.slice(-4) || '0000';
-    return `Order #${shortId}`;
+    const segments = roomId.split(':');
+    return segments.length === 2 ? segments[1] : 'Chat';
   }
 }

@@ -19,6 +19,9 @@ export default function ChatHeader({
   onOpenVoiceCall,
   onOpenVideoCall,
 }: ChatHeaderProps) {
+  const subtitle = typingText || 'Active now';
+  const showTitle = Boolean(orderTitle && orderTitle !== peerName);
+
   return (
     <header className="border-b border-[#c2c6d8]/40 bg-[#f8f9fb]/95 px-4 py-3 backdrop-blur lg:px-6">
       <div className="flex items-center justify-between gap-3">
@@ -28,7 +31,9 @@ export default function ChatHeader({
           </div>
           <div className="min-w-0">
             <p className="truncate text-base font-bold leading-tight text-zinc-900 lg:text-lg">{peerName}</p>
-            <p className="truncate text-[11px] text-[#727687]">{typingText || 'Active now'} • {orderTitle}</p>
+            <p className="truncate text-[11px] text-[#727687]">
+              {showTitle ? `${subtitle} • ${orderTitle}` : subtitle}
+            </p>
           </div>
         </div>
 

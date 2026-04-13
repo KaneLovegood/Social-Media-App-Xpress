@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from 'react';
+import { useSearchParams } from 'next/navigation';
 import ChatContainer from '@/components/chat/ChatContainer';
 import { getStoredUser } from '@/lib/auth-client';
 
@@ -9,6 +10,9 @@ const noopSubscribe = () => () => {};
 export default function ChatMePage() {
   const isHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const currentUser = isHydrated ? getStoredUser() : null;
+  const searchParams = useSearchParams();
+  const initialRoomId = searchParams.get('roomId') ?? '';
+  const initialPeerUserId = searchParams.get('peerUserId') ?? '';
 
   if (!isHydrated) {
     return <main className="h-screen w-screen overflow-hidden bg-[#f3f4f6]" />;
@@ -26,7 +30,11 @@ export default function ChatMePage() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-[#f3f4f6]">
-      <ChatContainer currentUserId={currentUser.userId} />
+      <ChatContainer
+        currentUserId={currentUser.userId}
+        initialRoomId={initialRoomId}
+        initialPeerUserId={initialPeerUserId}
+      />
     </main>
   );
 }

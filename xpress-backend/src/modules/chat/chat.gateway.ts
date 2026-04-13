@@ -16,6 +16,14 @@ import {
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { CALL_EVENTS, CHAT_EVENTS } from './constants/events';
+
+interface IncomingCallPayload {
+  senderId: string;
+  senderName: string;
+  callMode: 'voice' | 'video';
+  sessionId: string;
+  isOnline: boolean;
+}
 import { DeleteMessageDto } from './dto/delete-message.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
@@ -72,6 +80,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const token = this.extractToken(client);
       const payload = this.jwtService.verify<JwtPayload>(token);
       client.data.userId = payload.sub;
+
+      const userRoom = `user:${payload.sub}`;
+      client.join(userRoom);
 
       const becameOnline = this.chatService.registerConnection(payload.sub, client.id);
       if (becameOnline) {
@@ -248,10 +259,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private emitToUser(userId: string, event: string, payload: unknown): void {
-    const sockets = this.chatService.getSocketIds(userId);
-    for (const socketId of sockets) {
-      this.server.to(socketId).emit(event, payload);
-    }
+    const userRoom = `user:${userId}`;
+    this.server.to(userRoom).emit(event, payload);
   }
 
   private getUserId(client: Socket): string {
@@ -278,5 +287,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     return normalized;
+  }
+
+  broadcastIncomingCall(receiverId: string, payload: IncomingCallPayload): void {
+    this.emitToUser(receiverId, CALL_EVENTS.INCOMING, payload);
   }
 }

@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
+import { PresenceService } from '../../common/presence/presence.service';
+import { UsersRepository } from '../auth/repositories/users.repository';
 import { ChatActionDto } from './dto/chat-action.dto';
+import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 
 interface AuthenticatedRequest extends Request {
@@ -22,7 +25,12 @@ interface AuthenticatedRequest extends Request {
 
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
+    private readonly usersRepository: UsersRepository,
+    private readonly presenceService: PresenceService,
+  ) {}
 
   @UseGuards(AuthGuard('jwt'))
   @Get('rooms')
@@ -37,15 +45,35 @@ export class ChatController {
 
   @UseGuards(AuthGuard('jwt'))
   @Post('actions')
-  postAction(
+  async postAction(
     @Req() request: AuthenticatedRequest,
     @Body() dto: ChatActionDto,
-  ): unknown {
+  ): Promise<unknown> {
     const actorUserId = request.user?.userId;
     if (!actorUserId) {
       throw new UnauthorizedException('Unauthorized');
     }
 
-    return this.chatService.handleAction(actorUserId, dto);
+    const result = this.chatService.handleAction(actorUserId, dto);
+
+    // Broadcast incoming call notification if action is voice/video call
+    if (dto.action === 'open_voice_call' || dto.action === 'open_video_call') {
+      const caller = await this.usersRepository.findByUserId(actorUserId);
+      const callerPresence = this.presenceService.getPresence(actorUserId);
+      if (caller) {
+        const sessionId = typeof result.data === 'object' && result.data !== null && 'sessionId' in result.data
+          ? (result.data.sessionId as string)
+          : '';
+        this.chatGateway.broadcastIncomingCall(dto.peerUserId, {
+          senderId: actorUserId,
+          senderName: caller.name,
+          callMode: dto.action === 'open_voice_call' ? 'voice' : 'video',
+          sessionId,
+          isOnline: callerPresence.isOnline,
+        });
+      }
+    }
+
+    return result;
   }
 }
