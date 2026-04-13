@@ -23,9 +23,8 @@ interface JwtPayload {
 @Injectable()
 export class AuthService {
   private readonly accessTokenExpiresIn = '10m';
-  private readonly refreshTokenExpiresIn = this.normalizeExpiresIn(
-    process.env.REFRESH_TOKEN_EXPIRES_IN ?? '30d',
-  );
+  private readonly refreshTokenExpiresIn =
+    process.env.REFRESH_TOKEN_EXPIRES_IN ?? '30d';
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
 
@@ -82,9 +81,12 @@ export class AuthService {
 
     let payload: JwtPayload;
     try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(dto.refreshToken, {
-        secret: this.refreshTokenSecret,
-      });
+      payload = await this.jwtService.verifyAsync<JwtPayload>(
+        dto.refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
     } catch {
       throw new UnauthorizedException('Refresh token không hợp lệ');
     }
@@ -98,7 +100,10 @@ export class AuthService {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
 
-    const matched = await bcrypt.compare(dto.refreshToken, user.refreshTokenHash);
+    const matched = await bcrypt.compare(
+      dto.refreshToken,
+      user.refreshTokenHash,
+    );
     if (!matched) {
       throw new UnauthorizedException('Refresh token không hợp lệ');
     }
@@ -113,9 +118,12 @@ export class AuthService {
 
     let payload: JwtPayload;
     try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(dto.refreshToken, {
-        secret: this.refreshTokenSecret,
-      });
+      payload = await this.jwtService.verifyAsync<JwtPayload>(
+        dto.refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
     } catch {
       throw new UnauthorizedException('Refresh token không hợp lệ');
     }
@@ -144,11 +152,11 @@ export class AuthService {
       { ...payload, type: 'refresh' },
       {
         secret: this.refreshTokenSecret,
-        expiresIn: this.refreshTokenExpiresIn,
+        expiresIn: this.refreshTokenExpiresIn as never,
       },
     );
 
-    const decodedRefresh = this.jwtService.decode(refreshToken) as JwtPayload | null;
+    const decodedRefresh = this.jwtService.decode(refreshToken);
     const refreshTokenExpiresAt =
       decodedRefresh?.exp != null
         ? new Date(decodedRefresh.exp * 1000).toISOString()
@@ -173,11 +181,5 @@ export class AuthService {
         status: user.status,
       },
     };
-  }
-
-  private normalizeExpiresIn(rawValue: string): number | import('ms').StringValue {
-    return /^\d+$/.test(rawValue)
-      ? Number(rawValue)
-      : (rawValue as import('ms').StringValue);
   }
 }

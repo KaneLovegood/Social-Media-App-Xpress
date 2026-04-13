@@ -18,11 +18,11 @@ if (!jwtSecret) {
     PassportModule,
     JwtModule.register({
       secret: jwtSecret,
-      signOptions: { expiresIn: '10m' as import('ms').StringValue },
+      signOptions: { expiresIn: '10m' },
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, UsersRepository, JwtStrategy],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
