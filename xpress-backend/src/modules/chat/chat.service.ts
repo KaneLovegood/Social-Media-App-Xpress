@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { PresenceService } from '../../common/presence/presence.service';
+import { SocialService } from '../social/social.service';
 import { DeleteMessageDto } from './dto/delete-message.dto';
 import { ChatActionDto, ChatActionName } from './dto/chat-action.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
@@ -71,41 +73,38 @@ interface ChatRoomSummary {
 
 @Injectable()
 export class ChatService {
-  private readonly socketByUser = new Map<string, Set<string>>();
   private readonly callSessionByKey = new Map<string, CallSession>();
   private readonly supportTicketByOrder = new Map<string, string>();
   private readonly logger = new Logger(ChatService.name);
 
-  constructor(private readonly messagesRepository: MessagesRepository) {}
+  constructor(
+    private readonly messagesRepository: MessagesRepository,
+    private readonly presenceService: PresenceService,
+    private readonly socialService: SocialService,
+  ) {}
 
-  registerConnection(userId: string, socketId: string): void {
-    const existing = this.socketByUser.get(userId);
-    if (existing) {
-      existing.add(socketId);
-      return;
-    }
-
-    this.socketByUser.set(userId, new Set([socketId]));
+  registerConnection(userId: string, socketId: string): boolean {
+    return this.presenceService.connect(userId, socketId);
   }
 
-  unregisterConnection(userId: string, socketId: string): void {
-    const existing = this.socketByUser.get(userId);
-    if (!existing) return;
-
-    existing.delete(socketId);
-    if (existing.size === 0) {
-      this.socketByUser.delete(userId);
-    }
+  unregisterConnection(userId: string, socketId: string): boolean {
+    return this.presenceService.disconnect(userId, socketId);
   }
 
   getSocketIds(userId: string): string[] {
-    return Array.from(this.socketByUser.get(userId) ?? []);
+    return this.presenceService.getSocketIds(userId);
+  }
+
+  getPresence(userId: string) {
+    return this.presenceService.getPresence(userId);
   }
 
   async sendMessage(
     senderId: string,
     dto: SendMessageDto,
   ): Promise<MessageEntity> {
+    await this.socialService.assertNotBlocked(senderId, dto.receiverId);
+
     const now = new Date().toISOString();
     const messageId = randomUUID();
     const conversationId = this.toConversationId(senderId, dto.receiverId);
@@ -135,6 +134,8 @@ export class ChatService {
     senderId: string,
     dto: ReplyMessageDto,
   ): Promise<MessageEntity> {
+    await this.socialService.assertNotBlocked(senderId, dto.receiverId);
+
     const original = await this.messagesRepository.findByMessageId(
       dto.replyToMessageId,
     );
@@ -284,10 +285,16 @@ export class ChatService {
     };
   }
 
-  validateTyping(senderId: string, receiverId: string, isTyping: boolean) {
+  async validateTyping(
+    senderId: string,
+    receiverId: string,
+    isTyping: boolean,
+  ) {
     if (!receiverId) {
       throw new BadRequestException('receiverId la bat buoc');
     }
+
+    await this.socialService.assertNotBlocked(senderId, receiverId);
 
     return {
       receiverId,
@@ -299,31 +306,38 @@ export class ChatService {
     };
   }
 
-  validateCallOffer(senderId: string, payload: CallOfferDto) {
+  async validateCallOffer(senderId: string, payload: CallOfferDto) {
     if (!payload.offer) {
       throw new BadRequestException('offer la bat buoc');
     }
 
+    await this.socialService.assertNotBlocked(senderId, payload.receiverId);
+
     return this.mapSignal(senderId, payload);
   }
 
-  validateCallAnswer(senderId: string, payload: CallAnswerDto) {
+  async validateCallAnswer(senderId: string, payload: CallAnswerDto) {
     if (!payload.answer) {
       throw new BadRequestException('answer la bat buoc');
     }
 
+    await this.socialService.assertNotBlocked(senderId, payload.receiverId);
+
     return this.mapSignal(senderId, payload);
   }
 
-  validateCallIce(senderId: string, payload: CallIceDto) {
+  async validateCallIce(senderId: string, payload: CallIceDto) {
     if (!payload.candidate) {
       throw new BadRequestException('candidate la bat buoc');
     }
 
+    await this.socialService.assertNotBlocked(senderId, payload.receiverId);
+
     return this.mapSignal(senderId, payload);
   }
 
-  validateCallEnd(senderId: string, payload: CallEndDto) {
+  async validateCallEnd(senderId: string, payload: CallEndDto) {
+    await this.socialService.assertNotBlocked(senderId, payload.receiverId);
     return this.mapSignal(senderId, payload);
   }
 

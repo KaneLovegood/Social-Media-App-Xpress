@@ -249,15 +249,15 @@ export default function ChatContainer({ currentUserId }: ChatContainerProps) {
   };
 
   return (
-    <section className="h-full w-full bg-[#f4f4f6] overflow-hidden">
-      <div className="grid h-full lg:grid-cols-[290px_minmax(0,1fr)]">
+    <section className="h-full w-full overflow-hidden bg-[#f8f9fb]">
+      <div className="flex h-full">
         <ChatSidebar
           rooms={sidebarRooms}
           activeRoomId={effectiveActiveRoomId}
           onSelectRoom={handleSelectRoom}
         />
 
-        <div className="flex min-h-screen flex-col bg-[#f7f8fa] lg:min-h-0 lg:border-r lg:border-zinc-200/80">
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-[#f8f9fb] lg:min-h-0">
           {!isLoadingRooms && (!hasRooms || !effectiveActiveRoomId) ? (
             <ChatNoRoomWelcome />
           ) : (
@@ -270,7 +270,7 @@ export default function ChatContainer({ currentUserId }: ChatContainerProps) {
                 onOpenVideoCall={openVideoCall}
               />
 
-              <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3 lg:px-6 lg:pb-5 lg:pt-4">
+              <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3 lg:px-6 lg:pb-4 lg:pt-4">
                 <MessageList
                   messages={activeMessages}
                   currentUserId={currentUserId}
@@ -280,7 +280,7 @@ export default function ChatContainer({ currentUserId }: ChatContainerProps) {
                   onRecall={handleRecall}
                   className="flex-1"
                 />
-                <div className="mt-3 lg:mt-4">
+                <div className="mt-2 lg:mt-3">
                   <MessageInput
                     replyTo={replyTo}
                     onClearReply={() => setReplyTo(undefined)}

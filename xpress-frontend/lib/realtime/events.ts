@@ -7,6 +7,7 @@ export const CHAT_EVENTS = {
   MESSAGE: 'chat:message',
   DELETED: 'chat:deleted',
   RECALLED: 'chat:recalled',
+  PRESENCE: 'chat:presence',
 } as const;
 
 export const CALL_EVENTS = {

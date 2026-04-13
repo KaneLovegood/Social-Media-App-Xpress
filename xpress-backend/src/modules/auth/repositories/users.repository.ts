@@ -4,10 +4,16 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
 import { UserEntity } from '../interfaces/user.interface';
+
+interface PaginatedUsers {
+  items: UserEntity[];
+  nextCursor: string | null;
+}
 
 @Injectable()
 export class UsersRepository {
@@ -60,6 +66,35 @@ export class UsersRepository {
     return (result.Item as UserEntity) ?? null;
   }
 
+  async searchByPhone(
+    actorUserId: string,
+    phoneQuery: string,
+    limit = 20,
+    cursor?: string,
+  ): Promise<PaginatedUsers> {
+    const normalized = this.normalizePhone(phoneQuery);
+
+    const result = await this.ddbDocClient.send(
+      new ScanCommand({
+        TableName: this.tableName,
+        FilterExpression:
+          'entityType = :entityType AND userId <> :actorUserId AND contains(phone, :phoneQuery)',
+        ExpressionAttributeValues: {
+          ':entityType': 'USER',
+          ':actorUserId': actorUserId,
+          ':phoneQuery': normalized,
+        },
+        Limit: limit,
+        ExclusiveStartKey: this.decodeCursor(cursor),
+      }),
+    );
+
+    return {
+      items: (result.Items as UserEntity[]) ?? [],
+      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+    };
+  }
+
   async updateRefreshToken(
     userId: string,
     refreshTokenHash: string,
@@ -104,5 +139,21 @@ export class UsersRepository {
 
   normalizePhone(phone: string): string {
     return phone.replace(/\s+/g, '').trim();
+  }
+
+  private encodeCursor(lastEvaluatedKey?: Record<string, unknown>): string | null {
+    if (!lastEvaluatedKey) return null;
+    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString('base64');
+  }
+
+  private decodeCursor(cursor?: string): Record<string, unknown> | undefined {
+    if (!cursor) return undefined;
+
+    try {
+      const json = Buffer.from(cursor, 'base64').toString('utf8');
+      return JSON.parse(json) as Record<string, unknown>;
+    } catch {
+      return undefined;
+    }
   }
 }
