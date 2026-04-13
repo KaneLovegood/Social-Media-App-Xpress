@@ -1,8 +1,9 @@
 "use client";
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { getAccessToken } from '@/lib/auth-client';
+import { getAccessToken, getStoredUser } from '@/lib/auth-client';
 import { CHAT_EVENTS } from '@/lib/realtime/events';
 import { createChatSocket } from '@/lib/realtime/socket-client';
 import { PresencePayload } from '@/lib/realtime/types';
@@ -22,6 +23,11 @@ import {
 
 type TabKey = 'friends' | 'requests';
 
+function toPrivateRoomId(userAId: string, userBId: string): string {
+  const [first, second] = [userAId, userBId].sort();
+  return `${first}:${second}`;
+}
+
 function PresenceBadge({ isOnline }: { isOnline: boolean }) {
   return (
     <span
@@ -35,6 +41,7 @@ function PresenceBadge({ isOnline }: { isOnline: boolean }) {
 }
 
 export default function ContactsPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('friends');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUserItem[]>([]);
@@ -103,6 +110,7 @@ export default function ContactsPage() {
   }, []);
 
   const friendIds = useMemo(() => new Set(friends.map((item) => item.userId)), [friends]);
+  const currentUserId = getStoredUser()?.userId ?? '';
 
   const onSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -143,6 +151,16 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const goToPrivateChat = (peerUserId: string) => {
+    if (!currentUserId) {
+      router.push(`/chat/me?peerUserId=${encodeURIComponent(peerUserId)}`);
+      return;
+    }
+
+    const roomId = toPrivateRoomId(currentUserId, peerUserId);
+    router.push(`/chat/me?roomId=${encodeURIComponent(roomId)}`);
   };
 
   return (
@@ -344,6 +362,7 @@ export default function ContactsPage() {
                           onClick={() =>
                             void runAction(async () => {
                               await acceptFriendRequest(user.userId);
+                              goToPrivateChat(user.userId);
                             })
                           }
                           className="rounded-full bg-[#dae2ff] px-3 py-1.5 text-xs font-semibold text-[#0052cc]"
@@ -364,12 +383,13 @@ export default function ContactsPage() {
                       </>
                     ) : (
                       <>
-                        <Link
-                          href={`/chat/${user.userId}`}
+                        <button
+                          type="button"
+                          onClick={() => goToPrivateChat(user.userId)}
                           className="rounded-full bg-[#dae2ff] px-3 py-1.5 text-xs font-semibold text-[#0052cc]"
                         >
                           Chat
-                        </Link>
+                        </button>
                         <button
                           type="button"
                           onClick={() =>

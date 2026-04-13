@@ -13,6 +13,12 @@ import { SearchUserByPhoneDto } from './dto/search-user-by-phone.dto';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { SocialRepository } from './repositories/social.repository';
 
+export interface ChatFriendUser {
+  userId: string;
+  name: string;
+  connectedAt: string;
+}
+
 @Injectable()
 export class SocialService {
   constructor(
@@ -177,6 +183,50 @@ export class SocialService {
       }),
       nextCursor: page.nextCursor,
     };
+  }
+
+  async listAllFriendUsers(actorUserId: string): Promise<ChatFriendUser[]> {
+    const relationItems = [] as Array<{ targetUserId: string; updatedAt: string }>;
+    let cursor: string | undefined;
+
+    do {
+      const page = await this.socialRepository.listFriendsByStatus(
+        actorUserId,
+        'FRIEND',
+        100,
+        cursor,
+      );
+
+      relationItems.push(
+        ...page.items.map((item) => ({
+          targetUserId: item.targetUserId,
+          updatedAt: item.updatedAt,
+        })),
+      );
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    if (relationItems.length === 0) {
+      return [];
+    }
+
+    const users = await this.loadUsers(
+      Array.from(new Set(relationItems.map((item) => item.targetUserId))),
+    );
+    const userMap = new Map(users.map((user) => [user.userId, user]));
+
+    return relationItems
+      .map((item) => {
+        const user = userMap.get(item.targetUserId);
+        if (!user) return null;
+
+        return {
+          userId: user.userId,
+          name: user.name,
+          connectedAt: item.updatedAt,
+        };
+      })
+      .filter((item): item is ChatFriendUser => item != null);
   }
 
   async blockUser(actorUserId: string, dto: BlockUserDto) {

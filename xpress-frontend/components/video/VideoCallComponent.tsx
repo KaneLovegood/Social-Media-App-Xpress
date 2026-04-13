@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io-client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendChatAction } from '@/lib/chat-actions';
 import { CALL_EVENTS } from '@/lib/realtime/events';
 import {
@@ -12,6 +12,7 @@ import AudioCallOverlay from './AudioCallOverlay';
 import VideoCallOverlay from './VideoCallOverlay';
 
 type CallMode = 'voice' | 'video' | null;
+type CallDirection = 'incoming' | 'outgoing' | null;
 
 interface VideoCallComponentProps {
   socket: Socket | null;
@@ -20,6 +21,7 @@ interface VideoCallComponentProps {
   peerName: string;
   orderTitle: string;
   callMode: CallMode;
+  callDirection: CallDirection;
   onModeChange: (mode: CallMode) => void;
   onClose: () => void;
 }
@@ -28,11 +30,6 @@ const rtcConfig: RTCConfiguration = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
-function toOrderId(orderTitle: string) {
-  const digits = orderTitle.replace(/\D/g, '');
-  return digits.length > 0 ? digits : '1234';
-}
-
 export default function VideoCallComponent({
   socket,
   currentUserId,
@@ -40,6 +37,7 @@ export default function VideoCallComponent({
   peerName,
   orderTitle,
   callMode,
+  callDirection,
   onModeChange,
   onClose,
 }: VideoCallComponentProps) {
@@ -60,8 +58,8 @@ export default function VideoCallComponent({
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const silenceFramesRef = useRef(0);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
-  const orderId = useMemo(() => toOrderId(orderTitle), [orderTitle]);
   const showOverlay = callMode !== null;
   const isVoiceMode = callMode === 'voice';
   const isVideoMode = callMode === 'video';
@@ -89,6 +87,20 @@ export default function VideoCallComponent({
 
     silenceFramesRef.current = 0;
     setIsAudioActive(false);
+  }, []);
+
+  const flushPendingIceCandidates = useCallback(async () => {
+    const peer = peerRef.current;
+    if (!peer || !peer.remoteDescription) {
+      return;
+    }
+
+    const queued = pendingIceCandidatesRef.current;
+    pendingIceCandidatesRef.current = [];
+
+    for (const candidate of queued) {
+      await peer.addIceCandidate(new RTCIceCandidate(candidate));
+    }
   }, []);
 
   const startAudioActivityMonitor = useCallback((stream: MediaStream) => {
@@ -203,7 +215,7 @@ export default function VideoCallComponent({
         receiverId: peerUserId,
         reason: 'ended',
       });
-      await sendChatAction('end_call', { peerUserId, orderId, metadata: { triggeredBy: currentUserId } });
+      await sendChatAction('end_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
     }
 
     const peer = peerRef.current;
@@ -226,6 +238,8 @@ export default function VideoCallComponent({
       remoteVideoRef.current.srcObject = null;
     }
 
+    pendingIceCandidatesRef.current = [];
+
     setIncomingOffer(null);
     setActive(false);
     setHasStartedCall(false);
@@ -238,13 +252,14 @@ export default function VideoCallComponent({
     if (closeUi) {
       onClose();
     }
-  }, [currentUserId, onClose, orderId, peerUserId, socket, stopAudioActivityMonitor]);
+  }, [currentUserId, onClose, peerUserId, socket, stopAudioActivityMonitor]);
 
   const acceptIncomingCall = useCallback(async () => {
     if (!incomingOffer || !socket) return;
 
     const peer = await setupPeer(callMode === 'video');
     await peer.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+    await flushPendingIceCandidates();
 
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
@@ -258,23 +273,22 @@ export default function VideoCallComponent({
     setHasStartedCall(true);
     setActive(true);
     setRingSeconds(0);
-    await sendChatAction('accept_call', { peerUserId, orderId, metadata: { triggeredBy: currentUserId } });
-  }, [callMode, currentUserId, incomingOffer, orderId, peerUserId, setupPeer, socket]);
+    await sendChatAction('accept_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
+  }, [callMode, currentUserId, flushPendingIceCandidates, incomingOffer, peerUserId, setupPeer, socket]);
 
   const declineCall = useCallback(async () => {
-    await sendChatAction('decline_call', { peerUserId, orderId, metadata: { triggeredBy: currentUserId } });
+    await sendChatAction('decline_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
     await stopCall(true, true);
-  }, [currentUserId, orderId, peerUserId, stopCall]);
+  }, [currentUserId, peerUserId, stopCall]);
 
   const switchToVideoCall = useCallback(async () => {
     await stopCall(true, false);
     onModeChange('video');
     await sendChatAction('open_video_call', {
       peerUserId,
-      orderId,
       metadata: { triggeredBy: currentUserId, from: 'audio_overlay_camera_button' },
     });
-  }, [currentUserId, onModeChange, orderId, peerUserId, stopCall]);
+  }, [currentUserId, onModeChange, peerUserId, stopCall]);
 
   useEffect(() => {
     if (!active) return;
@@ -301,6 +315,7 @@ export default function VideoCallComponent({
       const peer = peerRef.current;
       if (!peer) return;
       await peer.setRemoteDescription(new RTCSessionDescription(payload.answer));
+      await flushPendingIceCandidates();
       setHasStartedCall(true);
       setActive(true);
       setRingSeconds(0);
@@ -309,13 +324,16 @@ export default function VideoCallComponent({
     const onIce = async (payload: CallIcePayload) => {
       if (payload.senderId !== peerUserId || payload.receiverId !== currentUserId) return;
       const peer = peerRef.current;
-      if (!peer) return;
+      if (!peer || !peer.remoteDescription) {
+        pendingIceCandidatesRef.current.push(payload.candidate);
+        return;
+      }
       await peer.addIceCandidate(new RTCIceCandidate(payload.candidate));
     };
 
     const onEnd = (payload: CallEndPayload) => {
       if (payload.senderId !== peerUserId || payload.receiverId !== currentUserId) return;
-      void stopCall(false, false);
+      void stopCall(false, true);
     };
 
     socket.on(CALL_EVENTS.OFFER, onOffer);
@@ -328,19 +346,27 @@ export default function VideoCallComponent({
       socket.off(CALL_EVENTS.ANSWER, onAnswer);
       socket.off(CALL_EVENTS.ICE, onIce);
       socket.off(CALL_EVENTS.END, onEnd);
-      void stopCall(false, false);
+      void stopCall(false, true);
     };
-  }, [currentUserId, peerUserId, socket, stopCall]);
+  }, [currentUserId, flushPendingIceCandidates, peerUserId, socket, stopCall]);
 
   useEffect(() => {
     if (!showOverlay || !socket || active || incomingOffer || hasStartedCall) return;
+    if (callDirection !== 'outgoing') return;
 
     const shouldStart = callMode === 'voice' || callMode === 'video';
     if (!shouldStart) return;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void startCall(callMode === 'video');
-  }, [active, callMode, hasStartedCall, incomingOffer, showOverlay, socket, startCall]);
+  }, [active, callDirection, callMode, hasStartedCall, incomingOffer, showOverlay, socket, startCall]);
+
+  useEffect(() => {
+    if (!showOverlay || active || !incomingOffer) return;
+    if (callDirection !== 'incoming') return;
+
+    void acceptIncomingCall();
+  }, [acceptIncomingCall, active, callDirection, incomingOffer, showOverlay]);
 
   useEffect(() => () => {
     stopAudioActivityMonitor();

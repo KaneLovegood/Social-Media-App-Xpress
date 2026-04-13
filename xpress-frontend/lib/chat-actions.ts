@@ -16,7 +16,6 @@ type ChatActionName =
 
 interface ChatActionPayload {
   peerUserId: string;
-  orderId: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -30,7 +29,11 @@ export async function sendChatAction(action: ChatActionName, payload: ChatAction
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ action, ...payload }),
+      body: JSON.stringify({
+        action,
+        peerUserId: payload.peerUserId,
+        metadata: payload.metadata,
+      }),
     });
   } catch {
     // UI action should not break if telemetry/action endpoint is unavailable.

@@ -15,4 +15,5 @@ export const CALL_EVENTS = {
   ANSWER: 'call:answer',
   ICE: 'call:ice',
   END: 'call:end',
+  INCOMING: 'call:incoming',
 } as const;
