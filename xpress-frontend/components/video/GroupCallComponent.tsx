@@ -36,7 +36,9 @@ const rtcConfig: RTCConfiguration = {
 };
 
 function formatDuration(value: number): string {
-  const minutes = Math.floor(value / 60).toString().padStart(2, "0");
+  const minutes = Math.floor(value / 60)
+    .toString()
+    .padStart(2, "0");
   const seconds = (value % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
 }
@@ -64,7 +66,9 @@ function StreamVideo({
     }
   }, [stream]);
 
-  return <video ref={ref} autoPlay playsInline muted={muted} className={className} />;
+  return (
+    <video ref={ref} autoPlay playsInline muted={muted} className={className} />
+  );
 }
 
 export default function GroupCallComponent({
@@ -80,7 +84,9 @@ export default function GroupCallComponent({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(
+    new Map(),
+  );
   const remoteStreamsRef = useRef<RemoteStreamState[]>([]);
   const startedRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
@@ -91,9 +97,7 @@ export default function GroupCallComponent({
 
   const remoteMembers = useMemo(
     () =>
-      groupDetails.members.filter(
-        (member) => member.userId !== currentUserId,
-      ),
+      groupDetails.members.filter((member) => member.userId !== currentUserId),
     [currentUserId, groupDetails.members],
   );
 
@@ -195,9 +199,14 @@ export default function GroupCallComponent({
         setRemoteStreams((prev) => {
           const next = prev.filter((item) => item.userId !== remoteUserId);
           const participant =
-            groupDetails.members.find((member) => member.userId === remoteUserId)?.name ??
-            remoteUserId;
-          next.push({ userId: remoteUserId, name: participant, stream: remoteStream });
+            groupDetails.members.find(
+              (member) => member.userId === remoteUserId,
+            )?.name ?? remoteUserId;
+          next.push({
+            userId: remoteUserId,
+            name: participant,
+            stream: remoteStream,
+          });
           return next;
         });
       };
@@ -258,7 +267,14 @@ export default function GroupCallComponent({
         offer,
       } satisfies GroupCallOfferPayload);
     }
-  }, [callMode, currentUserId, ensurePeerConnection, remoteMembers, roomId, socket]);
+  }, [
+    callMode,
+    currentUserId,
+    ensurePeerConnection,
+    remoteMembers,
+    roomId,
+    socket,
+  ]);
 
   useEffect(() => {
     if (!socket || !roomId) return;
@@ -303,7 +319,9 @@ export default function GroupCallComponent({
       const peer = peerConnectionsRef.current.get(payload.senderId);
       if (!peer) return;
 
-      await peer.setRemoteDescription(new RTCSessionDescription(payload.answer));
+      await peer.setRemoteDescription(
+        new RTCSessionDescription(payload.answer),
+      );
       await flushPendingIce(payload.senderId);
     };
 
@@ -314,7 +332,8 @@ export default function GroupCallComponent({
 
       const peer = peerConnectionsRef.current.get(payload.senderId);
       if (!peer || !peer.remoteDescription) {
-        const queued = pendingIceCandidatesRef.current.get(payload.senderId) ?? [];
+        const queued =
+          pendingIceCandidatesRef.current.get(payload.senderId) ?? [];
         queued.push(payload.candidate);
         pendingIceCandidatesRef.current.set(payload.senderId, queued);
         return;
@@ -342,10 +361,23 @@ export default function GroupCallComponent({
       socket.off(CHAT_EVENTS.GROUP_CALL_ICE, onIce);
       socket.off(CHAT_EVENTS.GROUP_CALL_END, onEnd);
     };
-  }, [currentUserId, flushPendingIce, onClose, roomId, socket, startConference, stopConference]);
+  }, [
+    currentUserId,
+    flushPendingIce,
+    onClose,
+    roomId,
+    socket,
+    startConference,
+    stopConference,
+  ]);
 
   useEffect(() => {
-    if (!socket || !roomId || !groupDetails.members.length || startedRef.current) {
+    if (
+      !socket ||
+      !roomId ||
+      !groupDetails.members.length ||
+      startedRef.current
+    ) {
       return;
     }
 
@@ -356,7 +388,14 @@ export default function GroupCallComponent({
     void startConference().catch(() => {
       stopConference(false);
     });
-  }, [callDirection, groupDetails.members.length, roomId, socket, startConference, stopConference]);
+  }, [
+    callDirection,
+    groupDetails.members.length,
+    roomId,
+    socket,
+    startConference,
+    stopConference,
+  ]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -368,9 +407,12 @@ export default function GroupCallComponent({
     return () => window.clearInterval(timer);
   }, [isActive]);
 
-  useEffect(() => () => {
-    stopConference(false);
-  }, []);
+  useEffect(
+    () => () => {
+      stopConference(false);
+    },
+    [],
+  );
 
   const toggleMute = () => {
     const stream = localStreamRef.current;
@@ -411,8 +453,12 @@ export default function GroupCallComponent({
             </h2>
           </div>
           <div className="text-right">
-            <p className="text-xs text-[#6d7790]">{callDirection === "outgoing" ? "Đang gọi" : "Đang tham gia"}</p>
-            <p className="text-sm font-semibold text-[#0f1c3c]">{formatDuration(elapsedSeconds)}</p>
+            <p className="text-xs text-[#6d7790]">
+              {callDirection === "outgoing" ? "Đang gọi" : "Đang tham gia"}
+            </p>
+            <p className="text-sm font-semibold text-[#0f1c3c]">
+              {formatDuration(elapsedSeconds)}
+            </p>
           </div>
         </div>
 
@@ -447,7 +493,14 @@ export default function GroupCallComponent({
             </div>
           ) : (
             <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto md:grid-cols-3 xl:grid-cols-4">
-              {[{ userId: currentUserId, name: currentUserName, stream: localStreamRef.current } as RemoteStreamState, ...remoteStreams].map((participant) => (
+              {[
+                {
+                  userId: currentUserId,
+                  name: currentUserName,
+                  stream: localStreamRef.current,
+                } as RemoteStreamState,
+                ...remoteStreams,
+              ].map((participant) => (
                 <div
                   key={participant.userId}
                   className="flex min-h-45 flex-col items-center justify-center rounded-3xl border border-[#d7def0] bg-white/75 px-4 py-5 text-center shadow-sm"
@@ -458,7 +511,11 @@ export default function GroupCallComponent({
                   <p className="mt-3 truncate text-sm font-semibold text-[#0f1c3c]">
                     {participant.name}
                   </p>
-                  <p className="mt-1 text-xs text-[#6d7790]">{participant.userId === currentUserId ? "Bạn" : "Đã kết nối"}</p>
+                  <p className="mt-1 text-xs text-[#6d7790]">
+                    {participant.userId === currentUserId
+                      ? "Bạn"
+                      : "Đã kết nối"}
+                  </p>
                 </div>
               ))}
             </div>
@@ -473,13 +530,25 @@ export default function GroupCallComponent({
                 aria-label="Toggle mute"
               >
                 {muted ? (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="m4 4 16 16" />
                     <path d="M12 4v7" />
                     <path d="M9 11a3 3 0 1 0 6 0" />
                   </svg>
                 ) : (
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <rect x="9" y="3" width="6" height="11" rx="3" />
                     <path d="M5 11a7 7 0 0 0 14 0" />
                     <path d="M12 18v3" />
@@ -495,12 +564,24 @@ export default function GroupCallComponent({
                   aria-label="Toggle camera"
                 >
                   {cameraOff ? (
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
                       <path d="m4 4 16 16" />
                       <rect x="3" y="6" width="13" height="12" rx="2" />
                     </svg>
                   ) : (
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
                       <rect x="3" y="6" width="13" height="12" rx="2" />
                       <path d="m16 10 5-3v10l-5-3" />
                     </svg>

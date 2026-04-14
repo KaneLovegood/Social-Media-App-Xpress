@@ -21,7 +21,8 @@ export default function IncomingGroupCallModal({
 }: IncomingGroupCallModalProps) {
   if (!isOpen) return null;
 
-  const callTypeLabel = callMode === "voice" ? "Cuộc gọi nhóm thoại" : "Cuộc gọi nhóm video";
+  const callTypeLabel =
+    callMode === "voice" ? "Cuộc gọi nhóm thoại" : "Cuộc gọi nhóm video";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -33,9 +34,15 @@ export default function IncomingGroupCallModal({
 
           <div>
             <p className="text-lg font-bold text-zinc-900">{roomTitle}</p>
-            <p className="mt-1 text-sm text-[#727687]">{callerName} đang mời bạn vào</p>
-            <p className="mt-2 text-sm font-semibold text-[#294486]">{callTypeLabel}</p>
-            <p className="mt-1 text-xs text-slate-500">{participantCount} thành viên trong nhóm</p>
+            <p className="mt-1 text-sm text-[#727687]">
+              {callerName} đang mời bạn vào
+            </p>
+            <p className="mt-2 text-sm font-semibold text-[#294486]">
+              {callTypeLabel}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {participantCount} thành viên trong nhóm
+            </p>
           </div>
 
           <div className="mt-4 flex w-full gap-3">
