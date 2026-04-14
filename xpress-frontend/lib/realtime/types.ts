@@ -5,11 +5,11 @@ export interface ReplyPreview {
   content: string;
 }
 
-export type MessageType = 'TEXT' | 'CALL_LOG';
+export type MessageType = "TEXT" | "CALL_LOG";
 
 export interface CallLogPayload {
-  mode: 'voice' | 'video';
-  outcome: 'self_cancelled' | 'peer_cancelled' | 'connected_ended';
+  mode: "voice" | "video";
+  outcome: "self_cancelled" | "peer_cancelled" | "connected_ended";
   durationSeconds: number;
   actorUserId: string;
   initiatorUserId: string;
@@ -18,6 +18,8 @@ export interface CallLogPayload {
 export interface ChatMessage {
   messageId: string;
   conversationId: string;
+  roomId?: string;
+  roomType?: "PRIVATE" | "GROUP";
   senderId: string;
   receiverId: string;
   content: string;
@@ -37,6 +39,8 @@ export interface MessageStateUpdate {
   messageId: string;
   senderId: string;
   receiverId: string;
+  roomId?: string;
+  roomType?: "PRIVATE" | "GROUP";
   updatedAt?: string;
   isDeleted?: boolean;
   isRecalled?: boolean;
@@ -47,6 +51,7 @@ export interface TypingPayload {
   senderId: string;
   receiverId: string;
   isTyping: boolean;
+  roomId?: string;
 }
 
 export interface PresencePayload {
@@ -76,5 +81,41 @@ export interface CallIcePayload {
 export interface CallEndPayload {
   senderId: string;
   receiverId: string;
+  reason?: string;
+}
+
+export interface GroupCallStartedPayload {
+  senderId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+}
+
+export interface GroupCallOfferPayload {
+  senderId: string;
+  receiverId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+  offer: RTCSessionDescriptionInit;
+}
+
+export interface GroupCallAnswerPayload {
+  senderId: string;
+  receiverId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+  answer: RTCSessionDescriptionInit;
+}
+
+export interface GroupCallIcePayload {
+  senderId: string;
+  receiverId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+  candidate: RTCIceCandidateInit;
+}
+
+export interface GroupCallEndPayload {
+  senderId: string;
+  roomId: string;
   reason?: string;
 }

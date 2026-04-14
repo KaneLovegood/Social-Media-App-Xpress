@@ -1,12 +1,14 @@
 import { RefObject } from 'react';
 import { ChatMessage, ReplyPreview as ReplyPreviewType } from '@/lib/realtime/types';
 import MessageItemRow from './MessageItemRow';
+import MessageItem from "./MessageItem";
 
 interface MessageListProps {
   messages: ChatMessage[];
   currentUserId: string;
   currentUserName: string;
   peerName: string;
+  canReply?: boolean;
   listRef: RefObject<HTMLUListElement | null>;
   onReply: (preview: ReplyPreviewType) => void;
   onRecall: (messageId: string) => void;
@@ -25,6 +27,7 @@ export default function MessageList({
   currentUserId,
   currentUserName,
   peerName,
+  canReply = true,
   listRef,
   onReply,
   onRecall,
@@ -47,7 +50,11 @@ export default function MessageList({
     >
         <li className="flex flex-col items-center justify-center py-8 text-center">
           <div className="flex h-34 w-34 items-center justify-center rounded-full bg-[#ccd4ef]">
-            <svg viewBox="0 0 24 24" className="h-12 w-12 text-[#0f61d4]" fill="currentColor">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-12 w-12 text-[#0f61d4]"
+              fill="currentColor"
+            >
               <path d="m4 12 15-7-3 7 3 7-15-7Z" />
             </svg>
           </div>
