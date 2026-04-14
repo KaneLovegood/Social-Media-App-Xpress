@@ -6,14 +6,24 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { UsersRepository } from '../auth/repositories/users.repository';
 import { PresenceService } from '../../common/presence/presence.service';
 import { ChatFriendUser, SocialService } from '../social/social.service';
+import { CreateGroupDto } from './dto/create-group.dto';
 import { DeleteMessageDto } from './dto/delete-message.dto';
 import { ChatActionDto, ChatActionName } from './dto/chat-action.dto';
+import { GroupMemberDto } from './dto/group-member.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
+import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import {
+  ChatGroupMemberEntity,
+  ChatGroupRoomEntity,
+  ChatRoomType,
+} from './interfaces/group-room.interface';
 import { CallLogPayload, MessageEntity } from './interfaces/message.interface';
+import { GroupRoomsRepository } from './repositories/group-rooms.repository';
 import { MessagesRepository } from './repositories/messages.repository';
 
 interface CallSignalBase {
@@ -65,13 +75,56 @@ interface OrderSummary {
 
 interface ChatRoomSummary {
   roomId: string;
+  roomType: ChatRoomType;
   title: string;
   peerUserId: string;
   peerName: string;
+  avatarUrl?: string;
+  description?: string;
+  emoji?: string;
+  memberCount?: number;
+  memberRole?: 'ADMIN' | 'MEMBER';
   preview: string;
   lastMessageAt: string;
   unreadCount: number;
   isPeerOnline: boolean;
+}
+
+interface GroupRoomMemberSummary {
+  userId: string;
+  name: string;
+  phone: string;
+  role: 'ADMIN' | 'MEMBER';
+  nickname?: string;
+  isOnline: boolean;
+  joinedAt: string;
+  lastReadAt?: string;
+}
+
+interface GroupRoomDetails {
+  roomId: string;
+  roomType: 'GROUP';
+  title: string;
+  description?: string;
+  avatarUrl?: string;
+  emoji?: string;
+  createdByUserId: string;
+  inviteCode: string;
+  inviteLink: string;
+  memberCount: number;
+  pinnedMessageId?: string;
+  lastMessageAt?: string;
+  lastMessagePreview?: string;
+  createdAt: string;
+  updatedAt: string;
+  members: GroupRoomMemberSummary[];
+  currentUserRole?: 'ADMIN' | 'MEMBER';
+}
+
+interface GroupDissolveResult {
+  roomId: string;
+  title: string;
+  memberUserIds: string[];
 }
 
 interface ChatActionResponse {
@@ -92,6 +145,8 @@ export class ChatService {
 
   constructor(
     private readonly messagesRepository: MessagesRepository,
+    private readonly groupRoomsRepository: GroupRoomsRepository,
+    private readonly usersRepository: UsersRepository,
     private readonly presenceService: PresenceService,
     private readonly socialService: SocialService,
   ) {}
@@ -195,6 +250,203 @@ export class ChatService {
     return item;
   }
 
+  async createGroupRoom(
+    actorUserId: string,
+    dto: CreateGroupDto,
+  ): Promise<GroupRoomDetails> {
+    const room = await this.groupRoomsRepository.createGroupRoom({
+      title: dto.title,
+      description: dto.description,
+      avatarUrl: dto.avatarUrl,
+      emoji: dto.emoji,
+      createdByUserId: actorUserId,
+    });
+
+    const initialMemberIds = Array.from(
+      new Set([actorUserId, ...(dto.memberUserIds ?? [])]),
+    ).filter((userId) => userId !== actorUserId);
+
+    for (const memberUserId of initialMemberIds) {
+      const exists = await this.usersRepository.findByUserId(memberUserId);
+      if (!exists) {
+        throw new NotFoundException(`Nguoi dung ${memberUserId} khong ton tai`);
+      }
+
+      await this.groupRoomsRepository.addMember(
+        room.roomId,
+        memberUserId,
+        'MEMBER',
+      );
+    }
+
+    return this.buildGroupRoomDetails(actorUserId, room.roomId);
+  }
+
+  async dissolveGroup(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<GroupDissolveResult> {
+    await this.assertGroupAdmin(actorUserId, roomId);
+    const room = await this.getGroupRoom(roomId);
+
+    const members = await this.groupRoomsRepository.deleteGroupRoom(roomId);
+    return {
+      roomId,
+      title: room.title,
+      memberUserIds: members,
+    };
+  }
+
+  async getGroupRoomDetails(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<GroupRoomDetails> {
+    await this.assertGroupMembership(actorUserId, roomId);
+    const room = await this.getGroupRoom(roomId);
+    return this.buildGroupRoomDetails(actorUserId, room.roomId);
+  }
+
+  async addGroupMember(
+    actorUserId: string,
+    roomId: string,
+    dto: GroupMemberDto,
+  ): Promise<GroupRoomDetails> {
+    await this.assertGroupAdmin(actorUserId, roomId);
+    const user = await this.usersRepository.findByUserId(dto.userId);
+    if (!user) {
+      throw new NotFoundException('Nguoi dung khong ton tai');
+    }
+
+    await this.groupRoomsRepository.addMember(roomId, dto.userId, 'MEMBER');
+    return this.buildGroupRoomDetails(actorUserId, roomId);
+  }
+
+  async removeGroupMember(
+    actorUserId: string,
+    roomId: string,
+    memberUserId: string,
+  ): Promise<GroupRoomDetails> {
+    await this.assertGroupAdmin(actorUserId, roomId);
+    if (memberUserId === actorUserId) {
+      throw new BadRequestException(
+        'Admin khong the tu xoa chinh minh bang action nay',
+      );
+    }
+
+    await this.groupRoomsRepository.removeMember(roomId, memberUserId);
+    return this.buildGroupRoomDetails(actorUserId, roomId);
+  }
+
+  async leaveGroup(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<GroupRoomDetails> {
+    await this.assertGroupMembership(actorUserId, roomId);
+    await this.groupRoomsRepository.removeMember(roomId, actorUserId);
+    // Return updated room details without the user
+    // Get a dummy user ID to fetch updated group details (need any valid user for authorization check)
+    const room = await this.getGroupRoom(roomId);
+    const allMembers = await this.groupRoomsRepository.listMembers(roomId);
+    if (allMembers.length === 0) {
+      throw new Error('Cannot fetch group details after leaving');
+    }
+    return this.buildGroupRoomDetails(allMembers[0]!.userId, roomId);
+  }
+
+  async promoteGroupMember(
+    actorUserId: string,
+    roomId: string,
+    memberUserId: string,
+  ): Promise<GroupRoomDetails> {
+    await this.assertGroupAdmin(actorUserId, roomId);
+    if (actorUserId === memberUserId) {
+      throw new BadRequestException('Khong the chuyen quyen cho chinh minh');
+    }
+
+    await this.assertGroupMembership(memberUserId, roomId);
+    await this.groupRoomsRepository.transferAdminRole(
+      roomId,
+      actorUserId,
+      memberUserId,
+    );
+    return this.buildGroupRoomDetails(actorUserId, roomId);
+  }
+
+  async createGroupInviteLink(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<{ roomId: string; inviteCode: string; inviteLink: string }> {
+    await this.assertGroupMembership(actorUserId, roomId);
+    const room = await this.getGroupRoom(roomId);
+    return {
+      roomId,
+      inviteCode: room.inviteCode,
+      inviteLink: `/chat/join/${room.inviteCode}`,
+    };
+  }
+
+  async joinGroupByInvite(
+    actorUserId: string,
+    inviteCode: string,
+  ): Promise<GroupRoomDetails> {
+    const room =
+      await this.groupRoomsRepository.findRoomByInviteCode(inviteCode);
+    if (!room) {
+      throw new NotFoundException('Ma moi khong hop le');
+    }
+
+    const userExists = await this.usersRepository.findByUserId(actorUserId);
+    if (!userExists) {
+      throw new NotFoundException('Nguoi dung khong ton tai');
+    }
+
+    await this.groupRoomsRepository.addMember(
+      room.roomId,
+      actorUserId,
+      'MEMBER',
+    );
+    return this.buildGroupRoomDetails(actorUserId, room.roomId);
+  }
+
+  async sendGroupMessage(
+    senderId: string,
+    dto: SendGroupMessageDto,
+  ): Promise<MessageEntity> {
+    await this.assertGroupMembership(senderId, dto.roomId);
+
+    const room = await this.getGroupRoom(dto.roomId);
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${room.roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: room.roomId,
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: room.roomId,
+      content: dto.content,
+      messageType: 'TEXT',
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: dto.content,
+    });
+
+    return item;
+  }
+
   async deleteMessage(
     senderId: string,
     dto: DeleteMessageDto,
@@ -261,28 +513,41 @@ export class ChatService {
   }
 
   async getChatRoomsForUser(userId: string): Promise<ChatRoomSummary[]> {
-    const [messages, friends] = await Promise.all([
+    const [messages, friends, groupMemberships] = await Promise.all([
       this.messagesRepository.findMessagesByUser(userId),
       this.socialService.listAllFriendUsers(userId),
+      this.groupRoomsRepository.listRoomsForUser(userId),
     ]);
     const rooms = new Map<string, ChatRoomSummary>();
 
     this.seedPrivateRoomsFromFriends(userId, friends, rooms);
+    await this.seedGroupRooms(userId, groupMemberships, rooms);
 
     for (const message of messages) {
+      // Only private conversations should contribute to private room summaries.
+      const isPrivateConversation =
+        message.roomType === 'PRIVATE' || message.conversationId.includes(':');
+      if (!isPrivateConversation || message.roomType === 'GROUP') {
+        continue;
+      }
+
       const peerUserId =
         message.senderId === userId ? message.receiverId : message.senderId;
       const roomId = this.toConversationId(userId, peerUserId);
       const existed = rooms.get(roomId);
       const peerName = existed?.peerName ?? this.toPeerName(peerUserId);
-      const isPeerOnline = existed?.isPeerOnline ?? this.getPresence(peerUserId).isOnline;
+      const isPeerOnline =
+        existed?.isPeerOnline ?? this.getPresence(peerUserId).isOnline;
 
       const unreadDelta =
-        message.receiverId === userId && !message.readAt && !message.isDeleted ? 1 : 0;
+        message.receiverId === userId && !message.readAt && !message.isDeleted
+          ? 1
+          : 0;
 
       if (!existed || message.createdAt > existed.lastMessageAt) {
         rooms.set(roomId, {
           roomId,
+          roomType: 'PRIVATE',
           title: existed?.title ?? peerName,
           peerUserId,
           peerName,
@@ -310,9 +575,45 @@ export class ChatService {
     userId: string,
     roomId: string,
   ): Promise<MessageEntity[]> {
-    this.assertRoomMembership(userId, roomId);
+    await this.assertRoomMembership(userId, roomId);
 
     return this.messagesRepository.findMessagesByConversationId(roomId);
+  }
+
+  async deleteChatHistory(
+    userId: string,
+    roomId: string,
+  ): Promise<{ success: boolean; deletedCount: number }> {
+    await this.assertRoomMembership(userId, roomId);
+
+    const messages =
+      await this.messagesRepository.findMessagesByConversationId(roomId);
+    const deletedCount = messages.length;
+
+    // Soft delete all messages for this room
+    for (const message of messages) {
+      if (!message.isDeleted) {
+        await this.messagesRepository.softDeleteMessage(message.messageId);
+      }
+    }
+
+    return {
+      success: true,
+      deletedCount,
+    };
+  }
+
+  async getRoomImages(
+    userId: string,
+    roomId: string,
+  ): Promise<MessageEntity[]> {
+    await this.assertRoomMembership(userId, roomId);
+    return this.messagesRepository.findImagesByConversationId(roomId);
+  }
+
+  async getRoomFiles(userId: string, roomId: string): Promise<MessageEntity[]> {
+    await this.assertRoomMembership(userId, roomId);
+    return this.messagesRepository.findFilesByConversationId(roomId);
   }
 
   private seedPrivateRoomsFromFriends(
@@ -328,6 +629,7 @@ export class ChatService {
 
       rooms.set(roomId, {
         roomId,
+        roomType: 'PRIVATE',
         title: friend.name,
         peerUserId: friend.userId,
         peerName: friend.name,
@@ -337,6 +639,67 @@ export class ChatService {
         isPeerOnline: this.getPresence(friend.userId).isOnline,
       });
     }
+  }
+
+  private async seedGroupRooms(
+    userId: string,
+    memberships: Array<{
+      room: ChatGroupRoomEntity;
+      role: 'ADMIN' | 'MEMBER';
+      joinedAt: string;
+      lastReadAt?: string;
+    }>,
+    rooms: Map<string, ChatRoomSummary>,
+  ): Promise<void> {
+    for (const membership of memberships) {
+      const room = membership.room;
+      const latestMessage = room.lastMessageAt
+        ? await this.messagesRepository.findLatestMessageByConversationId(
+            room.roomId,
+          )
+        : null;
+      const unreadCount = await this.getGroupUnreadCount(
+        userId,
+        room.roomId,
+        membership.lastReadAt ?? membership.joinedAt,
+      );
+
+      rooms.set(room.roomId, {
+        roomId: room.roomId,
+        roomType: 'GROUP',
+        title: room.title,
+        peerUserId: room.roomId,
+        peerName: room.title,
+        avatarUrl: room.avatarUrl,
+        description: room.description,
+        emoji: room.emoji,
+        memberCount: room.memberCount,
+        memberRole: membership.role,
+        preview:
+          room.lastMessagePreview ??
+          latestMessage?.content ??
+          'Bat dau tro chuyen trong nhom',
+        lastMessageAt: room.lastMessageAt ?? room.createdAt,
+        unreadCount,
+        isPeerOnline: false,
+      });
+    }
+  }
+
+  private async getGroupUnreadCount(
+    userId: string,
+    roomId: string,
+    sinceIso: string,
+  ): Promise<number> {
+    const messages =
+      await this.messagesRepository.findMessagesByConversationId(roomId);
+    return messages.filter((message) => {
+      if (message.senderId === userId || message.isDeleted) {
+        return false;
+      }
+
+      return message.createdAt > sinceIso;
+    }).length;
   }
 
   async markMessageReceived(
@@ -356,8 +719,14 @@ export class ChatService {
   }
 
   async markRoomAsRead(userId: string, roomId: string): Promise<string[]> {
-    this.assertRoomMembership(userId, roomId);
-    return this.messagesRepository.markConversationAsRead(roomId, userId);
+    if (roomId.includes(':')) {
+      await this.assertRoomMembership(userId, roomId);
+      return this.messagesRepository.markConversationAsRead(roomId, userId);
+    }
+
+    await this.assertGroupMembership(userId, roomId);
+    await this.groupRoomsRepository.markMemberRead(roomId, userId);
+    return [];
   }
 
   mapSignal<TPayload extends CallSignalBase>(
@@ -709,15 +1078,132 @@ export class ChatService {
     return 'Ban da huy';
   }
 
-  private assertRoomMembership(userId: string, roomId: string): void {
-    const [firstUserId, secondUserId, ...rest] = roomId.split(':');
-    if (rest.length > 0 || !firstUserId || !secondUserId) {
-      throw new BadRequestException('Phong chat khong hop le');
+  private async assertRoomMembership(
+    userId: string,
+    roomId: string,
+  ): Promise<void> {
+    if (roomId.includes(':')) {
+      const [firstUserId, secondUserId, ...rest] = roomId.split(':');
+      if (rest.length > 0 || !firstUserId || !secondUserId) {
+        throw new BadRequestException('Phong chat khong hop le');
+      }
+
+      if (userId !== firstUserId && userId !== secondUserId) {
+        throw new ForbiddenException('Ban khong co quyen xem phong chat nay');
+      }
+
+      return;
     }
 
-    if (userId !== firstUserId && userId !== secondUserId) {
-      throw new ForbiddenException('Ban khong co quyen xem phong chat nay');
+    await this.assertGroupMembership(userId, roomId);
+  }
+
+  private async assertGroupMembership(
+    userId: string,
+    roomId: string,
+  ): Promise<ChatGroupMemberEntity> {
+    const member = await this.groupRoomsRepository.findMember(roomId, userId);
+    if (!member) {
+      throw new ForbiddenException('Ban khong co quyen xem phong nhom nay');
     }
+
+    return member;
+  }
+
+  private async assertGroupAdmin(
+    userId: string,
+    roomId: string,
+  ): Promise<ChatGroupMemberEntity> {
+    const member = await this.assertGroupMembership(userId, roomId);
+    if (member.role !== 'ADMIN') {
+      throw new ForbiddenException('Chi admin moi co quyen thao tac');
+    }
+
+    return member;
+  }
+
+  private async getGroupRoom(roomId: string): Promise<ChatGroupRoomEntity> {
+    const room = await this.groupRoomsRepository.findRoomById(roomId);
+    if (!room) {
+      throw new NotFoundException('Nhom khong ton tai');
+    }
+
+    return room;
+  }
+
+  async getGroupRoomIdsForUser(userId: string): Promise<string[]> {
+    const memberships =
+      await this.groupRoomsRepository.listRoomsForUser(userId);
+    return memberships.map((item) => item.room.roomId);
+  }
+
+  async ensureGroupMembership(
+    userId: string,
+    roomId: string,
+  ): Promise<ChatGroupMemberEntity> {
+    return this.assertGroupMembership(userId, roomId);
+  }
+
+  private async buildGroupRoomDetails(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<GroupRoomDetails> {
+    const room = await this.getGroupRoom(roomId);
+    const members = await this.groupRoomsRepository.listMembers(roomId);
+    const loadedUsers = await Promise.all(
+      members.map((member) => this.usersRepository.findByUserId(member.userId)),
+    );
+
+    const memberSummaries = members
+      .map((member, index): GroupRoomMemberSummary | null => {
+        const user = loadedUsers[index];
+        if (!user) return null;
+
+        return {
+          userId: user.userId,
+          name: user.name,
+          phone: user.phone,
+          role: member.role,
+          ...(member.nickname ? { nickname: member.nickname } : {}),
+          isOnline: this.presenceService.getPresence(user.userId).isOnline,
+          joinedAt: member.joinedAt,
+          ...(member.lastReadAt ? { lastReadAt: member.lastReadAt } : {}),
+        };
+      })
+      .filter((item): item is GroupRoomMemberSummary => item !== null)
+      .sort((first, second) => {
+        if (first.role !== second.role) {
+          return first.role === 'ADMIN' ? -1 : 1;
+        }
+
+        return first.joinedAt.localeCompare(second.joinedAt);
+      });
+
+    // Find current user's role
+    const currentUserMember = members.find(
+      (member) => member.userId === actorUserId,
+    );
+    const currentUserRole = currentUserMember?.role;
+
+    return {
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      title: room.title,
+      description: room.description,
+      avatarUrl: room.avatarUrl,
+      emoji: room.emoji,
+      createdByUserId: room.createdByUserId,
+      inviteCode: room.inviteCode,
+      inviteLink: `/chat/join/${room.inviteCode}`,
+      memberCount: room.memberCount,
+      pinnedMessageId: room.pinnedMessageId,
+      lastMessageAt: room.lastMessageAt,
+      lastMessagePreview: room.lastMessagePreview,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+      members: memberSummaries,
+      ...(currentUserRole ? { currentUserRole } : {}),
+    };
   }
 
   private toPeerName(peerUserId: string): string {

@@ -28,6 +28,8 @@ export interface MessageEntity {
   entityType: 'MESSAGE';
   messageId: string;
   conversationId: string;
+  roomId?: string;
+  roomType?: 'PRIVATE' | 'GROUP';
   senderId: string;
   receiverId: string;
   content: string;
