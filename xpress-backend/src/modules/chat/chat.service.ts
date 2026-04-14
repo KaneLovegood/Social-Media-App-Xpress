@@ -13,7 +13,7 @@ import { ChatActionDto, ChatActionName } from './dto/chat-action.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
-import { MessageEntity } from './interfaces/message.interface';
+import { CallLogPayload, MessageEntity } from './interfaces/message.interface';
 import { MessagesRepository } from './repositories/messages.repository';
 
 interface CallSignalBase {
@@ -43,6 +43,7 @@ interface CallSession {
   sessionId: string;
   actionKey: string;
   orderId: string;
+  initiatorUserId: string;
   peerUserId: string;
   actorUserId: string;
   mode: CallMode;
@@ -69,6 +70,19 @@ interface ChatRoomSummary {
   peerName: string;
   preview: string;
   lastMessageAt: string;
+  unreadCount: number;
+  isPeerOnline: boolean;
+}
+
+interface ChatActionResponse {
+  success: true;
+  action: ChatActionName;
+  actorUserId: string;
+  peerUserId: string;
+  at: string;
+  metadata: Record<string, unknown>;
+  data: CallSession;
+  callSummaryMessage?: MessageEntity;
 }
 
 @Injectable()
@@ -119,6 +133,7 @@ export class ChatService {
       senderId,
       receiverId: dto.receiverId,
       content: dto.content,
+      messageType: 'TEXT',
       isDeleted: false,
       isRecalled: false,
       createdAt: now,
@@ -167,6 +182,7 @@ export class ChatService {
       senderId,
       receiverId: dto.receiverId,
       content: dto.content,
+      messageType: 'TEXT',
       replyToMessageId: original.messageId,
       replyPreview: this.messagesRepository.buildReplyPreview(original),
       isDeleted: false,
@@ -259,6 +275,10 @@ export class ChatService {
       const roomId = this.toConversationId(userId, peerUserId);
       const existed = rooms.get(roomId);
       const peerName = existed?.peerName ?? this.toPeerName(peerUserId);
+      const isPeerOnline = existed?.isPeerOnline ?? this.getPresence(peerUserId).isOnline;
+
+      const unreadDelta =
+        message.receiverId === userId && !message.readAt && !message.isDeleted ? 1 : 0;
 
       if (!existed || message.createdAt > existed.lastMessageAt) {
         rooms.set(roomId, {
@@ -266,15 +286,33 @@ export class ChatService {
           title: existed?.title ?? peerName,
           peerUserId,
           peerName,
-          preview: message.content,
+          preview: this.toRoomPreview(message),
           lastMessageAt: message.createdAt,
+          unreadCount: (existed?.unreadCount ?? 0) + unreadDelta,
+          isPeerOnline,
         });
+        continue;
       }
+
+      rooms.set(roomId, {
+        ...existed,
+        unreadCount: existed.unreadCount + unreadDelta,
+        isPeerOnline,
+      });
     }
 
     return Array.from(rooms.values()).sort((a, b) =>
       b.lastMessageAt.localeCompare(a.lastMessageAt),
     );
+  }
+
+  async getMessagesForRoom(
+    userId: string,
+    roomId: string,
+  ): Promise<MessageEntity[]> {
+    this.assertRoomMembership(userId, roomId);
+
+    return this.messagesRepository.findMessagesByConversationId(roomId);
   }
 
   private seedPrivateRoomsFromFriends(
@@ -295,8 +333,31 @@ export class ChatService {
         peerName: friend.name,
         preview: 'Bat dau tro chuyen',
         lastMessageAt: friend.connectedAt,
+        unreadCount: 0,
+        isPeerOnline: this.getPresence(friend.userId).isOnline,
       });
     }
+  }
+
+  async markMessageReceived(
+    receiverUserId: string,
+    messageId: string,
+  ): Promise<MessageEntity | null> {
+    const message = await this.messagesRepository.markMessageReceived(
+      messageId,
+      receiverUserId,
+    );
+
+    if (!message) {
+      throw new NotFoundException('Tin nhan khong ton tai');
+    }
+
+    return message;
+  }
+
+  async markRoomAsRead(userId: string, roomId: string): Promise<string[]> {
+    this.assertRoomMembership(userId, roomId);
+    return this.messagesRepository.markConversationAsRead(roomId, userId);
   }
 
   mapSignal<TPayload extends CallSignalBase>(
@@ -368,7 +429,10 @@ export class ChatService {
     return this.mapSignal(senderId, payload);
   }
 
-  handleAction(actorUserId: string, dto: ChatActionDto) {
+  async handleAction(
+    actorUserId: string,
+    dto: ChatActionDto,
+  ): Promise<ChatActionResponse> {
     const at = new Date().toISOString();
     const actionKey = this.toActionKey(actorUserId, dto.peerUserId);
     const basePayload = {
@@ -387,6 +451,14 @@ export class ChatService {
       at,
     );
 
+    const callSummaryMessage = await this.createCallSummaryMessageIfNeeded(
+      dto.action,
+      actorUserId,
+      dto.peerUserId,
+      data,
+      at,
+    );
+
     this.logger.log(
       `[chat-action] actor=${actorUserId} action=${dto.action} peer=${dto.peerUserId}`,
     );
@@ -395,6 +467,7 @@ export class ChatService {
       success: true,
       ...basePayload,
       data,
+      callSummaryMessage,
     };
   }
 
@@ -404,7 +477,7 @@ export class ChatService {
     dto: ChatActionDto,
     actionKey: string,
     at: string,
-  ) {
+  ): CallSession {
     switch (action) {
       case 'open_voice_call':
         return this.openCallSession('voice', actorUserId, dto, actionKey, at);
@@ -440,6 +513,7 @@ export class ChatService {
       sessionId: randomUUID(),
       actionKey,
       orderId: actionKey,
+      initiatorUserId: actorUserId,
       peerUserId: dto.peerUserId,
       actorUserId,
       mode,
@@ -521,6 +595,93 @@ export class ChatService {
     return next;
   }
 
+  private async createCallSummaryMessageIfNeeded(
+    action: ChatActionName,
+    actorUserId: string,
+    peerUserId: string,
+    data: CallSession,
+    at: string,
+  ): Promise<MessageEntity | undefined> {
+    if (action !== 'decline_call' && action !== 'end_call') {
+      return undefined;
+    }
+
+    const outcome = this.toCallOutcome(action, actorUserId, data);
+    const conversationId = this.toConversationId(actorUserId, peerUserId);
+    const messageId = randomUUID();
+    const payload: CallLogPayload = {
+      mode: data.mode,
+      outcome,
+      durationSeconds: this.toCallDurationSeconds(data, at),
+      actorUserId,
+      initiatorUserId: data.initiatorUserId,
+    };
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${conversationId}`,
+      GSI1SK: `${at}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId,
+      senderId: actorUserId,
+      receiverId: peerUserId,
+      content: this.toCallLogContent(payload),
+      messageType: 'CALL_LOG',
+      callLog: payload,
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: at,
+      updatedAt: at,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    return item;
+  }
+
+  private toCallOutcome(
+    action: ChatActionName,
+    actorUserId: string,
+    session: CallSession,
+  ): CallLogPayload['outcome'] {
+    if (action === 'decline_call') {
+      return actorUserId === session.peerUserId
+        ? 'peer_cancelled'
+        : 'self_cancelled';
+    }
+
+    return session.acceptedAt ? 'connected_ended' : 'self_cancelled';
+  }
+
+  private toCallDurationSeconds(session: CallSession, at: string): number {
+    if (!session.acceptedAt) {
+      return 0;
+    }
+
+    const startAtMs = new Date(session.acceptedAt).getTime();
+    const endAtMs = new Date(at).getTime();
+    if (Number.isNaN(startAtMs) || Number.isNaN(endAtMs)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.floor((endAtMs - startAtMs) / 1000));
+  }
+
+  private toCallLogContent(payload: CallLogPayload): string {
+    const modeText = payload.mode === 'video' ? 'video' : 'thoai';
+
+    if (payload.outcome === 'connected_ended') {
+      return `Cuoc goi ${modeText} ket thuc`;
+    }
+
+    if (payload.outcome === 'peer_cancelled') {
+      return 'Nguoi nhan tu choi';
+    }
+
+    return 'Ban da huy';
+  }
+
   private toActionKey(actorUserId: string, peerUserId: string): string {
     return this.toConversationId(actorUserId, peerUserId);
   }
@@ -528,6 +689,35 @@ export class ChatService {
   private toConversationId(userA: string, userB: string): string {
     const [first, second] = [userA, userB].sort();
     return `${first}:${second}`;
+  }
+
+  private toRoomPreview(message: MessageEntity): string {
+    if (message.messageType !== 'CALL_LOG' || !message.callLog) {
+      return message.content;
+    }
+
+    if (message.callLog.outcome === 'connected_ended') {
+      return message.callLog.mode === 'video'
+        ? 'Cuoc goi video ket thuc'
+        : 'Cuoc goi thoai ket thuc';
+    }
+
+    if (message.callLog.outcome === 'peer_cancelled') {
+      return 'Nguoi nhan tu choi';
+    }
+
+    return 'Ban da huy';
+  }
+
+  private assertRoomMembership(userId: string, roomId: string): void {
+    const [firstUserId, secondUserId, ...rest] = roomId.split(':');
+    if (rest.length > 0 || !firstUserId || !secondUserId) {
+      throw new BadRequestException('Phong chat khong hop le');
+    }
+
+    if (userId !== firstUserId && userId !== secondUserId) {
+      throw new ForbiddenException('Ban khong co quyen xem phong chat nay');
+    }
   }
 
   private toPeerName(peerUserId: string): string {

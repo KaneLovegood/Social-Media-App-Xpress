@@ -3,6 +3,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  QueryCommand,
   ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -113,6 +114,97 @@ export class MessagesRepository {
     } while (lastEvaluatedKey);
 
     return items;
+  }
+
+  async findMessagesByConversationId(
+    conversationId: string,
+  ): Promise<MessageEntity[]> {
+    const result = await this.ddbDocClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :gsi1pk',
+        ExpressionAttributeValues: {
+          ':gsi1pk': `CONVERSATION#${conversationId}`,
+        },
+        ScanIndexForward: true,
+      }),
+    );
+
+    return (result.Items as MessageEntity[]) ?? [];
+  }
+
+  async markMessageReceived(
+    messageId: string,
+    receiverId: string,
+  ): Promise<MessageEntity | null> {
+    const message = await this.findByMessageId(messageId);
+    if (!message) return null;
+
+    if (message.receiverId !== receiverId || message.receivedAt) {
+      return message;
+    }
+
+    const now = new Date().toISOString();
+    await this.ddbDocClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `MESSAGE#${messageId}`,
+          SK: `MESSAGE#${messageId}`,
+        },
+        UpdateExpression: 'SET receivedAt = :receivedAt, updatedAt = :updatedAt',
+        ExpressionAttributeValues: {
+          ':receivedAt': now,
+          ':updatedAt': now,
+        },
+      }),
+    );
+
+    return {
+      ...message,
+      receivedAt: now,
+      updatedAt: now,
+    };
+  }
+
+  async markConversationAsRead(
+    conversationId: string,
+    receiverId: string,
+  ): Promise<string[]> {
+    const messages = await this.findMessagesByConversationId(conversationId);
+    const unread = messages.filter(
+      (message) =>
+        message.receiverId === receiverId &&
+        !message.readAt &&
+        !message.isDeleted,
+    );
+
+    if (unread.length === 0) {
+      return [];
+    }
+
+    const now = new Date().toISOString();
+    await Promise.all(
+      unread.map((message) =>
+        this.ddbDocClient.send(
+          new UpdateCommand({
+            TableName: this.tableName,
+            Key: {
+              PK: `MESSAGE#${message.messageId}`,
+              SK: `MESSAGE#${message.messageId}`,
+            },
+            UpdateExpression: 'SET readAt = :readAt, updatedAt = :updatedAt',
+            ExpressionAttributeValues: {
+              ':readAt': now,
+              ':updatedAt': now,
+            },
+          }),
+        ),
+      ),
+    );
+
+    return unread.map((message) => message.messageId);
   }
 
   buildReplyPreview(message: MessageEntity): ReplyPreview {

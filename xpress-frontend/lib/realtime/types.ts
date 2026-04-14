@@ -1,7 +1,18 @@
 export interface ReplyPreview {
   messageId: string;
   senderId: string;
+  senderName?: string;
   content: string;
+}
+
+export type MessageType = 'TEXT' | 'CALL_LOG';
+
+export interface CallLogPayload {
+  mode: 'voice' | 'video';
+  outcome: 'self_cancelled' | 'peer_cancelled' | 'connected_ended';
+  durationSeconds: number;
+  actorUserId: string;
+  initiatorUserId: string;
 }
 
 export interface ChatMessage {
@@ -10,8 +21,12 @@ export interface ChatMessage {
   senderId: string;
   receiverId: string;
   content: string;
+  messageType?: MessageType;
+  callLog?: CallLogPayload;
   replyToMessageId?: string;
   replyPreview?: ReplyPreview;
+  receivedAt?: string;
+  readAt?: string;
   isDeleted: boolean;
   isRecalled: boolean;
   createdAt: string;
@@ -22,9 +37,10 @@ export interface MessageStateUpdate {
   messageId: string;
   senderId: string;
   receiverId: string;
-  updatedAt: string;
+  updatedAt?: string;
   isDeleted?: boolean;
   isRecalled?: boolean;
+  receivedAt?: string;
 }
 
 export interface TypingPayload {

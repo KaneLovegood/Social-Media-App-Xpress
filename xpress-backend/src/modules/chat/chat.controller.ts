@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Req,
   UnauthorizedException,
@@ -44,6 +45,20 @@ export class ChatController {
   }
 
   @UseGuards(AuthGuard('jwt'))
+  @Get('rooms/:roomId/messages')
+  async getRoomMessages(
+    @Req() request: AuthenticatedRequest,
+    @Param('roomId') roomId: string,
+  ): Promise<unknown> {
+    const actorUserId = request.user?.userId;
+    if (!actorUserId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return await this.chatService.getMessagesForRoom(actorUserId, roomId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
   @Post('actions')
   async postAction(
     @Req() request: AuthenticatedRequest,
@@ -54,7 +69,7 @@ export class ChatController {
       throw new UnauthorizedException('Unauthorized');
     }
 
-    const result = this.chatService.handleAction(actorUserId, dto);
+    const result = await this.chatService.handleAction(actorUserId, dto);
 
     // Broadcast incoming call notification if action is voice/video call
     if (dto.action === 'open_voice_call' || dto.action === 'open_video_call') {
@@ -72,6 +87,10 @@ export class ChatController {
           isOnline: callerPresence.isOnline,
         });
       }
+    }
+
+    if (result.callSummaryMessage) {
+      this.chatGateway.broadcastChatMessage(result.callSummaryMessage);
     }
 
     return result;

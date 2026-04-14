@@ -32,6 +32,7 @@ export default function ChatMePage() {
     <main className="h-screen w-screen overflow-hidden bg-[#f3f4f6]">
       <ChatContainer
         currentUserId={currentUser.userId}
+        currentUserName={currentUser.name}
         initialRoomId={initialRoomId}
         initialPeerUserId={initialPeerUserId}
       />
