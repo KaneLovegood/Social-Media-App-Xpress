@@ -1,4 +1,4 @@
-import { MessageCircleMore } from 'lucide-react';
+﻿import { MessageCircleMore } from 'lucide-react';
 import Link from 'next/link';
 
 export interface SidebarChatItem {
@@ -15,6 +15,7 @@ export interface SidebarChatItem {
 interface ChatSidebarProps {
   rooms: SidebarChatItem[];
   activeRoomId: string;
+  currentUserName: string;
   onSelectRoom: (roomId: string) => void;
   onCreateGroup: () => void;
 }
@@ -22,6 +23,7 @@ interface ChatSidebarProps {
 export default function ChatSidebar({
   rooms,
   activeRoomId,
+  currentUserName,
   onSelectRoom,
   onCreateGroup,
 }: ChatSidebarProps) {
@@ -38,13 +40,6 @@ export default function ChatSidebar({
         </Link>
 
         <Link
-          href="/chat/me"
-          className="mt-4 rounded-lg bg-linear-to-br from-[#0052cc] to-[#0068ff] p-3 text-white"
-        >
-          <span className="text-xs font-bold">TM</span>
-        </Link>
-
-        <Link
           href="/contacts"
           className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
         >
@@ -55,7 +50,7 @@ export default function ChatSidebar({
       <div className="flex min-w-0 flex-1 flex-col bg-[#f3f4f6]">
         <header className="p-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-black text-zinc-900">Messages</h1>
+            <h1 className="truncate text-xl font-black text-zinc-900">{currentUserName}</h1>
             <button
               type="button"
               onClick={onCreateGroup}
@@ -74,10 +69,6 @@ export default function ChatSidebar({
           <div className="mt-3 flex gap-3 text-xs font-semibold">
             <span className="border-b-2 border-[#0068ff] pb-1 text-[#0068ff]">Tất cả</span>
             <span className="pb-1 text-zinc-500">Chưa đọc</span>
-            <span className="border-b-2 border-[#0068ff] pb-1 text-[#0068ff]">
-              All
-            </span>
-            <span className="pb-1 text-zinc-500">Unread</span>
           </div>
         </header>
 
@@ -124,3 +115,4 @@ export default function ChatSidebar({
     </aside>
   )
 }
+

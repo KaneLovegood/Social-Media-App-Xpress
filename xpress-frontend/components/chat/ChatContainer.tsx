@@ -82,11 +82,11 @@ function mergeMessages(
 
 function toMessagePreview(message: ChatMessage): string {
   if (message.isRecalled) {
-    return 'Tin nháº¯n Ä‘Ã£ Ä‘Æ°á»£c thu há»“i';
+    return 'Tin nhắn đã được thu hồi';
   }
 
   if (message.messageType === 'CALL_LOG') {
-    return message.callLog?.mode === 'video' ? 'Cuá»™c gá»i video' : 'Cuá»™c gá»i thoáº¡i';
+    return message.callLog?.mode === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
   }
 
   return message.content;
@@ -251,7 +251,7 @@ export default function ChatContainer({
   const orderTitle =
     activeRoom?.roomType === "GROUP"
       ? (activeGroupDetails?.description ??
-        `${activeGroupDetails?.memberCount ?? activeRoom?.memberCount ?? 0} thÃ nh viÃªn`)
+        `${activeGroupDetails?.memberCount ?? activeRoom?.memberCount ?? 0} thành viên`)
       : (activeRoom?.title ?? "No active room");
   const isPeerOnline = peerUserId
     ? (presenceByUser[peerUserId] ?? activeRoom?.isPeerOnline ?? false)
@@ -328,7 +328,7 @@ export default function ChatContainer({
           id: room.id,
           roomType: room.roomType,
           title: room.title,
-          preview: hasHiddenHistory ? "ÄÃ£ xÃ³a lá»‹ch sá»­" : room.preview,
+          preview: hasHiddenHistory ? "Đã xóa lịch sử" : room.preview,
           age: room.age,
           unreadCount: hasHiddenHistory ? 0 : room.unreadCount,
           isOnline:
@@ -690,7 +690,7 @@ export default function ChatContainer({
       setTypingText(
         payload.isTyping
           ? isGroupTyping
-            ? "CÃ³ ngÆ°á»i Ä‘ang nháº­p..."
+            ? "Có người đang nhập..."
             : "Typing..."
           : "",
       );
@@ -725,7 +725,7 @@ export default function ChatContainer({
           preview:
             payload.lastMessagePreview ??
             existed?.preview ??
-            "Báº¯t Ä‘áº§u trÃ² chuyá»‡n trong nhÃ³m",
+            "Bắt đầu trò chuyện trong nhóm",
           lastMessageAt:
             payload.lastMessageAt ??
             existed?.lastMessageAt ??
@@ -1285,7 +1285,7 @@ export default function ChatContainer({
         room.id === activeRoom.id
           ? {
               ...room,
-              preview: "ÄÃ£ xÃ³a lá»‹ch sá»­",
+              preview: "Đã xóa lịch sử",
               unreadCount: 0,
               age: "Now",
             }
@@ -1316,6 +1316,7 @@ export default function ChatContainer({
         <ChatSidebar
           rooms={sidebarRooms}
           activeRoomId={effectiveActiveRoomId}
+          currentUserName={currentUserName}
           onSelectRoom={handleSelectRoom}
           onCreateGroup={handleCreateGroup}
         />
@@ -1352,19 +1353,21 @@ export default function ChatContainer({
           )}
         </div>
 
-        <ChatInfoPanel
-          room={activeRoom}
-          groupDetails={activeGroupDetails}
-          currentUserId={currentUserId}
-          onLeaveGroup={handleLeaveGroup}
-          onDissolveGroup={handleDissolveGroup}
-          onOpenCreateGroup={handleCreateGroup}
-          onDeleteChatHistory={handleDeleteChatHistory}
-          onGroupDetailsChange={handleGroupDetailsChange}
-          onMembersAdded={() => {
-            void handleGroupMembersAdded();
-          }}
-        />
+        {effectiveActiveRoomId ? (
+          <ChatInfoPanel
+            room={activeRoom}
+            groupDetails={activeGroupDetails}
+            currentUserId={currentUserId}
+            onLeaveGroup={handleLeaveGroup}
+            onDissolveGroup={handleDissolveGroup}
+            onOpenCreateGroup={handleCreateGroup}
+            onDeleteChatHistory={handleDeleteChatHistory}
+            onGroupDetailsChange={handleGroupDetailsChange}
+            onMembersAdded={() => {
+              void handleGroupMembersAdded();
+            }}
+          />
+        ) : null}
       </div>
 
       <CreateGroupModal
@@ -1441,6 +1444,7 @@ export default function ChatContainer({
     </section>
   );
 }
+
 
 
 

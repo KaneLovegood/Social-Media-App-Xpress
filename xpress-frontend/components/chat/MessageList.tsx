@@ -59,7 +59,7 @@ export default function MessageList({
             </svg>
           </div>
           <p className="mt-6 text-[42px] font-bold leading-tight text-[#26366a]">
-            Hãy gửi lời nhắn đầu tiên đến {currentUserName}
+            Hãy gửi lời nhắn đầu tiên đến {peerName}
           </p>
         </li>
 
