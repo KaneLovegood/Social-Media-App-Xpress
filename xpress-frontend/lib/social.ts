@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth-client';
+import { authFetch } from './auth-client';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
@@ -22,12 +22,9 @@ interface Paginated<TItem> {
   nextCursor: string | null;
 }
 
-function authHeaders() {
-  const token = getAccessToken();
-  return {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
+async function api<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await authFetch(`${API_BASE_URL}${path}`, init);
+  return parseResponse<T>(response);
 }
 
 function toErrorMessage(message: unknown): string {
@@ -49,102 +46,69 @@ export async function searchUsersByPhone(phone: string, cursor?: string) {
   const params = new URLSearchParams({ phone, limit: '10' });
   if (cursor) params.set('cursor', cursor);
 
-  const response = await fetch(
-    `${API_BASE_URL}/social/users/search-by-phone?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: authHeaders(),
-    },
+  return api<Paginated<SearchUserItem>>(
+    `/social/users/search-by-phone?${params.toString()}`,
+    { method: 'GET' },
   );
-
-  return parseResponse<Paginated<SearchUserItem>>(response);
 }
 
 export async function fetchFriends(cursor?: string) {
   const params = new URLSearchParams({ limit: '10' });
   if (cursor) params.set('cursor', cursor);
 
-  const response = await fetch(`${API_BASE_URL}/social/friends?${params.toString()}`, {
+  return api<Paginated<SocialUser>>(`/social/friends?${params.toString()}`, {
     method: 'GET',
-    headers: authHeaders(),
   });
-
-  return parseResponse<Paginated<SocialUser>>(response);
 }
 
 export async function fetchIncomingRequests(cursor?: string) {
   const params = new URLSearchParams({ limit: '10' });
   if (cursor) params.set('cursor', cursor);
 
-  const response = await fetch(
-    `${API_BASE_URL}/social/friends/requests/incoming?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: authHeaders(),
-    },
+  return api<Paginated<SocialUser>>(
+    `/social/friends/requests/incoming?${params.toString()}`,
+    { method: 'GET' },
   );
-
-  return parseResponse<Paginated<SocialUser>>(response);
 }
 
 export async function sendFriendRequest(targetUserId: string) {
-  const response = await fetch(`${API_BASE_URL}/social/friends/requests`, {
+  return api<{ success: boolean }>('/social/friends/requests', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId }),
   });
-
-  return parseResponse<{ success: boolean }>(response);
 }
 
 export async function acceptFriendRequest(requesterUserId: string) {
-  const response = await fetch(
-    `${API_BASE_URL}/social/friends/requests/${requesterUserId}/accept`,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-    },
+  return api<{ success: boolean }>(
+    `/social/friends/requests/${requesterUserId}/accept`,
+    { method: 'POST' },
   );
-
-  return parseResponse<{ success: boolean }>(response);
 }
 
 export async function rejectFriendRequest(requesterUserId: string) {
-  const response = await fetch(
-    `${API_BASE_URL}/social/friends/requests/${requesterUserId}/reject`,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-    },
+  return api<{ success: boolean }>(
+    `/social/friends/requests/${requesterUserId}/reject`,
+    { method: 'POST' },
   );
-
-  return parseResponse<{ success: boolean }>(response);
 }
 
 export async function unfriend(friendUserId: string) {
-  const response = await fetch(`${API_BASE_URL}/social/friends/${friendUserId}`, {
+  return api<{ success: boolean }>(`/social/friends/${friendUserId}`, {
     method: 'DELETE',
-    headers: authHeaders(),
   });
-
-  return parseResponse<{ success: boolean }>(response);
 }
 
 export async function blockUser(targetUserId: string) {
-  const response = await fetch(`${API_BASE_URL}/social/blocks`, {
+  return api<{ success: boolean }>('/social/blocks', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ targetUserId }),
   });
-
-  return parseResponse<{ success: boolean }>(response);
 }
 
 export async function unblockUser(targetUserId: string) {
-  const response = await fetch(`${API_BASE_URL}/social/blocks/${targetUserId}`, {
+  return api<{ success: boolean }>(`/social/blocks/${targetUserId}`, {
     method: 'DELETE',
-    headers: authHeaders(),
   });
-
-  return parseResponse<{ success: boolean }>(response);
 }
