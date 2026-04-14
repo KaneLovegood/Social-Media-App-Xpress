@@ -42,7 +42,7 @@ export default function ComposerInputRow({
         onKeyDown={onKeyDown}
         onPaste={onPaste}
         rows={1}
-        placeholder="Nhap @, tin nhan..."
+        placeholder="Nhập @, tin nhắn..."
         className="min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] text-[#344f75] outline-none placeholder:text-[#4c6384]"
       />
 

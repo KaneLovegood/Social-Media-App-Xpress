@@ -27,17 +27,17 @@ export interface ChatRoomSummary {
 
 function toAgeLabel(isoTimestamp: string): string {
   const at = new Date(isoTimestamp).getTime();
-  if (Number.isNaN(at)) return 'Now';
+  if (Number.isNaN(at)) return 'vài giây trước';
 
   const deltaMs = Math.max(0, Date.now() - at);
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (deltaMs < minute) return 'Now';
-  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)}m ago`;
-  if (deltaMs < day) return `${Math.floor(deltaMs / hour)}h ago`;
-  return `${Math.floor(deltaMs / day)}d ago`;
+  if (deltaMs < minute) return 'vài giây trước';
+  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)} phút trước`;
+  if (deltaMs < day) return `${Math.floor(deltaMs / hour)} giờ trước`;
+  return `${Math.floor(deltaMs / day)} ngày trước`;
 }
 
 export async function fetchChatRooms(): Promise<ChatRoomSummary[]> {

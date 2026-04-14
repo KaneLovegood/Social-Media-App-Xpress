@@ -698,15 +698,15 @@ export class ChatService {
 
     if (message.callLog.outcome === 'connected_ended') {
       return message.callLog.mode === 'video'
-        ? 'Cuoc goi video ket thuc'
-        : 'Cuoc goi thoai ket thuc';
+        ? 'Cuộc gọi video'
+        : 'Cuộc gọi thoại';
     }
 
     if (message.callLog.outcome === 'peer_cancelled') {
-      return 'Nguoi nhan tu choi';
+      return 'Người nhận từ chối';
     }
 
-    return 'Ban da huy';
+    return 'Bạn đã hủy';
   }
 
   private assertRoomMembership(userId: string, roomId: string): void {

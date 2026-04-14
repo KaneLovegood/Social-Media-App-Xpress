@@ -11,11 +11,9 @@ import { createChatSocket } from '@/lib/realtime/socket-client';
 import { CallEndPayload, ChatMessage, MessageStateUpdate, PresencePayload, ReplyPreview, TypingPayload } from '@/lib/realtime/types';
 import IncomingCallModal from './IncomingCallModal';
 import VideoCallComponent from '../video/VideoCallComponent';
-import ChatHeader from './ChatHeader';
+import ChatContent from './ChatContent';
 import ChatNoRoomWelcome from './ChatNoRoomWelcome';
 import ChatSidebar, { SidebarChatItem } from './ChatSidebar';
-import MessageInput from './MessageInput';
-import MessageList from './MessageList';
 
 type CallMode = 'voice' | 'video' | null;
 type CallDirection = 'incoming' | 'outgoing' | null;
@@ -27,17 +25,17 @@ function toPrivateRoomId(userAId: string, userBId: string): string {
 
 function toAgeLabel(isoTimestamp: string): string {
   const at = new Date(isoTimestamp).getTime();
-  if (Number.isNaN(at)) return 'Now';
+  if (Number.isNaN(at)) return 'vài giây trước';
 
   const deltaMs = Math.max(0, Date.now() - at);
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (deltaMs < minute) return 'Now';
-  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)}m ago`;
-  if (deltaMs < day) return `${Math.floor(deltaMs / hour)}h ago`;
-  return `${Math.floor(deltaMs / day)}d ago`;
+  if (deltaMs < minute) return 'vài giây trước';
+  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)} phút trước`;
+  if (deltaMs < day) return `${Math.floor(deltaMs / hour)} giờ trước`;
+  return `${Math.floor(deltaMs / day)} ngày trước`;
 }
 
 function sortMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -63,11 +61,24 @@ function mergeMessages(existing: ChatMessage[] = [], incoming: ChatMessage[] = [
   return sortMessages(Array.from(merged.values()));
 }
 
+function toMessagePreview(message: ChatMessage): string {
+  if (message.isRecalled) {
+    return 'Tin nhắn đã được thu hồi';
+  }
+
+  if (message.messageType === 'CALL_LOG') {
+    return message.callLog?.mode === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
+  }
+
+  return message.content;
+}
+
 interface ChatContainerProps {
   currentUserId: string;
   currentUserName: string;
   initialRoomId?: string;
   initialPeerUserId?: string;
+  onRoomResolved?: () => void;
 }
 
 export default function ChatContainer({
@@ -75,6 +86,7 @@ export default function ChatContainer({
   currentUserName,
   initialRoomId,
   initialPeerUserId,
+  onRoomResolved,
 }: ChatContainerProps) {
   const [rooms, setRooms] = useState<ChatRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
@@ -153,6 +165,36 @@ export default function ChatContainer({
     () => (effectiveActiveRoomId ? messagesByRoom[effectiveActiveRoomId] ?? [] : []),
     [effectiveActiveRoomId, messagesByRoom],
   );
+
+  const hasInitialSelection = Boolean(initialRoomId || initialPeerUserId);
+  const hasInitialSelectionMatch = useMemo(() => {
+    if (!hasInitialSelection) return false;
+
+    if (initialRoomId && rooms.some((room) => room.id === initialRoomId)) {
+      return true;
+    }
+
+    if (initialPeerUserId && rooms.some((room) => room.peerUserId === initialPeerUserId)) {
+      return true;
+    }
+
+    return false;
+  }, [hasInitialSelection, initialPeerUserId, initialRoomId, rooms]);
+
+  const isResolvingInitialSelection =
+    hasInitialSelection
+    && !effectiveActiveRoomId
+    && (isLoadingRooms || hasInitialSelectionMatch);
+
+  const shouldShowNoRoomWelcome =
+    !isResolvingInitialSelection
+    && !effectiveActiveRoomId;
+
+  useEffect(() => {
+    if (hasInitialSelection && effectiveActiveRoomId && onRoomResolved) {
+      onRoomResolved();
+    }
+  }, [effectiveActiveRoomId, hasInitialSelection, onRoomResolved]);
 
   const roomByPeer = useMemo(
     () => new Map(rooms.map((room) => [room.peerUserId, room.id])),
@@ -291,7 +333,7 @@ export default function ChatContainer({
               title: counterpartUserId === peerUserId ? peerName : counterpartUserId,
               peerUserId: counterpartUserId,
               peerName: counterpartUserId === peerUserId ? peerName : counterpartUserId,
-              preview: message.content,
+              preview: toMessagePreview(message),
               age: toAgeLabel(message.createdAt),
               unreadCount: shouldIncreaseUnread ? 1 : 0,
               isPeerOnline: presenceByUser[counterpartUserId] ?? false,
@@ -304,7 +346,7 @@ export default function ChatContainer({
           if (room.id !== roomId) return room;
           return {
             ...room,
-            preview: message.content,
+            preview: toMessagePreview(message),
             age: toAgeLabel(message.createdAt),
             unreadCount: shouldIncreaseUnread ? room.unreadCount + 1 : room.unreadCount,
           };
@@ -320,14 +362,34 @@ export default function ChatContainer({
         roomId = toPrivateRoomId(currentUserId, counterpartUserId);
       }
 
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [roomId]: sortMessages((prev[roomId] ?? []).map((message) =>
+      setMessagesByRoom((prev) => {
+        const updatedRoomMessages = sortMessages((prev[roomId] ?? []).map((message) =>
           message.messageId === payload.messageId
             ? { ...message, isRecalled: true, updatedAt: payload.updatedAt ?? message.updatedAt }
             : message,
-        )),
-      }));
+        ));
+
+        const latestMessage = updatedRoomMessages[updatedRoomMessages.length - 1];
+
+        if (latestMessage) {
+          setRooms((prevRooms) =>
+            prevRooms.map((room) =>
+              room.id === roomId
+                ? {
+                  ...room,
+                  preview: toMessagePreview(latestMessage),
+                  age: toAgeLabel(latestMessage.createdAt),
+                }
+                : room,
+            ),
+          );
+        }
+
+        return {
+          ...prev,
+          [roomId]: updatedRoomMessages,
+        };
+      });
     };
 
     const onReceived = (payload: MessageStateUpdate) => {
@@ -456,6 +518,63 @@ export default function ChatContainer({
     socketRef.current?.emit(CHAT_EVENTS.RECALL, { messageId });
   };
 
+  const handleDeleteForMe = useCallback((messageId: string) => {
+    if (!effectiveActiveRoomId) return;
+
+    setMessagesByRoom((prev) => ({
+      ...prev,
+      [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter((message) => message.messageId !== messageId),
+    }));
+
+    setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
+  }, [effectiveActiveRoomId]);
+
+  const emitMessageActionEvent = useCallback((action: string, metadata: Record<string, unknown>) => {
+    window.dispatchEvent(new CustomEvent('chat-message-action', {
+      detail: {
+        action,
+        roomId: effectiveActiveRoomId,
+        peerUserId,
+        ...metadata,
+      },
+    }));
+  }, [effectiveActiveRoomId, peerUserId]);
+
+  const handleCopyMessage = useCallback((message: ChatMessage) => {
+    if (!message.content) return;
+
+    void navigator.clipboard.writeText(message.content).then(() => {
+      emitMessageActionEvent('copy_message', { messageId: message.messageId });
+    }).catch(() => {
+      // Ignore clipboard permission errors.
+    });
+  }, [emitMessageActionEvent]);
+
+  const handlePinMessage = useCallback((message: ChatMessage) => {
+    emitMessageActionEvent('pin_message', { messageId: message.messageId });
+  }, [emitMessageActionEvent]);
+
+  const handleMarkMessage = useCallback((message: ChatMessage) => {
+    emitMessageActionEvent('mark_message', { messageId: message.messageId });
+  }, [emitMessageActionEvent]);
+
+  const handleSelectManyMessage = useCallback((message: ChatMessage) => {
+    emitMessageActionEvent('select_many_messages', { fromMessageId: message.messageId });
+  }, [emitMessageActionEvent]);
+
+  const handleViewMessageDetails = useCallback((message: ChatMessage) => {
+    emitMessageActionEvent('view_message_details', {
+      messageId: message.messageId,
+      senderId: message.senderId,
+      createdAt: message.createdAt,
+    });
+  }, [emitMessageActionEvent]);
+
+  const handleDeleteForMeWithEvent = useCallback((messageId: string) => {
+    handleDeleteForMe(messageId);
+    emitMessageActionEvent('delete_message_for_me', { messageId });
+  }, [emitMessageActionEvent, handleDeleteForMe]);
+
   const handleTyping = (isTyping: boolean) => {
     if (!peerUserId) return;
     socketRef.current?.emit(CHAT_EVENTS.TYPING, {
@@ -534,41 +653,34 @@ export default function ChatContainer({
         />
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-[#f8f9fb] lg:min-h-0">
-          {!isLoadingRooms && (!hasRooms || !effectiveActiveRoomId) ? (
+          {shouldShowNoRoomWelcome ? (
             <ChatNoRoomWelcome />
           ) : (
-            <>
-              <ChatHeader
-                peerName={peerName}
-                orderTitle={orderTitle}
-                typingText={typingText}
-                isPeerOnline={isPeerOnline}
-                onOpenVoiceCall={openVoiceCall}
-                onOpenVideoCall={openVideoCall}
-              />
-
-              <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3 lg:px-6 lg:pb-4 lg:pt-4">
-                <MessageList
-                  messages={activeMessages}
-                  currentUserId={currentUserId}
-                  currentUserName={currentUserName}
-                  peerName={peerName}
-                  listRef={listRef}
-                  onReply={setReplyTo}
-                  onRecall={handleRecall}
-                  onRedial={handleRedial}
-                  className="flex-1"
-                />
-                <div className="mt-2 lg:mt-3">
-                  <MessageInput
-                    replyTo={replyTo}
-                    onClearReply={() => setReplyTo(undefined)}
-                    onSend={handleSend}
-                    onTyping={handleTyping}
-                  />
-                </div>
-              </div>
-            </>
+            <ChatContent
+              peerName={peerName}
+              orderTitle={orderTitle}
+              typingText={typingText}
+              isPeerOnline={isPeerOnline}
+              activeMessages={activeMessages}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              listRef={listRef}
+              replyTo={replyTo}
+              onOpenVoiceCall={openVoiceCall}
+              onOpenVideoCall={openVideoCall}
+              onClearReply={() => setReplyTo(undefined)}
+              onSend={handleSend}
+              onTyping={handleTyping}
+              onReply={setReplyTo}
+              onRecall={handleRecall}
+              onDeleteForMe={handleDeleteForMeWithEvent}
+              onCopy={handleCopyMessage}
+              onPin={handlePinMessage}
+              onMark={handleMarkMessage}
+              onSelectMany={handleSelectManyMessage}
+              onViewDetails={handleViewMessageDetails}
+              onRedial={handleRedial}
+            />
           )}
         </div>
 
@@ -584,6 +696,7 @@ export default function ChatContainer({
       />
 
       <VideoCallComponent
+        // eslint-disable-next-line react-hooks/refs
         socket={socketRef.current}
         currentUserId={currentUserId}
         peerUserId={peerUserId}
@@ -597,3 +710,4 @@ export default function ChatContainer({
     </section>
   );
 }
+

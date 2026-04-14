@@ -1,3 +1,4 @@
+import { MessageCircleMore } from 'lucide-react';
 import Link from 'next/link';
 
 export interface SidebarChatItem {
@@ -22,7 +23,7 @@ export default function ChatSidebar({ rooms, activeRoomId, onSelectRoom }: ChatS
       <div className="flex w-16 flex-col items-center bg-[#e7e8ea] py-4">
         <div className="relative mb-8 h-10 w-10 rounded-full bg-zinc-300" />
         <Link href="/chat/me" className="rounded-lg bg-linear-to-br from-[#0052cc] to-[#0068ff] p-3 text-white">
-          <span className="text-xs font-bold">TM</span>
+          <MessageCircleMore className="ml-1 inline-block text-xs" />
         </Link>
         <Link href="/contacts" className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]">
           <span className="text-xs font-bold">DB</span>
@@ -31,22 +32,16 @@ export default function ChatSidebar({ rooms, activeRoomId, onSelectRoom }: ChatS
 
       <div className="flex min-w-0 flex-1 flex-col bg-[#f3f4f6]">
         <header className="p-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-black text-zinc-900">Messages</h1>
-            <button type="button" className="rounded-full p-2 hover:bg-white">
-              +
-            </button>
-          </div>
           <div className="mt-3 rounded-lg bg-[#e1e2e4] px-3 py-2">
             <input
               type="text"
-              placeholder="Search conversations..."
+              placeholder="Tìm kiếm cuộc hội thoại..."
               className="w-full border-none bg-transparent text-sm text-zinc-700 outline-none"
             />
           </div>
           <div className="mt-3 flex gap-3 text-xs font-semibold">
-            <span className="border-b-2 border-[#0068ff] pb-1 text-[#0068ff]">All</span>
-            <span className="pb-1 text-zinc-500">Unread</span>
+            <span className="border-b-2 border-[#0068ff] pb-1 text-[#0068ff]">Tất cả</span>
+            <span className="pb-1 text-zinc-500">Chưa đọc</span>
           </div>
         </header>
 

@@ -81,7 +81,7 @@ export class MessagesRepository {
           ':isDeleted': false,
           ':isRecalled': false,
           ':trueValue': true,
-          ':recalledContent': 'Message recalled',
+          ':recalledContent': 'Tin nhắn đã được thu hồi',
           ':nowValue': now,
         },
       }),

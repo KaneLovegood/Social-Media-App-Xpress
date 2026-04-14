@@ -2,7 +2,7 @@ import { ChatMessage, ReplyPreview as ReplyPreviewType } from '@/lib/realtime/ty
 import MessageActionsMenu from './MessageActionsMenu';
 import MessageBubbleCard from './MessageBubbleCard';
 
-interface MessageItemProps {
+interface MessageItemRowProps {
   message: ChatMessage;
   currentUserId: string;
   currentUserName: string;
@@ -22,7 +22,7 @@ function getInitial(name: string): string {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
 
-export default function MessageItem({
+export default function MessageItemRow({
   message,
   currentUserId,
   currentUserName,
@@ -36,9 +36,10 @@ export default function MessageItem({
   onSelectMany,
   onViewDetails,
   onRedial,
-}: MessageItemProps) {
+}: MessageItemRowProps) {
   const isOwn = message.senderId === currentUserId;
   const canRecall = isOwn;
+  const isConversationGenerated = message.messageType === 'CALL_LOG';
   const senderName = isOwn ? currentUserName : peerName;
   const replySenderName = isOwn ? currentUserName : peerName;
 
@@ -58,7 +59,7 @@ export default function MessageItem({
         <div className={`flex min-w-0 flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
           <p className="mb-1 text-xs font-semibold text-[#4c5f80]">{senderName}</p>
 
-          <div className="relative pr-14">
+          <div className={`relative ${isOwn ? 'pl-16' : 'pr-16'}`}>
             <MessageBubbleCard
               message={message}
               isOwn={isOwn}
@@ -68,10 +69,10 @@ export default function MessageItem({
               onRedial={onRedial}
             />
 
-            <div className="absolute right-0 top-1/2 -translate-y-1/2">
+            <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? 'left-0' : 'right-0'}`}>
               <MessageActionsMenu
                 isOwn={isOwn}
-                disabled={message.isRecalled}
+                disabled={message.isRecalled || isConversationGenerated}
                 canRecall={canRecall && !message.isRecalled}
                 onReply={() =>
                   onReply({
