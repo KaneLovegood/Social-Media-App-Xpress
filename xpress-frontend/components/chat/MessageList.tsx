@@ -5,20 +5,24 @@ import MessageItem from './MessageItem';
 interface MessageListProps {
   messages: ChatMessage[];
   currentUserId: string;
+  currentUserName: string;
+  peerName: string;
   listRef: RefObject<HTMLUListElement | null>;
   onReply: (preview: ReplyPreviewType) => void;
-  onDelete: (messageId: string) => void;
   onRecall: (messageId: string) => void;
+  onRedial: (mode: 'voice' | 'video') => void;
   className?: string;
 }
 
 export default function MessageList({
   messages,
   currentUserId,
+  currentUserName,
+  peerName,
   listRef,
   onReply,
-  onDelete,
   onRecall,
+  onRedial,
   className,
 }: MessageListProps) {
   const isEmpty = messages.length === 0;
@@ -46,9 +50,11 @@ export default function MessageList({
           key={message.messageId}
           message={message}
           currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          peerName={peerName}
           onReply={onReply}
-          onDelete={onDelete}
           onRecall={onRecall}
+          onRedial={onRedial}
         />
       ))}
     </ul>

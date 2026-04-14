@@ -38,6 +38,14 @@ interface TypingDto {
   isTyping: boolean;
 }
 
+interface ReceiveDto {
+  messageId: string;
+}
+
+interface ReadRoomDto {
+  roomId: string;
+}
+
 interface CallOfferDto {
   receiverId: string;
   offer: RTCSessionDescriptionInit;
@@ -192,6 +200,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.emitToUser(receiverId, CHAT_EVENTS.TYPING, eventPayload);
   }
 
+  @SubscribeMessage(CHAT_EVENTS.RECEIVE)
+  async onReceive(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ReceiveDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const message = await this.chatService.markMessageReceived(
+      userId,
+      payload.messageId,
+    );
+
+    if (!message?.receivedAt) {
+      return;
+    }
+
+    this.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.RECEIVED,
+      {
+        messageId: message.messageId,
+        senderId: message.senderId,
+        receiverId: message.receiverId,
+        receivedAt: message.receivedAt,
+        updatedAt: message.updatedAt,
+      },
+    );
+  }
+
+  @SubscribeMessage(CHAT_EVENTS.READ)
+  async onReadRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ReadRoomDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    await this.chatService.markRoomAsRead(userId, payload.roomId);
+  }
+
   @SubscribeMessage(CALL_EVENTS.OFFER)
   async onCallOffer(
     @ConnectedSocket() client: Socket,
@@ -256,6 +301,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     for (const userId of userIds) {
       this.emitToUser(userId, event, payload);
     }
+  }
+
+  broadcastChatMessage(message: {
+    senderId: string;
+    receiverId: string;
+  }): void {
+    this.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.MESSAGE,
+      message,
+    );
   }
 
   private emitToUser(userId: string, event: string, payload: unknown): void {

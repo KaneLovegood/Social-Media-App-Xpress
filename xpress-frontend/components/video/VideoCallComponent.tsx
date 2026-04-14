@@ -209,13 +209,20 @@ export default function VideoCallComponent({
     setRingSeconds(0);
   }, [peerUserId, setupPeer, socket]);
 
-  const stopCall = useCallback(async (notifyPeer: boolean, closeUi: boolean) => {
+  const stopCall = useCallback(async (
+    notifyPeer: boolean,
+    closeUi: boolean,
+    skipEndAction = false,
+  ) => {
     if (notifyPeer && socket) {
       socket.emit(CALL_EVENTS.END, {
         receiverId: peerUserId,
         reason: 'ended',
       });
-      await sendChatAction('end_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
+
+      if (!skipEndAction) {
+        await sendChatAction('end_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
+      }
     }
 
     const peer = peerRef.current;
@@ -278,7 +285,7 @@ export default function VideoCallComponent({
 
   const declineCall = useCallback(async () => {
     await sendChatAction('decline_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
-    await stopCall(true, true);
+    await stopCall(true, true, true);
   }, [currentUserId, peerUserId, stopCall]);
 
   const switchToVideoCall = useCallback(async () => {

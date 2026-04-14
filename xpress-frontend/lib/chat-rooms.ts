@@ -10,6 +10,8 @@ interface ChatRoomApiResponse {
   peerName: string;
   preview: string;
   lastMessageAt: string;
+  unreadCount: number;
+  isPeerOnline: boolean;
 }
 
 export interface ChatRoomSummary {
@@ -19,6 +21,8 @@ export interface ChatRoomSummary {
   peerName: string;
   preview: string;
   age: string;
+  unreadCount: number;
+  isPeerOnline: boolean;
 }
 
 function toAgeLabel(isoTimestamp: string): string {
@@ -59,5 +63,7 @@ export async function fetchChatRooms(): Promise<ChatRoomSummary[]> {
     peerName: room.peerName,
     preview: room.preview,
     age: toAgeLabel(room.lastMessageAt),
+    unreadCount: room.unreadCount ?? 0,
+    isPeerOnline: Boolean(room.isPeerOnline),
   }));
 }

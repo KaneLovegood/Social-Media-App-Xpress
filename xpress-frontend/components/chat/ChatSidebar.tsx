@@ -5,6 +5,8 @@ export interface SidebarChatItem {
   title: string;
   preview: string;
   age: string;
+  unreadCount: number;
+  isOnline: boolean;
   active?: boolean;
 }
 
@@ -63,7 +65,14 @@ export default function ChatSidebar({ rooms, activeRoomId, onSelectRoom }: ChatS
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-zinc-900">{room.title}</p>
-                    <span className="text-[10px] text-zinc-500">{room.age}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-zinc-500">{room.age}</span>
+                      {room.unreadCount > 0 ? (
+                        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#c1121f] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {room.unreadCount > 5 ? '5+' : room.unreadCount}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <p className={`mt-1 truncate text-xs ${active ? 'text-[#0052cc]' : 'text-zinc-500'}`}>
                     {room.preview}

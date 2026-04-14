@@ -2,6 +2,7 @@ interface ChatHeaderProps {
   peerName: string;
   orderTitle: string;
   typingText: string;
+  isPeerOnline: boolean;
   onOpenVoiceCall: () => void;
   onOpenVideoCall: () => void;
 }
@@ -16,10 +17,10 @@ export default function ChatHeader({
   peerName,
   orderTitle,
   typingText,
+  isPeerOnline,
   onOpenVoiceCall,
   onOpenVideoCall,
 }: ChatHeaderProps) {
-  const subtitle = typingText || 'Active now';
   const showTitle = Boolean(orderTitle && orderTitle !== peerName);
 
   return (
@@ -31,9 +32,24 @@ export default function ChatHeader({
           </div>
           <div className="min-w-0">
             <p className="truncate text-base font-bold leading-tight text-zinc-900 lg:text-lg">{peerName}</p>
-            <p className="truncate text-[11px] text-[#727687]">
-              {showTitle ? `${subtitle} • ${orderTitle}` : subtitle}
-            </p>
+            {typingText ? (
+              <p className="truncate text-[11px] text-[#727687]">
+                {showTitle ? `${typingText} • ${orderTitle}` : typingText}
+              </p>
+            ) : (
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[#727687]">
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${
+                    isPeerOnline
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-zinc-200 text-zinc-600'
+                  }`}
+                >
+                  {isPeerOnline ? 'Online' : 'Offline'}
+                </span>
+                {showTitle ? <span className="truncate">{orderTitle}</span> : null}
+              </div>
+            )}
           </div>
         </div>
 
