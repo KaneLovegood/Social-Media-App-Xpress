@@ -1,0 +1,66 @@
+/* Emoji Picker Custom Styles */
+
+.EmojiPickerReact {
+  --epr-highlight-color: #0f2e5c;
+  --epr-bg-color: #fff;
+  --epr-category-label-bg-color: #f8f9fb;
+  --epr-search-border-color: #d8dce2;
+}
+
+.epr-search-container {
+  padding: 8px !important;
+}
+
+.epr-search {
+  border-radius: 6px !important;
+  border: 1px solid #d8dce2 !important;
+  font-family: inherit !important;
+}
+
+.epr-search::placeholder {
+  color: #4c6384 !important;
+}
+
+.epr-emoji-category-label {
+  background-color: #f8f9fb !important;
+  color: #344f75 !important;
+  font-weight: 500 !important;
+}
+
+.epr-emoji-category-label-icon {
+  color: #0f2e5c !important;
+}
+
+.epr-category-nav button {
+  color: #0f2e5c !important;
+}
+
+.epr-category-nav button.active {
+  border-bottom: 2px solid #0f2e5c !important;
+}
+
+.epr-emoji:hover {
+  background-color: #f0f0f0 !important;
+}
+
+.epr-body {
+  scrollbar-width: thin;
+  scrollbar-color: #ccc #f8f9fb;
+}
+
+.epr-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.epr-body::-webkit-scrollbar-track {
+  background: #f8f9fb;
+}
+
+.epr-body::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.epr-body::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
