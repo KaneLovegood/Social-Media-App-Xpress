@@ -11,10 +11,10 @@ import { DYNAMODB_DOC_CLIENT } from './dynamodb.constants';
         const client = new DynamoDBClient({
           region: process.env.AWS_REGION,
           // nếu chạy local với .env thì có thể để credentials:
-          // credentials: {
-          //   accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-          //   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-          // },
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          },
         });
 
         return DynamoDBDocumentClient.from(client, {

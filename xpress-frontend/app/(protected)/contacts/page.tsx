@@ -1,12 +1,12 @@
 "use client";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { getAccessToken, getStoredUser } from '@/lib/auth-client';
-import { CHAT_EVENTS } from '@/lib/realtime/events';
-import { createChatSocket } from '@/lib/realtime/socket-client';
-import { PresencePayload } from '@/lib/realtime/types';
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { getAccessToken, getStoredUser } from "@/lib/auth-client";
+import { CHAT_EVENTS } from "@/lib/realtime/events";
+import { createChatSocket } from "@/lib/realtime/socket-client";
+import { PresencePayload } from "@/lib/realtime/types";
 import {
   acceptFriendRequest,
   blockUser,
@@ -19,9 +19,9 @@ import {
   SocialUser,
   unblockUser,
   unfriend,
-} from '@/lib/social';
+} from "@/lib/social";
 
-type TabKey = 'friends' | 'requests';
+type TabKey = "friends" | "requests";
 
 function toPrivateRoomId(userAId: string, userBId: string): string {
   const [first, second] = [userAId, userBId].sort();
@@ -32,28 +32,30 @@ function PresenceBadge({ isOnline }: { isOnline: boolean }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-        isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-600'
+        isOnline
+          ? "bg-emerald-100 text-emerald-700"
+          : "bg-zinc-100 text-zinc-600"
       }`}
     >
-      {isOnline ? 'Online' : 'Offline'}
+      {isOnline ? "Online" : "Offline"}
     </span>
   );
 }
 
 export default function ContactsPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>('friends');
-  const [phoneQuery, setPhoneQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TabKey>("friends");
+  const [phoneQuery, setPhoneQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUserItem[]>([]);
   const [searchCursor, setSearchCursor] = useState<string | null>(null);
   const [friends, setFriends] = useState<SocialUser[]>([]);
   const [friendsCursor, setFriendsCursor] = useState<string | null>(null);
   const [requests, setRequests] = useState<SocialUser[]>([]);
   const [requestsCursor, setRequestsCursor] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const normalizedPhone = phoneQuery.replace(/\s+/g, '').trim();
+  const normalizedPhone = phoneQuery.replace(/\s+/g, "").trim();
   const canSearch = normalizedPhone.length >= 4;
 
   const loadInitial = async () => {
@@ -69,7 +71,7 @@ export default function ContactsPage() {
 
   useEffect(() => {
     void loadInitial().catch((e) => {
-      setError(e instanceof Error ? e.message : 'Không tải được danh bạ');
+      setError(e instanceof Error ? e.message : "Không tải được danh bạ");
     });
   }, []);
 
@@ -82,21 +84,33 @@ export default function ContactsPage() {
       setFriends((prev) =>
         prev.map((item) =>
           item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+            ? {
+                ...item,
+                isOnline: payload.isOnline,
+                lastSeenAt: payload.lastSeenAt,
+              }
             : item,
         ),
       );
       setRequests((prev) =>
         prev.map((item) =>
           item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+            ? {
+                ...item,
+                isOnline: payload.isOnline,
+                lastSeenAt: payload.lastSeenAt,
+              }
             : item,
         ),
       );
       setSearchResults((prev) =>
         prev.map((item) =>
           item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+            ? {
+                ...item,
+                isOnline: payload.isOnline,
+                lastSeenAt: payload.lastSeenAt,
+              }
             : item,
         ),
       );
@@ -109,21 +123,24 @@ export default function ContactsPage() {
     };
   }, []);
 
-  const friendIds = useMemo(() => new Set(friends.map((item) => item.userId)), [friends]);
-  const currentUserId = getStoredUser()?.userId ?? '';
+  const friendIds = useMemo(
+    () => new Set(friends.map((item) => item.userId)),
+    [friends],
+  );
+  const currentUserId = getStoredUser()?.userId ?? "";
 
   const onSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSearch) return;
 
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const page = await searchUsersByPhone(normalizedPhone);
       setSearchResults(page.items);
       setSearchCursor(page.nextCursor);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Tìm kiếm thất bại');
+      setError(e instanceof Error ? e.message : "Tìm kiếm thất bại");
     } finally {
       setLoading(false);
     }
@@ -142,12 +159,12 @@ export default function ContactsPage() {
 
   const runAction = async (task: () => Promise<void>) => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       await task();
       await reloadLists();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Thao tác thất bại');
+      setError(e instanceof Error ? e.message : "Thao tác thất bại");
     } finally {
       setLoading(false);
     }
@@ -167,7 +184,10 @@ export default function ContactsPage() {
     <main className="flex h-screen overflow-hidden bg-[#f8f9fb] text-[#191c1e]">
       <aside className="fixed left-0 top-0 hidden h-full w-16 flex-col items-center bg-[#e7e8ea] py-4 md:flex">
         <div className="mb-8 h-10 w-10 rounded-full bg-zinc-300" />
-        <Link href="/chat/me" className="rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]">
+        <Link
+          href="/chat/me"
+          className="rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
+        >
           <span className="text-xs font-bold">TM</span>
         </Link>
         <Link
@@ -197,11 +217,11 @@ export default function ContactsPage() {
             <div className="mt-4 space-y-1">
               <button
                 type="button"
-                onClick={() => setActiveTab('requests')}
+                onClick={() => setActiveTab("requests")}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium ${
-                  activeTab === 'requests'
-                    ? 'bg-[#dae2ff] text-[#0052cc]'
-                    : 'text-[#424655] hover:bg-[#e1e2e4]'
+                  activeTab === "requests"
+                    ? "bg-[#dae2ff] text-[#0052cc]"
+                    : "text-[#424655] hover:bg-[#e1e2e4]"
                 }`}
               >
                 <span>Lời mời kết bạn</span>
@@ -212,11 +232,11 @@ export default function ContactsPage() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab('friends')}
+                onClick={() => setActiveTab("friends")}
                 className={`w-full rounded-lg px-3 py-3 text-left text-sm font-medium ${
-                  activeTab === 'friends'
-                    ? 'bg-[#dae2ff] text-[#0052cc]'
-                    : 'text-[#424655] hover:bg-[#e1e2e4]'
+                  activeTab === "friends"
+                    ? "bg-[#dae2ff] text-[#0052cc]"
+                    : "text-[#424655] hover:bg-[#e1e2e4]"
                 }`}
               >
                 Tất cả bạn bè
@@ -230,13 +250,17 @@ export default function ContactsPage() {
                 </p>
                 <ul className="mt-2 space-y-2">
                   {searchResults.map((user) => {
-                    const isFriend = user.friendStatus === 'FRIEND' || friendIds.has(user.userId);
+                    const isFriend =
+                      user.friendStatus === "FRIEND" ||
+                      friendIds.has(user.userId);
                     return (
                       <li key={user.userId} className="rounded-lg bg-white p-3">
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <p className="text-sm font-semibold">{user.name}</p>
-                            <p className="text-xs text-[#727687]">{user.phone}</p>
+                            <p className="text-xs text-[#727687]">
+                              {user.phone}
+                            </p>
                           </div>
                           <PresenceBadge isOnline={user.isOnline} />
                         </div>
@@ -302,7 +326,10 @@ export default function ContactsPage() {
                     type="button"
                     onClick={() =>
                       void (async () => {
-                        const page = await searchUsersByPhone(normalizedPhone, searchCursor);
+                        const page = await searchUsersByPhone(
+                          normalizedPhone,
+                          searchCursor,
+                        );
                         setSearchResults((prev) => [...prev, ...page.items]);
                         setSearchCursor(page.nextCursor);
                       })()
@@ -319,22 +346,28 @@ export default function ContactsPage() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center justify-between border-b border-[#c2c6d8]/40 bg-[#f8f9fb] px-4 lg:px-8">
-            <h2 className="text-lg font-bold">{activeTab === 'friends' ? 'All Friends' : 'Friend Requests'}</h2>
+            <h2 className="text-lg font-bold">
+              {activeTab === "friends" ? "All Friends" : "Friend Requests"}
+            </h2>
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setActiveTab('friends')}
+                onClick={() => setActiveTab("friends")}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                  activeTab === 'friends' ? 'bg-[#0052cc] text-white' : 'bg-[#e1e2e4] text-zinc-700'
+                  activeTab === "friends"
+                    ? "bg-[#0052cc] text-white"
+                    : "bg-[#e1e2e4] text-zinc-700"
                 }`}
               >
                 Bạn bè
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('requests')}
+                onClick={() => setActiveTab("requests")}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                  activeTab === 'requests' ? 'bg-[#0052cc] text-white' : 'bg-[#e1e2e4] text-zinc-700'
+                  activeTab === "requests"
+                    ? "bg-[#0052cc] text-white"
+                    : "bg-[#e1e2e4] text-zinc-700"
                 }`}
               >
                 Lời mời
@@ -344,18 +377,23 @@ export default function ContactsPage() {
 
           <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-8">
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              {(activeTab === 'friends' ? friends : requests).map((user) => (
-                <article key={user.userId} className="rounded-xl bg-white p-4 shadow-sm">
+              {(activeTab === "friends" ? friends : requests).map((user) => (
+                <article
+                  key={user.userId}
+                  className="rounded-xl bg-white p-4 shadow-sm"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-bold text-zinc-900">{user.name}</p>
+                      <p className="text-sm font-bold text-zinc-900">
+                        {user.name}
+                      </p>
                       <p className="text-xs text-[#727687]">{user.phone}</p>
                     </div>
                     <PresenceBadge isOnline={user.isOnline} />
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {activeTab === 'requests' ? (
+                    {activeTab === "requests" ? (
                       <>
                         <button
                           type="button"
@@ -408,7 +446,7 @@ export default function ContactsPage() {
               ))}
             </div>
 
-            {activeTab === 'friends' && friendsCursor ? (
+            {activeTab === "friends" && friendsCursor ? (
               <button
                 type="button"
                 onClick={() =>
@@ -424,7 +462,7 @@ export default function ContactsPage() {
               </button>
             ) : null}
 
-            {activeTab === 'requests' && requestsCursor ? (
+            {activeTab === "requests" && requestsCursor ? (
               <button
                 type="button"
                 onClick={() =>

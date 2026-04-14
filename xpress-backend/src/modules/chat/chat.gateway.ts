@@ -14,8 +14,9 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { GroupService } from './group.service';
 import { ChatService } from './chat.service';
-import { CALL_EVENTS, CHAT_EVENTS } from './constants/events';
+import { CALL_EVENTS, CHAT_EVENTS, GROUP_EVENTS } from './constants/events';
 
 interface IncomingCallPayload {
   senderId: string;
@@ -25,6 +26,14 @@ interface IncomingCallPayload {
   isOnline: boolean;
 }
 import { DeleteMessageDto } from './dto/delete-message.dto';
+import {
+  GroupDeleteMessageDto,
+  GroupRecallMessageDto,
+  GroupReplyMessageDto,
+  GroupSendMessageDto,
+  GroupTypingDto,
+} from './dto/group-message.dto';
+import { GroupCallStateDto } from './dto/group-call-state.dto';
 import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -72,10 +81,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private readonly chatService: ChatService,
+    private readonly groupService: GroupService,
     private readonly jwtService: JwtService,
   ) {}
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     try {
       const token = this.extractToken(client);
       const payload = this.jwtService.verify<JwtPayload>(token);
@@ -84,9 +94,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const userRoom = `user:${payload.sub}`;
       client.join(userRoom);
 
-      const becameOnline = this.chatService.registerConnection(payload.sub, client.id);
+      const groupIds = await this.groupService.listGroupIdsForUser(payload.sub);
+      for (const groupId of groupIds) {
+        client.join(this.toGroupRoom(groupId));
+      }
+
+      const becameOnline = this.chatService.registerConnection(
+        payload.sub,
+        client.id,
+      );
       if (becameOnline) {
-        this.server.emit(CHAT_EVENTS.PRESENCE, this.chatService.getPresence(payload.sub));
+        this.server.emit(
+          CHAT_EVENTS.PRESENCE,
+          this.chatService.getPresence(payload.sub),
+        );
       }
     } catch (error) {
       this.logger.warn(`Socket auth failed: ${String(error)}`);
@@ -99,9 +120,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
 
-    const becameOffline = this.chatService.unregisterConnection(userId, client.id);
+    const becameOffline = this.chatService.unregisterConnection(
+      userId,
+      client.id,
+    );
     if (becameOffline) {
-      this.server.emit(CHAT_EVENTS.PRESENCE, this.chatService.getPresence(userId));
+      this.server.emit(
+        CHAT_EVENTS.PRESENCE,
+        this.chatService.getPresence(userId),
+      );
     }
   }
 
@@ -198,10 +225,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() payload: CallOfferDto,
   ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = await this.chatService.validateCallOffer(
-      userId,
-      payload,
-    );
+    const { receiverId, eventPayload } =
+      await this.chatService.validateCallOffer(userId, payload);
 
     this.emitToUser(receiverId, CALL_EVENTS.OFFER, eventPayload);
   }
@@ -212,10 +237,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() payload: CallAnswerDto,
   ): Promise<void> {
     const userId = this.getUserId(client);
-    const { receiverId, eventPayload } = await this.chatService.validateCallAnswer(
-      userId,
-      payload,
-    );
+    const { receiverId, eventPayload } =
+      await this.chatService.validateCallAnswer(userId, payload);
 
     this.emitToUser(receiverId, CALL_EVENTS.ANSWER, eventPayload);
   }
@@ -248,6 +271,97 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.emitToUser(receiverId, CALL_EVENTS.END, eventPayload);
   }
 
+  @SubscribeMessage(GROUP_EVENTS.CALL_STATE)
+  async onGroupCallState(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: GroupCallStateDto & { groupId: string },
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const result = await this.groupService.updateCallState(userId, payload);
+
+    this.emitToGroup(payload.groupId, GROUP_EVENTS.CALL_STATE, result);
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.JOIN)
+  async onGroupJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { groupId: string },
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    await this.groupService.ensureMember(payload.groupId, userId);
+    client.join(this.toGroupRoom(payload.groupId));
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.SEND)
+  async onGroupSend(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: GroupSendMessageDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const message = await this.groupService.sendGroupMessage(userId, dto);
+
+    this.emitToGroup(dto.groupId, GROUP_EVENTS.MESSAGE, message);
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.REPLY)
+  async onGroupReply(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: GroupReplyMessageDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const message = await this.groupService.replyGroupMessage(userId, dto);
+
+    this.emitToGroup(dto.groupId, GROUP_EVENTS.MESSAGE, message);
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.DELETE)
+  async onGroupDelete(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: GroupDeleteMessageDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const message = await this.groupService.deleteGroupMessage(userId, dto);
+
+    this.emitToGroup(dto.groupId, GROUP_EVENTS.DELETED, {
+      messageId: message.messageId,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      isDeleted: true,
+      updatedAt: message.updatedAt,
+      groupId: dto.groupId,
+    });
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.RECALL)
+  async onGroupRecall(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: GroupRecallMessageDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const message = await this.groupService.recallGroupMessage(userId, dto);
+
+    this.emitToGroup(dto.groupId, GROUP_EVENTS.RECALLED, {
+      messageId: message.messageId,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      isRecalled: true,
+      updatedAt: message.updatedAt,
+      groupId: dto.groupId,
+    });
+  }
+
+  @SubscribeMessage(GROUP_EVENTS.TYPING)
+  async onGroupTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: GroupTypingDto,
+  ): Promise<void> {
+    const userId = this.getUserId(client);
+    const { groupId, eventPayload } =
+      await this.groupService.validateGroupTyping(userId, dto);
+
+    this.emitToGroup(groupId, GROUP_EVENTS.TYPING, eventPayload);
+  }
+
   private emitToUsers(
     userIds: string[],
     event: string,
@@ -261,6 +375,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private emitToUser(userId: string, event: string, payload: unknown): void {
     const userRoom = `user:${userId}`;
     this.server.to(userRoom).emit(event, payload);
+  }
+
+  private emitToGroup(groupId: string, event: string, payload: unknown): void {
+    this.server.to(this.toGroupRoom(groupId)).emit(event, payload);
   }
 
   private getUserId(client: Socket): string {
@@ -289,7 +407,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return normalized;
   }
 
-  broadcastIncomingCall(receiverId: string, payload: IncomingCallPayload): void {
+  broadcastIncomingCall(
+    receiverId: string,
+    payload: IncomingCallPayload,
+  ): void {
     this.emitToUser(receiverId, CALL_EVENTS.INCOMING, payload);
+  }
+
+  emitGroupEvent(groupId: string, event: string, payload: unknown): void {
+    this.emitToGroup(groupId, event, payload);
+  }
+
+  emitGroupUpdated(groupId: string, payload: unknown): void {
+    this.emitToGroup(groupId, GROUP_EVENTS.UPDATED, payload);
+  }
+
+  emitGroupUpdatedToUsers(userIds: string[], payload: unknown): void {
+    this.emitToUsers(userIds, GROUP_EVENTS.UPDATED, payload);
+  }
+
+  private toGroupRoom(groupId: string): string {
+    return `group:${groupId}`;
   }
 }

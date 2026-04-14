@@ -3,6 +3,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  QueryCommand,
   ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -100,6 +101,33 @@ export class MessagesRepository {
           ExpressionAttributeValues: {
             ':messageEntity': 'MESSAGE',
             ':userId': userId,
+          },
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      );
+
+      if (Array.isArray(result.Items)) {
+        items.push(...(result.Items as MessageEntity[]));
+      }
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return items;
+  }
+
+  async findMessagesByGroupId(groupId: string): Promise<MessageEntity[]> {
+    const items: MessageEntity[] = [];
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.ddbDocClient.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'GSI1PK = :gsi1pk',
+          ExpressionAttributeValues: {
+            ':gsi1pk': `GROUP_CONVERSATION#${groupId}`,
           },
           ExclusiveStartKey: lastEvaluatedKey,
         }),

@@ -9,7 +9,7 @@ export interface MessageEntity {
   SK: string;
   GSI1PK: string;
   GSI1SK: string;
-  entityType: 'MESSAGE';
+  entityType: 'MESSAGE' | 'GROUP_MESSAGE';
   messageId: string;
   conversationId: string;
   senderId: string;
