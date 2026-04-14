@@ -43,6 +43,7 @@ export default function VideoCallComponent({
 }: VideoCallComponentProps) {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
@@ -178,6 +179,9 @@ export default function VideoCallComponent({
       const [remoteStream] = event.streams;
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
       }
       startAudioActivityMonitor(remoteStream);
     };
@@ -427,6 +431,7 @@ export default function VideoCallComponent({
         onEndCall={() => void stopCall(true, true)}
         onAcceptIncoming={() => void acceptIncomingCall()}
         onDeclineIncoming={() => void declineCall()}
+        remoteAudioRef={remoteAudioRef}
       />
     );
   }

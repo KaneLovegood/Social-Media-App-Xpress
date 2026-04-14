@@ -1,3 +1,5 @@
+import { RefObject } from 'react';
+
 interface AudioCallOverlayProps {
     peerName: string;
     timerText: string;
@@ -13,6 +15,7 @@ interface AudioCallOverlayProps {
     onEndCall: () => void;
     onAcceptIncoming: () => void;
     onDeclineIncoming: () => void;
+    remoteAudioRef: RefObject<HTMLAudioElement | null>;
 }
 
 export default function AudioCallOverlay({
@@ -30,6 +33,7 @@ export default function AudioCallOverlay({
     onEndCall,
     onAcceptIncoming,
     onDeclineIncoming,
+    remoteAudioRef,
 }: AudioCallOverlayProps) {
     const controls = isIncomingRinging ? (
         <>
@@ -125,15 +129,16 @@ export default function AudioCallOverlay({
 
     return (
         <section className="fixed inset-0 z-50 bg-[#e8ebf3] animate-fade-in">
+            <audio ref={remoteAudioRef} autoPlay playsInline />
             <div className="relative flex h-full w-full flex-col overflow-hidden px-5 pb-24 pt-4 md:items-center md:justify-center md:px-10 md:pb-6">
-                <div className="flex justify-center text-[#0e1a36] md:absolute md:left-1/2 md:top-6 md:w-[360px] md:-translate-x-1/2">
+                <div className="flex justify-center text-[#0e1a36] md:absolute md:left-1/2 md:top-6 md:w-90 md:-translate-x-1/2">
                     <p className="text-[11px] font-semibold tracking-[0.2em] text-[#0b1328] text-center w-full">
                         VOICE CALL
                     </p>
                 </div>
 
-                <div className="relative mt-8 flex flex-1 flex-col items-center justify-center md:mt-0 md:max-w-[680px]">
-                    <div className="relative flex h-50 w-50 items-center justify-center md:h-[240px] md:w-[240px]">
+                <div className="relative mt-8 flex flex-1 flex-col items-center justify-center md:mt-0 md:max-w-170">
+                    <div className="relative flex h-50 w-50 items-center justify-center md:h-60 md:w-60">
                         <span className={`absolute inset-0 rounded-full border border-[#d4dae6] ${canShowWave ? 'animate-call-wave' : ''}`} />
                         <span className={`absolute inset-6 rounded-full border border-[#d4dae6] ${canShowWave ? 'animate-call-wave [animation-delay:140ms]' : ''}`} />
                         <span className={`absolute inset-12 rounded-full border border-[#d4dae6] ${canShowWave ? 'animate-call-wave [animation-delay:280ms]' : ''}`} />
@@ -150,7 +155,7 @@ export default function AudioCallOverlay({
                     <h3 className="mt-3 text-5xl font-semibold text-[#091d49] md:text-5xl">{peerName}</h3>
                     <p className="mt-1 text-3xl font-semibold tracking-wide text-[#8f9fbe] md:text-3xl">{timerText}</p>
 
-                    <div className="mt-6 hidden md:flex md:w-[620px] md:items-end md:justify-between">
+                    <div className="mt-6 hidden md:flex md:w-155 md:items-end md:justify-between">
                         {isConnected ? (
                             <div className="space-y-3">
                                 <div className="rounded-2xl border-l-4 border-[#1b2644] bg-white/55 px-4 py-3 shadow-sm backdrop-blur">
@@ -171,7 +176,7 @@ export default function AudioCallOverlay({
                     </div>
 
                     {isConnected ? (
-                        <div className="mt-4 w-full max-w-[460px] rounded-3xl bg-white/72 px-4 py-3 shadow-[0_20px_34px_rgba(23,31,55,0.1)] backdrop-blur md:hidden">
+                        <div className="mt-4 w-full max-w-115 rounded-3xl bg-white/72 px-4 py-3 shadow-[0_20px_34px_rgba(23,31,55,0.1)] backdrop-blur md:hidden">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#152b58] text-white">
@@ -196,14 +201,14 @@ export default function AudioCallOverlay({
                         </div>
                     ) : null}
 
-                    <div className="mt-8 hidden w-full max-w-[560px] rounded-[32px] bg-white/74 px-4 py-3 shadow-[0_24px_40px_rgba(18,27,51,0.12)] backdrop-blur md:block">
+                    <div className="mt-8 hidden w-full max-w-140 rounded-4xl bg-white/74 px-4 py-3 shadow-[0_24px_40px_rgba(18,27,51,0.12)] backdrop-blur md:block">
                         <div className="flex items-center justify-center gap-3 md:gap-4">
                             {controls}
                         </div>
                     </div>
                 </div>
 
-                <div className="absolute bottom-6 left-1/2 w-[calc(100%-28px)] max-w-[560px] -translate-x-1/2 rounded-[32px] bg-white/74 px-4 py-3 shadow-[0_24px_40px_rgba(18,27,51,0.12)] backdrop-blur md:hidden">
+                <div className="absolute bottom-6 left-1/2 w-[calc(100%-28px)] max-w-140 -translate-x-1/2 rounded-4xl bg-white/74 px-4 py-3 shadow-[0_24px_40px_rgba(18,27,51,0.12)] backdrop-blur md:hidden">
                     <div className="flex items-center justify-center gap-3">{controls}</div>
                 </div>
 

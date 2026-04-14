@@ -81,7 +81,7 @@ export class MessagesRepository {
           ':isDeleted': false,
           ':isRecalled': false,
           ':trueValue': true,
-          ':recalledContent': 'Message recalled',
+          ':recalledContent': 'Tin nhắn đã được thu hồi',
           ':nowValue': now,
         },
       }),
@@ -134,6 +134,25 @@ export class MessagesRepository {
     return (result.Items as MessageEntity[]) ?? [];
   }
 
+  async findLatestMessageByConversationId(
+    conversationId: string,
+  ): Promise<MessageEntity | null> {
+    const result = await this.ddbDocClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :gsi1pk',
+        ExpressionAttributeValues: {
+          ':gsi1pk': `CONVERSATION#${conversationId}`,
+        },
+        ScanIndexForward: false,
+        Limit: 1,
+      }),
+    );
+
+    return (result.Items?.[0] as MessageEntity) ?? null;
+  }
+
   async markMessageReceived(
     messageId: string,
     receiverId: string,
@@ -153,7 +172,8 @@ export class MessagesRepository {
           PK: `MESSAGE#${messageId}`,
           SK: `MESSAGE#${messageId}`,
         },
-        UpdateExpression: 'SET receivedAt = :receivedAt, updatedAt = :updatedAt',
+        UpdateExpression:
+          'SET receivedAt = :receivedAt, updatedAt = :updatedAt',
         ExpressionAttributeValues: {
           ':receivedAt': now,
           ':updatedAt': now,
@@ -213,5 +233,28 @@ export class MessagesRepository {
       senderId: message.senderId,
       content: message.content,
     };
+  }
+
+  async findImagesByConversationId(
+    conversationId: string,
+  ): Promise<MessageEntity[]> {
+    const messages = await this.findMessagesByConversationId(conversationId);
+    return messages.filter(
+      (message) =>
+        !message.isDeleted &&
+        /\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content),
+    );
+  }
+
+  async findFilesByConversationId(
+    conversationId: string,
+  ): Promise<MessageEntity[]> {
+    const messages = await this.findMessagesByConversationId(conversationId);
+    return messages.filter(
+      (message) =>
+        !message.isDeleted &&
+        /\.[a-z0-9]{2,5}$/i.test(message.content) &&
+        !/\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content),
+    );
   }
 }

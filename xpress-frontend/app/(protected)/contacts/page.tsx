@@ -20,6 +20,7 @@ import {
   unblockUser,
   unfriend,
 } from '@/lib/social';
+import { MessageCircleMore } from 'lucide-react';
 
 type TabKey = 'friends' | 'requests';
 
@@ -177,7 +178,7 @@ export default function ContactsPage() {
       <aside className="fixed left-0 top-0 hidden h-full w-16 flex-col items-center bg-[#e7e8ea] py-4 md:flex">
         <div className="mb-8 h-10 w-10 rounded-full bg-zinc-300" />
         <Link href="/chat/me" className="rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]">
-          <span className="text-xs font-bold">TM</span>
+          <MessageCircleMore className="ml-1 inline-block text-xs text-[#0f61d4]" />
         </Link>
         <Link
           href="/contacts"

@@ -6,11 +6,17 @@ import { SocialModule } from '../social/social.module';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+import { GroupRoomsRepository } from './repositories/group-rooms.repository';
 import { MessagesRepository } from './repositories/messages.repository';
 
 @Module({
   imports: [DynamoDbModule, AuthModule, SocialModule, PresenceModule],
   controllers: [ChatController],
-  providers: [ChatGateway, ChatService, MessagesRepository],
+  providers: [
+    ChatGateway,
+    ChatService,
+    MessagesRepository,
+    GroupRoomsRepository,
+  ],
 })
 export class ChatModule {}
