@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth-client';
+import { authFetch } from './auth-client';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
@@ -41,14 +41,8 @@ function toAgeLabel(isoTimestamp: string): string {
 }
 
 export async function fetchChatRooms(): Promise<ChatRoomSummary[]> {
-  const token = getAccessToken();
-  if (!token) return [];
-
-  const response = await fetch(`${API_BASE_URL}/chat/rooms`, {
+  const response = await authFetch(`${API_BASE_URL}/chat/rooms`, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
   });
 
   if (!response.ok) {

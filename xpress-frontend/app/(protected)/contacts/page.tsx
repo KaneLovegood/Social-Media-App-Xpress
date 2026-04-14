@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { getAccessToken, getStoredUser } from '@/lib/auth-client';
+import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
 import { CHAT_EVENTS } from '@/lib/realtime/events';
 import { createChatSocket } from '@/lib/realtime/socket-client';
 import { PresencePayload } from '@/lib/realtime/types';
@@ -74,38 +74,47 @@ export default function ContactsPage() {
   }, []);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
+    let cancelled = false;
+    let socketCleanup: (() => void) | undefined;
 
-    const socket = createChatSocket(token);
-    const onPresence = (payload: PresencePayload) => {
-      setFriends((prev) =>
-        prev.map((item) =>
-          item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
-            : item,
-        ),
-      );
-      setRequests((prev) =>
-        prev.map((item) =>
-          item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
-            : item,
-        ),
-      );
-      setSearchResults((prev) =>
-        prev.map((item) =>
-          item.userId === payload.userId
-            ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
-            : item,
-        ),
-      );
-    };
+    void getValidAccessToken().then((token) => {
+      if (!token || cancelled) return;
 
-    socket.on(CHAT_EVENTS.PRESENCE, onPresence);
+      const socket = createChatSocket(token);
+      const onPresence = (payload: PresencePayload) => {
+        setFriends((prev) =>
+          prev.map((item) =>
+            item.userId === payload.userId
+              ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+              : item,
+          ),
+        );
+        setRequests((prev) =>
+          prev.map((item) =>
+            item.userId === payload.userId
+              ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+              : item,
+          ),
+        );
+        setSearchResults((prev) =>
+          prev.map((item) =>
+            item.userId === payload.userId
+              ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
+              : item,
+          ),
+        );
+      };
+
+      socket.on(CHAT_EVENTS.PRESENCE, onPresence);
+      socketCleanup = () => {
+        socket.off(CHAT_EVENTS.PRESENCE, onPresence);
+        socket.disconnect();
+      };
+    });
+
     return () => {
-      socket.off(CHAT_EVENTS.PRESENCE, onPresence);
-      socket.disconnect();
+      cancelled = true;
+      socketCleanup?.();
     };
   }, []);
 
