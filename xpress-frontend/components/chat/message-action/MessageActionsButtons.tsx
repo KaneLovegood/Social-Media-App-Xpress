@@ -1,14 +1,16 @@
-import { Quote, Ellipsis } from 'lucide-react';
+import { Quote, Ellipsis, CornerUpRight } from 'lucide-react';
 
 interface MessageActionsButtonsProps {
   menuOpen: boolean;
   onReply: () => void;
+  onForward: () => void;
   onMenuToggle: () => void;
 }
 
 export default function MessageActionsButtons({
   menuOpen,
   onReply,
+  onForward,
   onMenuToggle,
 }: MessageActionsButtonsProps) {
   return (
@@ -20,6 +22,14 @@ export default function MessageActionsButtons({
         aria-label="Trả lời"
       >
         <Quote className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm font-bold text-zinc-700 hover:bg-zinc-100"
+        onClick={onForward}
+        aria-label="Chuyển tiếp"
+      >
+        <CornerUpRight className="h-3 w-3" />
       </button>
       <button
         type="button"

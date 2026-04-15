@@ -25,6 +25,7 @@ interface ChatContentProps {
   onSend: (content: string, options?: SendMessageOptions) => void;
   onTyping: (isTyping: boolean) => void;
   onReply: (preview: ReplyPreview) => void;
+  onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
   onDeleteForMe: (messageId: string) => void;
   onCopy: (message: ChatMessage) => void;
@@ -53,6 +54,7 @@ export default function ChatContent({
   onSend,
   onTyping,
   onReply,
+  onForward,
   onRecall,
   onDeleteForMe,
   onCopy,
@@ -89,6 +91,7 @@ export default function ChatContent({
           peerName={peerName}
           listRef={listRef}
           onReply={onReply}
+          onForward={onForward}
           onRecall={onRecall}
           onDeleteForMe={onDeleteForMe}
           onCopy={onCopy}

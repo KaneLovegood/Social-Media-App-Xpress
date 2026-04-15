@@ -8,6 +8,7 @@ interface MessageItemRowProps {
   currentUserName: string;
   peerName: string;
   onReply: (preview: ReplyPreviewType) => void;
+  onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
   onDeleteForMe: (messageId: string) => void;
   onCopy: (message: ChatMessage) => void;
@@ -29,6 +30,7 @@ export default function MessageItemRow({
   currentUserName,
   peerName,
   onReply,
+  onForward,
   onRecall,
   onDeleteForMe,
   onCopy,
@@ -61,7 +63,7 @@ export default function MessageItemRow({
         <div className={`flex min-w-0 flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
           <p className="mb-1 text-xs font-semibold text-[#4c5f80]">{senderName}</p>
 
-          <div className={`relative ${isOwn ? 'pl-16' : 'pr-16'}`}>
+          <div className={`relative ${isOwn ? 'pl-25' : 'pr-25'}`}>
             <MessageBubbleCard
               message={message}
               isOwn={isOwn}
@@ -85,6 +87,7 @@ export default function MessageItemRow({
                     content: message.content,
                   })
                 }
+                onForward={() => onForward(message)}
                 onCopy={() => onCopy(message)}
                 onPin={() => onPin(message)}
                 onMark={() => onMark(message)}

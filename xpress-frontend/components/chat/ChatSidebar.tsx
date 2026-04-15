@@ -1,5 +1,6 @@
 ﻿import { UserPlus2, Users2 } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 export interface SidebarChatItem {
   id: string;
@@ -27,6 +28,18 @@ export default function ChatSidebar({
   onSelectRoom,
   onCreateGroup,
 }: ChatSidebarProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredRooms = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return rooms;
+
+    return rooms.filter((room) => {
+      const searchable = `${room.title} ${room.preview}`.toLowerCase();
+      return searchable.includes(keyword);
+    });
+  }, [rooms, searchTerm]);
+
   return (
     <aside className="flex h-full w-full md:w-[24rem]">
       <div className="flex min-w-0 flex-1 flex-col bg-[#ffffff]">
@@ -55,6 +68,8 @@ export default function ChatSidebar({
           </div>
           <div className="mt-3 rounded-lg bg-[#e1e2e4] px-3 py-2">
             <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
               type="text"
               placeholder="Tìm kiếm cuộc hội thoại..."
               className="w-full border-none bg-transparent text-sm text-zinc-700 placeholder:text-zinc-500 outline-none"
@@ -69,7 +84,7 @@ export default function ChatSidebar({
         </header>
 
         <ul className="flex-1 space-y-1 overflow-y-auto px-2 pb-4 pt-2">
-          {rooms.map((room) => {
+          {filteredRooms.map((room) => {
             const active = room.id === activeRoomId;
 
             return (
@@ -106,6 +121,11 @@ export default function ChatSidebar({
               </li>
             );
           })}
+          {filteredRooms.length === 0 ? (
+            <li className="px-4 py-10 text-center text-sm text-zinc-500">
+              Không tìm thấy cuộc hội thoại phù hợp.
+            </li>
+          ) : null}
         </ul>
       </div>
     </aside>

@@ -8,6 +8,7 @@ interface MessageActionsMenuProps {
     disabled: boolean;
     canRecall: boolean;
     onReply: () => void;
+    onForward: () => void;
     onCopy: () => void;
     onPin: () => void;
     onMark: () => void;
@@ -22,6 +23,7 @@ export default function MessageActionsMenu({
     disabled,
     canRecall,
     onReply,
+    onForward,
     onCopy,
     onPin,
     onMark,
@@ -121,6 +123,7 @@ export default function MessageActionsMenu({
             <MessageActionsButtons
                 menuOpen={menuOpen}
                 onReply={onReply}
+                onForward={onForward}
                 onMenuToggle={() => setMenuOpen((prev) => !prev)}
             />
 
