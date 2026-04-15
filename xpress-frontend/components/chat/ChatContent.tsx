@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from 'react';
-import { ChatMessage, ReplyPreview } from '@/lib/realtime/types';
-import ChatHeader from './ChatHeader';
-import MessageInput, { SendMessageOptions } from './MessageInput';
-import MessageList from './MessageList';
-import ImageViewerModal from './ImageViewerModal';
+import { useState } from "react";
+import { ChatMessage, ReplyPreview } from "@/lib/realtime/types";
+import ChatHeader from "./ChatHeader";
+import MessageInput, { SendMessageOptions } from "./MessageInput";
+import MessageList from "./MessageList";
+import ImageViewerModal from "./modal/ImageViewerModal";
 
 interface ChatContentProps {
   peerName: string;
@@ -17,6 +17,8 @@ interface ChatContentProps {
   currentUserName: string;
   listRef: React.RefObject<HTMLUListElement | null>;
   replyTo: ReplyPreview | undefined;
+  onBackToList: () => void;
+  onOpenInfo: () => void;
   onOpenVoiceCall: () => void;
   onOpenVideoCall: () => void;
   onClearReply: () => void;
@@ -30,7 +32,7 @@ interface ChatContentProps {
   onMark: (message: ChatMessage) => void;
   onSelectMany: (message: ChatMessage) => void;
   onViewDetails: (message: ChatMessage) => void;
-  onRedial: (mode: 'voice' | 'video') => void;
+  onRedial: (mode: "voice" | "video") => void;
 }
 
 export default function ChatContent({
@@ -43,6 +45,8 @@ export default function ChatContent({
   currentUserName,
   listRef,
   replyTo,
+  onBackToList,
+  onOpenInfo,
   onOpenVoiceCall,
   onOpenVideoCall,
   onClearReply,
@@ -58,7 +62,11 @@ export default function ChatContent({
   onViewDetails,
   onRedial,
 }: ChatContentProps) {
-  const [viewerImage, setViewerImage] = useState<{ url: string; senderName?: string; timestamp?: string } | null>(null);
+  const [viewerImage, setViewerImage] = useState<{
+    url: string;
+    senderName?: string;
+    timestamp?: string;
+  } | null>(null);
 
   return (
     <>
@@ -67,6 +75,8 @@ export default function ChatContent({
         orderTitle={orderTitle}
         typingText={typingText}
         isPeerOnline={isPeerOnline}
+        onBack={onBackToList}
+        onOpenInfo={onOpenInfo}
         onOpenVoiceCall={onOpenVoiceCall}
         onOpenVideoCall={onOpenVideoCall}
       />
@@ -87,7 +97,9 @@ export default function ChatContent({
           onSelectMany={onSelectMany}
           onViewDetails={onViewDetails}
           onRedial={onRedial}
-          onImageClick={(url, senderName, timestamp) => setViewerImage({ url, senderName, timestamp })}
+          onImageClick={(url, senderName, timestamp) =>
+            setViewerImage({ url, senderName, timestamp })
+          }
           className="flex-1"
         />
         <div className="mt-2 lg:mt-3">
@@ -103,7 +115,7 @@ export default function ChatContent({
       <ImageViewerModal
         isOpen={!!viewerImage}
         onClose={() => setViewerImage(null)}
-        imageUrl={viewerImage?.url || ''}
+        imageUrl={viewerImage?.url || ""}
         senderName={viewerImage?.senderName}
         timestamp={viewerImage?.timestamp}
       />
