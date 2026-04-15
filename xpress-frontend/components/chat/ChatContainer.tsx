@@ -1,36 +1,41 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Socket } from 'socket.io-client';
-import { leaveGroup, dissolveGroup, fetchGroupRoomDetails, type GroupRoomDetails } from '@/lib/chat-groups';
-import { getValidAccessToken } from '@/lib/auth-client';
-import { sendChatAction } from '@/lib/chat-actions';
-import { fetchChatRoomMessages } from '@/lib/chat-messages';
-import { ChatRoomSummary, fetchChatRooms } from '@/lib/chat-rooms';
-import { CHAT_EVENTS, CALL_EVENTS } from '@/lib/realtime/events';
-import { createChatSocket } from '@/lib/realtime/socket-client';
-import { ChatMessage, ReplyPreview } from '@/lib/realtime/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Socket } from "socket.io-client";
+import {
+  leaveGroup,
+  dissolveGroup,
+  fetchGroupRoomDetails,
+  type GroupRoomDetails,
+} from "@/lib/chat-groups";
+import { getValidAccessToken } from "@/lib/auth-client";
+import { sendChatAction } from "@/lib/chat-actions";
+import { fetchChatRoomMessages } from "@/lib/chat-messages";
+import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
+import { CHAT_EVENTS, CALL_EVENTS } from "@/lib/realtime/events";
+import { createChatSocket } from "@/lib/realtime/socket-client";
+import { ChatMessage, ReplyPreview } from "@/lib/realtime/types";
 import {
   toPrivateRoomId,
   toAgeLabel,
   toMessagePreview,
   mergeMessages,
   getClearHistoryStorageKey,
-} from '@/lib/chat-utils';
-import IncomingCallModal from './modal/IncomingCallModal';
-import IncomingGroupCallModal from './modal/IncomingGroupCallModal';
-import ChatInfoPanel from './ChatInfoPanel';
-import CreateGroupModal from './modal/CreateGroupModal';
-import VideoCallComponent from '../video/VideoCallComponent';
-import GroupCallComponent from '../video/GroupCallComponent';
-import ChatContent from './ChatContent';
-import { SendMessageOptions } from './MessageInput';
-import ChatNoRoomWelcome from './ChatNoRoomWelcome';
-import ChatSidebar, { SidebarChatItem } from './ChatSidebar';
-import { useClearedHistory } from '@/hooks/useClearedHistory';
-import { useCallState } from '@/hooks/useCallState';
-import { useMessageActions } from '@/hooks/useMessageActions';
-import { useChatSocketHandlers } from '@/hooks/useChatSocketHandlers';
+} from "@/lib/chat-utils";
+import IncomingCallModal from "./modal/IncomingCallModal";
+import IncomingGroupCallModal from "./modal/IncomingGroupCallModal";
+import ChatInfoPanel from "./ChatInfoPanel";
+import CreateGroupModal from "./modal/CreateGroupModal";
+import VideoCallComponent from "../video/VideoCallComponent";
+import GroupCallComponent from "../video/GroupCallComponent";
+import ChatContent from "./ChatContent";
+import { SendMessageOptions } from "./MessageInput";
+import ChatNoRoomWelcome from "./ChatNoRoomWelcome";
+import ChatSidebar, { SidebarChatItem } from "./ChatSidebar";
+import { useClearedHistory } from "@/hooks/useClearedHistory";
+import { useCallState } from "@/hooks/useCallState";
+import { useMessageActions } from "@/hooks/useMessageActions";
+import { useChatSocketHandlers } from "@/hooks/useChatSocketHandlers";
 
 interface ChatContainerProps {
   currentUserId: string;
@@ -48,8 +53,12 @@ export default function ChatContainer({
   onRoomResolved,
 }: ChatContainerProps) {
   // Manage cleared history
-  const { clearedRoomAtById, setClearedRoomAtById, isClearHistoryHydrated, markRoomCleared } =
-    useClearedHistory(currentUserId);
+  const {
+    clearedRoomAtById,
+    setClearedRoomAtById,
+    isClearHistoryHydrated,
+    markRoomCleared,
+  } = useClearedHistory(currentUserId);
 
   // Manage call states
   const {
@@ -74,14 +83,23 @@ export default function ChatContainer({
   // Room management state
   const [rooms, setRooms] = useState<ChatRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
-  const [activeRoomId, setActiveRoomId] = useState('');
-  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({});
-  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>({});
-  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<Record<string, GroupRoomDetails>>({});
-  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
+  const [activeRoomId, setActiveRoomId] = useState("");
+  const [messagesByRoom, setMessagesByRoom] = useState<
+    Record<string, ChatMessage[]>
+  >({});
+  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<
+    Record<string, GroupRoomDetails>
+  >({});
+  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>(
+    {},
+  );
   const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
-  const [typingText, setTypingText] = useState('');
+  const [typingText, setTypingText] = useState("");
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -198,7 +216,10 @@ export default function ChatContainer({
       return true;
     }
 
-    if (initialPeerUserId && rooms.some((room) => room.peerUserId === initialPeerUserId)) {
+    if (
+      initialPeerUserId &&
+      rooms.some((room) => room.peerUserId === initialPeerUserId)
+    ) {
       return true;
     }
 
@@ -206,13 +227,12 @@ export default function ChatContainer({
   }, [hasInitialSelection, initialPeerUserId, initialRoomId, rooms]);
 
   const isResolvingInitialSelection =
-    hasInitialSelection
-    && !effectiveActiveRoomId
-    && (isLoadingRooms || hasInitialSelectionMatch);
+    hasInitialSelection &&
+    !effectiveActiveRoomId &&
+    (isLoadingRooms || hasInitialSelectionMatch);
 
   const shouldShowNoRoomWelcome =
-    !isResolvingInitialSelection
-    && !effectiveActiveRoomId;
+    !isResolvingInitialSelection && !effectiveActiveRoomId;
 
   useEffect(() => {
     if (hasInitialSelection && effectiveActiveRoomId && onRoomResolved) {
@@ -253,6 +273,7 @@ export default function ChatContainer({
     setActiveRoomId(roomId);
     setReplyTo(undefined);
     setTypingText("");
+    setIsMobileInfoOpen(false);
   };
 
   const ensureGroupDetails = useCallback(
@@ -453,7 +474,7 @@ export default function ChatContainer({
   };
 
   // Message actions
-  const { 
+  const {
     handleCopyMessage,
     handlePinMessage,
     handleMarkMessage,
@@ -462,23 +483,26 @@ export default function ChatContainer({
     emitMessageActionEvent,
   } = useMessageActions(effectiveActiveRoomId, peerUserId);
 
-  const handleDeleteForMe = useCallback((messageId: string) => {
-    if (!effectiveActiveRoomId) return;
+  const handleDeleteForMe = useCallback(
+    (messageId: string) => {
+      if (!effectiveActiveRoomId) return;
 
-    setMessagesByRoom((prev) => ({
-      ...prev,
-      [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter(
-        (message) => message.messageId !== messageId,
-      ),
-    }));
+      setMessagesByRoom((prev) => ({
+        ...prev,
+        [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter(
+          (message) => message.messageId !== messageId,
+        ),
+      }));
 
-    setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
-  }, [effectiveActiveRoomId]);
+      setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
+    },
+    [effectiveActiveRoomId],
+  );
 
   const handleDeleteForMeWithEvent = useCallback(
     (messageId: string) => {
       handleDeleteForMe(messageId);
-      emitMessageActionEvent('delete_message_for_me', { messageId });
+      emitMessageActionEvent("delete_message_for_me", { messageId });
     },
     [emitMessageActionEvent, handleDeleteForMe],
   );
@@ -740,15 +764,25 @@ export default function ChatContainer({
   return (
     <section className="h-full w-full overflow-hidden bg-[#f8f9fb]">
       <div className="flex h-full">
-        <ChatSidebar
-          rooms={sidebarRooms}
-          activeRoomId={effectiveActiveRoomId}
-          currentUserName={currentUserName}
-          onSelectRoom={handleSelectRoom}
-          onCreateGroup={handleCreateGroup}
-        />
+        <div
+          className={
+            effectiveActiveRoomId ? "hidden md:flex" : "flex w-full md:w-auto"
+          }
+        >
+          <ChatSidebar
+            rooms={sidebarRooms}
+            activeRoomId={effectiveActiveRoomId}
+            currentUserName={currentUserName}
+            onSelectRoom={handleSelectRoom}
+            onCreateGroup={handleCreateGroup}
+          />
+        </div>
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-[#f8f9fb] lg:min-h-0">
+        <div
+          className={`min-h-0 min-w-0 flex-1 flex-col bg-[#f8f9fb] ${
+            effectiveActiveRoomId ? "flex" : "hidden md:flex"
+          }`}
+        >
           {shouldShowNoRoomWelcome ? (
             <ChatNoRoomWelcome />
           ) : (
@@ -762,6 +796,11 @@ export default function ChatContainer({
               currentUserName={currentUserName}
               listRef={listRef}
               replyTo={replyTo}
+              onBackToList={() => {
+                setIsMobileInfoOpen(false);
+                setActiveRoomId("");
+              }}
+              onOpenInfo={() => setIsMobileInfoOpen(true)}
               onOpenVoiceCall={handleOpenVoiceCall}
               onOpenVideoCall={handleOpenVideoCall}
               onClearReply={() => setReplyTo(undefined)}
@@ -795,6 +834,32 @@ export default function ChatContainer({
             }}
           />
         ) : null}
+
+        {effectiveActiveRoomId && isMobileInfoOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Đóng thông tin hội thoại"
+              className="fixed inset-0 z-40 bg-slate-900/35 lg:hidden"
+              onClick={() => setIsMobileInfoOpen(false)}
+            />
+            <ChatInfoPanel
+              room={activeRoom}
+              groupDetails={activeGroupDetails}
+              currentUserId={currentUserId}
+              onLeaveGroup={handleLeaveGroup}
+              onDissolveGroup={handleDissolveGroup}
+              onOpenCreateGroup={handleCreateGroup}
+              onDeleteChatHistory={handleDeleteChatHistory}
+              onGroupDetailsChange={handleGroupDetailsChange}
+              onMembersAdded={() => {
+                void handleGroupMembersAdded();
+              }}
+              isMobileOpen
+              onCloseMobile={() => setIsMobileInfoOpen(false)}
+            />
+          </>
+        ) : null}
       </div>
 
       <CreateGroupModal
@@ -807,8 +872,8 @@ export default function ChatContainer({
 
       <IncomingCallModal
         isOpen={incomingCall !== null}
-        senderName={incomingCall?.senderName ?? ''}
-        callMode={incomingCall?.callMode ?? 'voice'}
+        senderName={incomingCall?.senderName ?? ""}
+        callMode={incomingCall?.callMode ?? "voice"}
         isOnline={incomingCall?.isOnline ?? false}
         onAccept={handleAcceptIncomingCall}
         onDecline={handleDeclineIncomingCall}
@@ -820,17 +885,17 @@ export default function ChatContainer({
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.title ??
               activeRoom?.title ??
-              'Nhóm')
-            : 'Nhóm'
+              "Nhóm")
+            : "Nhóm"
         }
         callerName={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.members.find(
                 (member) => member.userId === pendingGroupCall.senderId,
-              )?.name ?? 'Thành viên')
-            : 'Thành viên'
+              )?.name ?? "Thành viên")
+            : "Thành viên"
         }
-        callMode={pendingGroupCall?.callMode ?? 'voice'}
+        callMode={pendingGroupCall?.callMode ?? "voice"}
         participantCount={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.memberCount ?? 0)
@@ -848,9 +913,9 @@ export default function ChatContainer({
           roomId={groupCallRoomId}
           groupDetails={activeGroupCallDetails}
           callMode={groupCallMode}
-          callDirection={groupCallDirection ?? 'incoming'}
+          callDirection={groupCallDirection ?? "incoming"}
           onClose={() => {
-            setGroupCallRoomId('');
+            setGroupCallRoomId("");
             setGroupCallMode(null);
             setGroupCallDirection(null);
           }}

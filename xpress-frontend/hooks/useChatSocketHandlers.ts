@@ -1,6 +1,12 @@
-import { useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
-import { Socket } from 'socket.io-client';
-import { CHAT_EVENTS, CALL_EVENTS } from '@/lib/realtime/events';
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import { Socket } from "socket.io-client";
+import { CHAT_EVENTS, CALL_EVENTS } from "@/lib/realtime/events";
 import {
   CallEndPayload,
   ChatMessage,
@@ -9,31 +15,31 @@ import {
   MessageStateUpdate,
   PresencePayload,
   TypingPayload,
-} from '@/lib/realtime/types';
-import { GroupRoomDetails } from '@/lib/chat-groups';
+} from "@/lib/realtime/types";
+import { GroupRoomDetails } from "@/lib/chat-groups";
 import {
   toPrivateRoomId,
   toAgeLabel,
   toMessagePreview,
   mergeMessages,
   sortMessages,
-} from '@/lib/chat-utils';
-import { ChatRoomSummary } from '@/lib/chat-rooms';
+} from "@/lib/chat-utils";
+import { ChatRoomSummary } from "@/lib/chat-rooms";
 
-type CallMode = 'voice' | 'video' | null;
-type CallDirection = 'incoming' | 'outgoing' | null;
+type CallMode = "voice" | "video" | null;
+type CallDirection = "incoming" | "outgoing" | null;
 
 interface IncomingCallState {
   senderId: string;
   senderName: string;
-  callMode: 'voice' | 'video';
+  callMode: "voice" | "video";
   sessionId: string;
   isOnline: boolean;
 }
 
 interface PendingGroupCallState {
   roomId: string;
-  callMode: 'voice' | 'video';
+  callMode: "voice" | "video";
   senderId: string;
 }
 
@@ -41,15 +47,25 @@ interface SocketHandlerProps {
   socket: Socket | null;
   currentUserId: string;
   effectiveActiveRoomId: string;
-  activeRoomRoomType: 'PRIVATE' | 'GROUP' | null;
+  activeRoomRoomType: "PRIVATE" | "GROUP" | null;
   peerUserId: string;
   roomByPeer: Map<string, string>;
   reloadRooms: () => Promise<void>;
   ensureGroupDetails: (roomId: string) => Promise<GroupRoomDetails>;
-  setMessages: (updater: (prev: Record<string, ChatMessage[]>) => Record<string, ChatMessage[]>) => void;
+  setMessages: (
+    updater: (
+      prev: Record<string, ChatMessage[]>,
+    ) => Record<string, ChatMessage[]>,
+  ) => void;
   setRooms: (updater: (prev: ChatRoomSummary[]) => ChatRoomSummary[]) => void;
-  setGroupDetails: (updater: (prev: Record<string, GroupRoomDetails>) => Record<string, GroupRoomDetails>) => void;
-  setPresenceByUser: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
+  setGroupDetails: (
+    updater: (
+      prev: Record<string, GroupRoomDetails>,
+    ) => Record<string, GroupRoomDetails>,
+  ) => void;
+  setPresenceByUser: (
+    updater: (prev: Record<string, boolean>) => Record<string, boolean>,
+  ) => void;
   setTypingText: (text: string) => void;
   setIncomingCall: Dispatch<SetStateAction<IncomingCallState | null>>;
   activeRoomId?: string;
@@ -95,13 +111,15 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
   const onMessage = useCallback(
     (message: ChatMessage) => {
       const isPrivateConversation =
-        message.roomType === 'PRIVATE' || message.conversationId.includes(':');
-      if (message.roomType === 'GROUP' || !isPrivateConversation) {
+        message.roomType === "PRIVATE" || message.conversationId.includes(":");
+      if (message.roomType === "GROUP" || !isPrivateConversation) {
         return;
       }
 
       const counterpartUserId =
-        message.senderId === currentUserId ? message.receiverId : message.senderId;
+        message.senderId === currentUserId
+          ? message.receiverId
+          : message.senderId;
       let roomId = roomByPeer.get(counterpartUserId);
 
       if (!roomId) {
@@ -109,7 +127,8 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       }
 
       const isIncoming = message.receiverId === currentUserId;
-      const shouldIncreaseUnread = isIncoming && roomId !== effectiveActiveRoomId;
+      const shouldIncreaseUnread =
+        isIncoming && roomId !== effectiveActiveRoomId;
 
       if (isIncoming) {
         socket?.emit(CHAT_EVENTS.RECEIVE, { messageId: message.messageId });
@@ -140,12 +159,22 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
             preview: message.content,
             lastMessageAt: message.createdAt,
             age: toAgeLabel(message.createdAt),
-            unreadCount: shouldIncreaseUnread ? room.unreadCount + 1 : room.unreadCount,
+            unreadCount: shouldIncreaseUnread
+              ? room.unreadCount + 1
+              : room.unreadCount,
           };
         });
       });
     },
-    [currentUserId, effectiveActiveRoomId, roomByPeer, socket, setMessages, setRooms, reloadRooms],
+    [
+      currentUserId,
+      effectiveActiveRoomId,
+      roomByPeer,
+      socket,
+      setMessages,
+      setRooms,
+      reloadRooms,
+    ],
   );
 
   // Group message handler
@@ -179,7 +208,9 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
             preview: toMessagePreview(message),
             lastMessageAt: message.createdAt,
             age: toAgeLabel(message.createdAt),
-            unreadCount: shouldIncreaseUnread ? room.unreadCount + 1 : room.unreadCount,
+            unreadCount: shouldIncreaseUnread
+              ? room.unreadCount + 1
+              : room.unreadCount,
           };
         });
       });
@@ -202,7 +233,15 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         socket?.emit(CHAT_EVENTS.GROUP_READ, { roomId });
       }
     },
-    [currentUserId, effectiveActiveRoomId, socket, setMessages, setRooms, setGroupDetails, reloadRooms],
+    [
+      currentUserId,
+      effectiveActiveRoomId,
+      socket,
+      setMessages,
+      setRooms,
+      setGroupDetails,
+      reloadRooms,
+    ],
   );
 
   // Message recalled handler
@@ -212,9 +251,12 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         payload.roomId ??
         (() => {
           const counterpartUserId =
-            payload.senderId === currentUserId ? payload.receiverId : payload.senderId;
+            payload.senderId === currentUserId
+              ? payload.receiverId
+              : payload.senderId;
           return (
-            roomByPeer.get(counterpartUserId) ?? toPrivateRoomId(currentUserId, counterpartUserId)
+            roomByPeer.get(counterpartUserId) ??
+            toPrivateRoomId(currentUserId, counterpartUserId)
           );
         })();
 
@@ -231,7 +273,8 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
           ),
         );
 
-        const latestMessage = updatedRoomMessages[updatedRoomMessages.length - 1];
+        const latestMessage =
+          updatedRoomMessages[updatedRoomMessages.length - 1];
 
         if (latestMessage) {
           setRooms((prevRooms) =>
@@ -263,9 +306,12 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         payload.roomId ??
         (() => {
           const counterpartUserId =
-            payload.senderId === currentUserId ? payload.receiverId : payload.senderId;
+            payload.senderId === currentUserId
+              ? payload.receiverId
+              : payload.senderId;
           return (
-            roomByPeer.get(counterpartUserId) ?? toPrivateRoomId(currentUserId, counterpartUserId)
+            roomByPeer.get(counterpartUserId) ??
+            toPrivateRoomId(currentUserId, counterpartUserId)
           );
         })();
 
@@ -293,16 +339,17 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       const isGroupTyping = Boolean(payload.roomId);
       const isCurrentRoom = isGroupTyping
         ? payload.roomId === effectiveActiveRoomId
-        : payload.senderId === peerUserId && payload.receiverId === currentUserId;
+        : payload.senderId === peerUserId &&
+          payload.receiverId === currentUserId;
 
       if (!isCurrentRoom) return;
 
       setTypingText(
         payload.isTyping
           ? isGroupTyping
-            ? 'Có người đang nhập...'
-            : 'Typing...'
-          : '',
+            ? "Có người đang nhập..."
+            : "Typing..."
+          : "",
       );
 
       if (typingTimeoutRef.current) {
@@ -310,7 +357,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       }
 
       typingTimeoutRef.current = window.setTimeout(() => {
-        setTypingText('');
+        setTypingText("");
       }, 1500);
     },
     [effectiveActiveRoomId, peerUserId, currentUserId, setTypingText],
@@ -328,7 +375,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         const existed = prev.find((room) => room.id === payload.roomId);
         const nextItem: ChatRoomSummary = {
           id: payload.roomId,
-          roomType: 'GROUP',
+          roomType: "GROUP",
           title: payload.title,
           peerUserId: payload.roomId,
           peerName: payload.title,
@@ -337,12 +384,16 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
           emoji: payload.emoji,
           memberCount: payload.memberCount,
           preview:
-            payload.lastMessagePreview ?? existed?.preview ?? 'Bắt đầu trò chuyện trong nhóm',
+            payload.lastMessagePreview ??
+            existed?.preview ??
+            "Bắt đầu trò chuyện trong nhóm",
           lastMessageAt:
-            payload.lastMessageAt ?? existed?.lastMessageAt ?? new Date().toISOString(),
+            payload.lastMessageAt ??
+            existed?.lastMessageAt ??
+            new Date().toISOString(),
           age: payload.lastMessageAt
             ? toAgeLabel(payload.lastMessageAt)
-            : (existed?.age ?? 'Now'),
+            : (existed?.age ?? "Now"),
           unreadCount: existed?.unreadCount ?? 0,
           isPeerOnline: false,
         };
@@ -361,7 +412,35 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
   // Group member left handler
   const onGroupMemberLeft = useCallback(
-    (payload: { roomId: string; userId: string; payload?: GroupRoomDetails }) => {
+    (payload: {
+      roomId: string;
+      userId: string;
+      payload?: GroupRoomDetails;
+    }) => {
+      if (payload.userId === currentUserId) {
+        setRooms((prev) => prev.filter((room) => room.id !== payload.roomId));
+        setGroupDetails((prev) => {
+          if (!prev[payload.roomId]) return prev;
+
+          const next = { ...prev };
+          delete next[payload.roomId];
+          return next;
+        });
+
+        if (props.activeRoomId === payload.roomId) {
+          props.setActiveRoomId?.("");
+        }
+
+        if (props.groupCallRoomId === payload.roomId) {
+          setGroupCallRoomId("");
+          setGroupCallMode(null);
+          setGroupCallDirection(null);
+          setPendingGroupCall(null);
+        }
+
+        return;
+      }
+
       if (payload.payload) {
         onGroupRoomUpdated(payload.payload);
       }
@@ -373,19 +452,36 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
           ...prev,
           [payload.roomId]: {
             ...existing,
-            members: existing.members.filter((member) => member.userId !== payload.userId),
+            members: existing.members.filter(
+              (member) => member.userId !== payload.userId,
+            ),
             memberCount: Math.max(0, existing.memberCount - 1),
           },
         };
       });
     },
-    [onGroupRoomUpdated, setGroupDetails],
+    [
+      currentUserId,
+      onGroupRoomUpdated,
+      setRooms,
+      setGroupDetails,
+      props.activeRoomId,
+      props.setActiveRoomId,
+      props.groupCallRoomId,
+      setGroupCallRoomId,
+      setGroupCallMode,
+      setGroupCallDirection,
+      setPendingGroupCall,
+    ],
   );
 
   // Group call started handler
   const onGroupCallStarted = useCallback(
     async (payload: GroupCallStartedPayload) => {
-      if (payload.roomId === props.groupCallRoomId && props.groupCallMode === payload.callMode) {
+      if (
+        payload.roomId === props.groupCallRoomId &&
+        props.groupCallMode === payload.callMode
+      ) {
         return;
       }
 
@@ -403,11 +499,11 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         setPendingGroupCall(null);
         setGroupCallRoomId(payload.roomId);
         setGroupCallMode(payload.callMode);
-        setGroupCallDirection('outgoing');
+        setGroupCallDirection("outgoing");
         return;
       }
 
-      setGroupCallRoomId('');
+      setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
       setPendingGroupCall({
@@ -440,12 +536,19 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         }
       }
 
-      setGroupCallRoomId('');
+      setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
       setPendingGroupCall(null);
     },
-    [props.groupCallRoomId, props.pendingGroupCall, setGroupCallRoomId, setGroupCallMode, setGroupCallDirection, setPendingGroupCall],
+    [
+      props.groupCallRoomId,
+      props.pendingGroupCall,
+      setGroupCallRoomId,
+      setGroupCallMode,
+      setGroupCallDirection,
+      setPendingGroupCall,
+    ],
   );
 
   // Group dissolved handler
@@ -461,17 +564,25 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       });
 
       if (props.activeRoomId === payload.roomId) {
-        props.setActiveRoomId?.('');
+        props.setActiveRoomId?.("");
       }
 
       if (props.groupCallRoomId === payload.roomId) {
-        setGroupCallRoomId('');
+        setGroupCallRoomId("");
         setGroupCallMode(null);
         setGroupCallDirection(null);
         setPendingGroupCall(null);
       }
     },
-    [props, setRooms, setGroupDetails, setGroupCallRoomId, setGroupCallMode, setGroupCallDirection, setPendingGroupCall],
+    [
+      props,
+      setRooms,
+      setGroupDetails,
+      setGroupCallRoomId,
+      setGroupCallMode,
+      setGroupCallDirection,
+      setPendingGroupCall,
+    ],
   );
 
   // Incoming call handler
@@ -479,7 +590,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
     (payload: {
       senderId: string;
       senderName: string;
-      callMode: 'voice' | 'video';
+      callMode: "voice" | "video";
       sessionId: string;
       isOnline: boolean;
     }) => {
@@ -514,7 +625,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
       setRooms((prev) =>
         prev.map((room) =>
-          room.roomType === 'PRIVATE' && room.peerUserId === payload.userId
+          room.roomType === "PRIVATE" && room.peerUserId === payload.userId
             ? { ...room, isPeerOnline: payload.isOnline }
             : room,
         ),
@@ -526,7 +637,10 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
         for (const [roomId, details] of Object.entries(prev)) {
           const updatedMembers = details.members.map((member) => {
-            if (member.userId !== payload.userId || member.isOnline === payload.isOnline) {
+            if (
+              member.userId !== payload.userId ||
+              member.isOnline === payload.isOnline
+            ) {
               return member;
             }
 

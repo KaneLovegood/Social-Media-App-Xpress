@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "@/components/common/Icon";
 import { ChatRoomSummary } from "@/lib/chat-rooms";
 import {
@@ -27,6 +27,8 @@ interface ChatInfoPanelProps {
   onDeleteChatHistory?: () => Promise<void>;
   onMembersAdded?: () => void;
   onGroupDetailsChange?: (nextDetails: GroupRoomDetails) => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 function initials(value: string) {
@@ -111,6 +113,8 @@ function MemberItem({
 }) {
   const isSelf = member.userId === currentUserId;
   const isAdmin_ = member.role === "ADMIN";
+  const canManageMember = isAdmin && !isSelf;
+  const roleLabel = isAdmin_ ? "QUẢN TRỊ" : "THÀNH VIÊN";
 
   return (
     <div className="group flex flex-col justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:shadow-sm">
@@ -128,7 +132,7 @@ function MemberItem({
               : "bg-slate-100 text-slate-600"
           }`}
         >
-          {member.role}
+          {roleLabel}
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
@@ -145,7 +149,7 @@ function MemberItem({
             </>
           )}
         </div>
-        {isAdmin && !isSelf ? (
+        {canManageMember ? (
           <div className="flex items-center gap-2">
             {!isAdmin_ ? (
               <button
@@ -155,7 +159,7 @@ function MemberItem({
                 className="rounded-md bg-sky-100 px-3 py-1.5 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Nâng lên Admin"
               >
-                Promote
+                Bổ nhiệm
               </button>
             ) : null}
             <button
@@ -165,7 +169,7 @@ function MemberItem({
               className="rounded-md bg-red-100 px-3 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
               title="Xóa khỏi nhóm"
             >
-              Remove
+              Xóa
             </button>
           </div>
         ) : null}
@@ -184,6 +188,8 @@ export default function ChatInfoPanel({
   onDeleteChatHistory,
   onMembersAdded,
   onGroupDetailsChange,
+  isMobileOpen = false,
+  onCloseMobile,
 }: ChatInfoPanelProps) {
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [showMediaGallery, setShowMediaGallery] = useState(false);
@@ -191,6 +197,8 @@ export default function ChatInfoPanel({
   const [showDeleteHistory, setShowDeleteHistory] = useState(false);
   const [showShareQr, setShowShareQr] = useState(false);
   const [shareLink, setShareLink] = useState("");
+  const [isConversationPinned, setIsConversationPinned] = useState(false);
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(true);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [memberActionLoadingUserId, setMemberActionLoadingUserId] = useState<
     string | null
@@ -222,13 +230,21 @@ export default function ChatInfoPanel({
   }
 
   const isGroup = room.roomType === "GROUP";
-  const isGroupAdmin = groupDetails?.currentUserRole === "ADMIN";
+  const currentMemberRole = groupDetails?.members.find(
+    (member) => member.userId === currentUserId,
+  )?.role;
+  const isGroupAdmin =
+    currentMemberRole === "ADMIN" || groupDetails?.currentUserRole === "ADMIN";
   const avatarLabel = room.emoji ?? initials(room.title);
   const subtitle = isGroup
     ? `${groupDetails?.memberCount ?? room.memberCount ?? 0} thành viên`
     : room.isPeerOnline
       ? "Đang hoạt động"
       : "Ngoại tuyến";
+
+  useEffect(() => {
+    setIsConversationPinned(false);
+  }, [room.id]);
 
   const loadMediaAndFiles = async () => {
     if (!isGroup) return;
@@ -396,248 +412,286 @@ export default function ChatInfoPanel({
 
   return (
     <>
-      <aside className="hidden h-full w-96 border-l border-slate-200 bg-white shadow-[0_0_40px_rgba(15,23,42,0.04)] lg:flex">
-        <div className="flex h-full w-full flex-col overflow-y-auto">
+      <aside
+        className={
+          isMobileOpen
+            ? "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-sm border-l border-slate-200 bg-white shadow-[0_0_40px_rgba(15,23,42,0.18)] lg:hidden"
+            : "hidden h-full w-96 shrink-0 border-l border-slate-200 bg-white shadow-[0_0_40px_rgba(15,23,42,0.04)] lg:flex"
+        }
+      >
+        <div className="flex h-full w-full flex-col">
           <div className="border-b border-slate-200 px-6 py-4">
-            <p className="flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Icon name="circle-info" size="lg" />
-              Thông tin hội thoại
-            </p>
-          </div>
-
-          <div className="border-b border-slate-200 px-6 py-6">
-            <div className="flex flex-col items-center text-center">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
-                {avatarLabel}
-              </div>
-              <div className="mt-4">
-                <h2 className="max-w-56 truncate text-lg font-bold text-slate-900">
-                  {room.title}
-                </h2>
-                <p className="mt-0.5 flex items-center justify-center gap-1 text-sm text-slate-500">
-                  <Icon
-                    name={isGroup ? "users" : "user"}
-                    size="sm"
-                    className="text-slate-400"
-                  />
-                  {subtitle}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              {isGroup ? (
-                <>
-                  <ActionButton
-                    icon="user-plus"
-                    label="Thêm thành viên"
-                    onClick={() => setShowAddMembers(true)}
-                  />
-                  <ActionButton
-                    icon="share"
-                    label={isShareLoading ? "Đang tạo QR" : "Share QR"}
-                    onClick={() => {
-                      void handleOpenShareQr();
-                    }}
-                  />
-                  {isGroupAdmin ? (
-                    <ActionButton
-                      icon="trash"
-                      label="Giải tán nhóm"
-                      onClick={onDissolveGroup}
-                      variant="danger"
-                    />
-                  ) : (
-                    <ActionButton
-                      icon="sign-out-alt"
-                      label="Rời nhóm"
-                      onClick={onLeaveGroup}
-                      variant="danger"
-                    />
-                  )}
-                </>
-              ) : (
-                <>
-                  <ActionButton
-                    icon="users"
-                    label="Tạo nhóm"
-                    onClick={onOpenCreateGroup}
-                  />
-                  <ActionButton
-                    icon="link"
-                    label="Mời vào nhóm"
-                    onClick={onOpenCreateGroup}
-                  />
-                  <ActionButton
-                    icon="trash"
-                    label="Xóa lịch sử"
-                    onClick={() => setShowDeleteHistory(true)}
-                    variant="danger"
-                  />
-                </>
-              )}
+            <div className="flex items-center justify-between gap-3">
+              <p className="flex items-center justify-center gap-2 text-center text-base font-semibold text-slate-900">
+                <Icon name="circle-info" size="lg" />
+                Thông tin hội thoại
+              </p>
+              {isMobileOpen ? (
+                <button
+                  type="button"
+                  onClick={onCloseMobile}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Đóng thông tin hội thoại"
+                >
+                  <Icon name="xmark" size="lg" />
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-            {isGroup && groupDetails ? (
-              <SectionCard title="Thành viên">
-                <div className="space-y-2">
-                  {groupDetails.members.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      Chưa có thành viên nào
-                    </p>
-                  ) : (
-                    groupDetails.members.slice(0, 5).map((member) => (
-                      <MemberItem
-                        key={member.userId}
-                        member={member}
-                        currentUserId={currentUserId}
-                        isAdmin={isGroupAdmin}
-                        isLoadingAction={
-                          memberActionLoadingUserId === member.userId
-                        }
-                        onPromote={() => {
-                          void handlePromoteMember(member.userId);
-                        }}
-                        onRemove={() => {
-                          void handleRemoveMember(member.userId);
-                        }}
-                      />
-                    ))
-                  )}
+          <div className="scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-slate-200 px-6 py-6">
+              <div className="flex flex-col items-center text-center">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
+                  {avatarLabel}
                 </div>
-              </SectionCard>
-            ) : null}
-
-            {isGroup && groupDetails ? (
-              <SectionCard title="Link mời">
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                  <Icon name="link" size="sm" className="text-slate-400" />
-                  <code className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600">
-                    {groupDetails.inviteLink}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleOpenShareQr();
-                    }}
-                    className="rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700"
-                  >
-                    QR
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleCopyInviteLink();
-                    }}
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </SectionCard>
-            ) : null}
-
-            {groupActionError ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                {groupActionError}
-              </div>
-            ) : null}
-
-            <SectionCard
-              title="Ảnh & Video"
-              action={{ label: "Xem tất cả", onClick: handleOpenMediaGallery }}
-            >
-              {isLoadingMedia && images.length === 0 ? (
-                <div className="py-8 text-center text-sm text-slate-500">
-                  Đang tải...
-                </div>
-              ) : images.length === 0 ? (
-                <div className="py-8 text-center">
-                  <Icon
-                    name="image"
-                    size="2xl"
-                    className="mx-auto mb-2 text-slate-300"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Chưa có ảnh hoặc video
+                <div className="mt-4">
+                  <h2 className="max-w-56 truncate text-lg font-bold text-slate-900">
+                    {room.title}
+                  </h2>
+                  <p className="mt-0.5 flex items-center justify-center gap-1 text-sm text-slate-500">
+                    <Icon
+                      name={isGroup ? "users" : "user"}
+                      size="sm"
+                      className="text-slate-400"
+                    />
+                    {subtitle}
                   </p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-4 gap-2">
-                  {images.slice(0, 8).map((image) => (
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-3">
+                {isGroup ? (
+                  <>
+                    <ActionButton
+                      icon="user-plus"
+                      label="Thêm thành viên"
+                      onClick={() => setShowAddMembers(true)}
+                    />
+                    <ActionButton
+                      icon="share"
+                      label={isShareLoading ? "Đang tạo QR" : "Chia sẻ QR"}
+                      onClick={() => {
+                        void handleOpenShareQr();
+                      }}
+                    />
+                    {isGroupAdmin ? (
+                      <ActionButton
+                        icon="trash"
+                        label="Giải tán nhóm"
+                        onClick={onDissolveGroup}
+                        variant="danger"
+                      />
+                    ) : (
+                      <ActionButton
+                        icon="sign-out-alt"
+                        label="Rời nhóm"
+                        onClick={onLeaveGroup}
+                        variant="danger"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <ActionButton
+                      icon="users"
+                      label="Tạo nhóm"
+                      onClick={onOpenCreateGroup}
+                    />
+                    <ActionButton
+                      icon="thumbtack"
+                      label={
+                        isConversationPinned
+                          ? "Bỏ ghim hội thoại"
+                          : "Ghim hội thoại"
+                      }
+                      onClick={() => {
+                        setIsConversationPinned((prev) => !prev);
+                      }}
+                    />
+                    <ActionButton
+                      icon={isNotificationEnabled ? "bell" : "bell-slash"}
+                      label={
+                        isNotificationEnabled
+                          ? "Thông báo bật"
+                          : "Thông báo tắt"
+                      }
+                      onClick={() => {
+                        setIsNotificationEnabled((prev) => !prev);
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              {isGroup && groupDetails ? (
+                <SectionCard title="Thành viên">
+                  <div className="space-y-2">
+                    {groupDetails.members.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        Chưa có thành viên nào
+                      </p>
+                    ) : (
+                      groupDetails.members.slice(0, 5).map((member) => (
+                        <MemberItem
+                          key={member.userId}
+                          member={member}
+                          currentUserId={currentUserId}
+                          isAdmin={isGroupAdmin}
+                          isLoadingAction={
+                            memberActionLoadingUserId === member.userId
+                          }
+                          onPromote={() => {
+                            void handlePromoteMember(member.userId);
+                          }}
+                          onRemove={() => {
+                            void handleRemoveMember(member.userId);
+                          }}
+                        />
+                      ))
+                    )}
+                  </div>
+                </SectionCard>
+              ) : null}
+
+              {isGroup && groupDetails ? (
+                <SectionCard title="Link mời">
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                    <Icon name="link" size="sm" className="text-slate-400" />
+                    <code className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600">
+                      {groupDetails.inviteLink}
+                    </code>
                     <button
                       type="button"
-                      key={`${image.timestamp}-${image.url}`}
-                      className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
-                      onClick={handleOpenMediaGallery}
+                      onClick={() => {
+                        void handleOpenShareQr();
+                      }}
+                      className="rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-700"
                     >
-                      <img
-                        src={image.url}
-                        alt={image.timestamp}
-                        className="h-full w-full object-cover"
-                      />
+                      QR
                     </button>
-                  ))}
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="File chia sẻ"
-              action={{ label: "Xem tất cả", onClick: handleOpenFilesList }}
-            >
-              {isLoadingMedia && files.length === 0 ? (
-                <div className="py-6 text-center text-sm text-slate-500">
-                  Đang tải...
-                </div>
-              ) : files.length === 0 ? (
-                <div className="py-6 text-center">
-                  <Icon
-                    name="file"
-                    size="2xl"
-                    className="mx-auto mb-2 text-slate-300"
-                  />
-                  <p className="text-xs text-slate-500">Chưa có file nào</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {files.slice(0, 3).map((file) => (
-                    <div
-                      key={`${file.name}-${file.timestamp}`}
-                      className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleCopyInviteLink();
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
-                      <Icon name="file" size="lg" className="text-slate-500" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-slate-900">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {file.size} • {file.timestamp}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </SectionCard>
+                      Sao chép
+                    </button>
+                  </div>
+                </SectionCard>
+              ) : null}
 
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-red-700">
-                <Icon name="trash" size="sm" />
-                Xóa lịch sử
-              </h3>
-              <p className="mt-2 text-xs text-red-600">
-                Xóa tất cả tin nhắn trong cuộc trò chuyện này.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowDeleteHistory(true)}
-                className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+              {groupActionError ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  {groupActionError}
+                </div>
+              ) : null}
+
+              <SectionCard
+                title="Ảnh & Video"
+                action={{
+                  label: "Xem tất cả",
+                  onClick: handleOpenMediaGallery,
+                }}
               >
-                Xóa lịch sử
-              </button>
+                {isLoadingMedia && images.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-500">
+                    Đang tải...
+                  </div>
+                ) : images.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Icon
+                      name="image"
+                      size="2xl"
+                      className="mx-auto mb-2 text-slate-300"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Chưa có ảnh hoặc video
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2">
+                    {images.slice(0, 8).map((image) => (
+                      <button
+                        type="button"
+                        key={`${image.timestamp}-${image.url}`}
+                        className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
+                        onClick={handleOpenMediaGallery}
+                      >
+                        <img
+                          src={image.url}
+                          alt={image.timestamp}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+
+              <SectionCard
+                title="File chia sẻ"
+                action={{ label: "Xem tất cả", onClick: handleOpenFilesList }}
+              >
+                {isLoadingMedia && files.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-slate-500">
+                    Đang tải...
+                  </div>
+                ) : files.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <Icon
+                      name="file"
+                      size="2xl"
+                      className="mx-auto mb-2 text-slate-300"
+                    />
+                    <p className="text-xs text-slate-500">Chưa có file nào</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {files.slice(0, 3).map((file) => (
+                      <div
+                        key={`${file.name}-${file.timestamp}`}
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                      >
+                        <Icon
+                          name="file"
+                          size="lg"
+                          className="text-slate-500"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-slate-900">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {file.size} • {file.timestamp}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                  <Icon name="trash" size="sm" />
+                  Xóa lịch sử
+                </h3>
+                <p className="mt-2 text-xs text-red-600">
+                  Xóa tất cả tin nhắn trong cuộc trò chuyện này.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteHistory(true)}
+                  className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                >
+                  Xóa lịch sử
+                </button>
+              </div>
             </div>
           </div>
         </div>

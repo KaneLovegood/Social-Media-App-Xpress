@@ -15,6 +15,9 @@ export default function CreateGroupModal({
   onClose,
   onCreated,
 }: CreateGroupModalProps) {
+  const MIN_GROUP_MEMBERS = 3;
+  const MIN_SELECTED_OTHERS = MIN_GROUP_MEMBERS - 1;
+
   const [title, setTitle] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
@@ -41,9 +44,13 @@ export default function CreateGroupModal({
     };
   }, [isOpen]);
 
+  const selectedCount = selectedMemberIds.length;
   const canSubmit = useMemo(
-    () => title.trim().length > 0 && !isSubmitting,
-    [isSubmitting, title],
+    () =>
+      title.trim().length > 0 &&
+      selectedCount >= MIN_SELECTED_OTHERS &&
+      !isSubmitting,
+    [MIN_SELECTED_OTHERS, isSubmitting, selectedCount, title],
   );
 
   const filteredFriends = useMemo(() => {
@@ -75,6 +82,13 @@ export default function CreateGroupModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (selectedCount < MIN_SELECTED_OTHERS) {
+      setError(
+        `Nhóm cần tối thiểu ${MIN_GROUP_MEMBERS} người (bạn + ${MIN_SELECTED_OTHERS} thành viên).`,
+      );
+      return;
+    }
+
     if (!canSubmit) return;
 
     setIsSubmitting(true);
@@ -223,7 +237,7 @@ export default function CreateGroupModal({
                 Đã chọn
               </p>
               <span className="rounded-full bg-[#e5efff] px-2.5 py-1 text-xs font-semibold text-[#2a76eb]">
-                {selectedMemberIds.length}/100
+                {selectedCount}/100
               </span>
             </div>
 
@@ -276,6 +290,11 @@ export default function CreateGroupModal({
               >
                 {isSubmitting ? "Đang tạo..." : "Tạo nhóm ngay"}
               </button>
+              {selectedCount < MIN_SELECTED_OTHERS ? (
+                <p className="mt-2 text-xs text-[#c2410c]">
+                  Cần chọn ít nhất {MIN_SELECTED_OTHERS} thành viên để tạo nhóm.
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={onClose}

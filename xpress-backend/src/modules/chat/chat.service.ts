@@ -258,6 +258,17 @@ export class ChatService {
     actorUserId: string,
     dto: CreateGroupDto,
   ): Promise<GroupRoomDetails> {
+    const initialMemberIds = Array.from(
+      new Set([actorUserId, ...(dto.memberUserIds ?? [])]),
+    ).filter((userId) => userId !== actorUserId);
+
+    const totalMembers = 1 + initialMemberIds.length;
+    if (totalMembers < 3) {
+      throw new BadRequestException(
+        'Nhom can it nhat 3 nguoi (bao gom ban va 2 thanh vien khac)',
+      );
+    }
+
     const room = await this.groupRoomsRepository.createGroupRoom({
       title: dto.title,
       description: dto.description,
@@ -265,10 +276,6 @@ export class ChatService {
       emoji: dto.emoji,
       createdByUserId: actorUserId,
     });
-
-    const initialMemberIds = Array.from(
-      new Set([actorUserId, ...(dto.memberUserIds ?? [])]),
-    ).filter((userId) => userId !== actorUserId);
 
     for (const memberUserId of initialMemberIds) {
       const exists = await this.usersRepository.findByUserId(memberUserId);

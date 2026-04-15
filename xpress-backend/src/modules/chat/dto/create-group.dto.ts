@@ -1,4 +1,5 @@
 import {
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsOptional,
@@ -9,7 +10,7 @@ import {
 export class CreateGroupDto {
   @IsString()
   @MaxLength(120)
-  title: string;
+  title!: string;
 
   @IsOptional()
   @IsString()
@@ -26,9 +27,11 @@ export class CreateGroupDto {
   @MaxLength(16)
   emoji?: string;
 
-  @IsOptional()
   @IsArray()
+  @ArrayMinSize(2, {
+    message: 'Nhom can it nhat 3 nguoi (bao gom ban va 2 thanh vien khac)',
+  })
   @ArrayUnique()
   @IsString({ each: true })
-  memberUserIds?: string[];
+  memberUserIds!: string[];
 }
