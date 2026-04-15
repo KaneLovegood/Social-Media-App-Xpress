@@ -187,8 +187,12 @@ export class ChatService {
       conversationId,
       senderId,
       receiverId: dto.receiverId,
-      content: dto.content,
-      messageType: 'TEXT',
+      content: dto.content || '',
+      messageType: dto.messageType || 'TEXT',
+      fileUrl: dto.fileUrl,
+      fileName: dto.fileName,
+      fileSize: dto.fileSize,
+      mimeType: dto.mimeType,
       isDeleted: false,
       isRecalled: false,
       createdAt: now,
@@ -350,7 +354,7 @@ export class ChatService {
     if (allMembers.length === 0) {
       throw new Error('Cannot fetch group details after leaving');
     }
-    return this.buildGroupRoomDetails(allMembers[0]!.userId, roomId);
+    return this.buildGroupRoomDetails(allMembers[0].userId, roomId);
   }
 
   async promoteGroupMember(
@@ -430,8 +434,12 @@ export class ChatService {
       roomType: 'GROUP',
       senderId,
       receiverId: room.roomId,
-      content: dto.content,
-      messageType: 'TEXT',
+      content: dto.content || '',
+      messageType: dto.messageType || 'TEXT',
+      fileUrl: dto.fileUrl,
+      fileName: dto.fileName,
+      fileSize: dto.fileSize,
+      mimeType: dto.mimeType,
       isDeleted: false,
       isRecalled: false,
       createdAt: now,

@@ -58,10 +58,24 @@ export default function AttachmentPreviewTray({
               </div>
             )}
 
+            {item.progress !== undefined && item.progress < 100 && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-xs font-bold text-white drop-shadow-md">{item.progress}%</span>
+                  <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/30 backdrop-blur-sm">
+                    <div 
+                      className="h-full bg-white transition-all duration-200 ease-out" 
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => onRemoveAttachment(item.id)}
-              className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white"
+              className="absolute right-1 top-1 z-20 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-white shadow-sm transition hover:bg-black/75 hover:scale-105 active:scale-95"
               aria-label="Remove attachment"
             >
               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2">

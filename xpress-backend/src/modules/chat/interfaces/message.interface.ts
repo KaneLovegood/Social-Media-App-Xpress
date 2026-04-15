@@ -5,7 +5,7 @@ export interface ReplyPreview {
   content: string;
 }
 
-export type MessageType = 'TEXT' | 'CALL_LOG';
+export type MessageType = 'TEXT' | 'CALL_LOG' | 'IMAGE' | 'FILE';
 
 export type CallLogOutcome =
   | 'self_cancelled'
@@ -34,6 +34,10 @@ export interface MessageEntity {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
   callLog?: CallLogPayload;
   replyToMessageId?: string;
   replyPreview?: ReplyPreview;

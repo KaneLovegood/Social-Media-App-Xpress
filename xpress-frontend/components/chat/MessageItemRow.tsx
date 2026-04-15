@@ -16,6 +16,7 @@ interface MessageItemRowProps {
   onSelectMany: (message: ChatMessage) => void;
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: 'voice' | 'video') => void;
+  onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
 }
 
 function getInitial(name: string): string {
@@ -36,6 +37,7 @@ export default function MessageItemRow({
   onSelectMany,
   onViewDetails,
   onRedial,
+  onImageClick,
 }: MessageItemRowProps) {
   const isOwn = message.senderId === currentUserId;
   const canRecall = isOwn;
@@ -67,6 +69,7 @@ export default function MessageItemRow({
               currentUserName={currentUserName}
               peerName={peerName}
               onRedial={onRedial}
+              onImageClick={onImageClick}
             />
 
             <div className={`absolute top-1/2 -translate-y-1/2 ${isOwn ? 'left-0' : 'right-0'}`}>

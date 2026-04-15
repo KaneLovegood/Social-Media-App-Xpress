@@ -17,8 +17,10 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { ChatActionDto } from './dto/chat-action.dto';
 import { GroupMemberDto } from './dto/group-member.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
+import { PresignedUrlDto } from './dto/presigned-url.dto';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+import { StorageService } from '../storage/storage.service';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -35,6 +37,7 @@ export class ChatController {
     private readonly chatGateway: ChatGateway,
     private readonly usersRepository: UsersRepository,
     private readonly presenceService: PresenceService,
+    private readonly storageService: StorageService,
   ) {}
 
   @UseGuards(AuthGuard('jwt'))
@@ -271,6 +274,23 @@ export class ChatController {
   }
 
   @UseGuards(AuthGuard('jwt'))
+  @Post('presigned-url')
+  async getPresignedUrl(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: PresignedUrlDto,
+  ): Promise<unknown> {
+    const actorUserId = request.user?.userId;
+    if (!actorUserId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return await this.storageService.generatePresignedUrl(
+      body.fileName,
+      body.contentType,
+    );
+  }
+
+  @UseGuards(AuthGuard('jwt'))
   @Post('actions')
   async postAction(
     @Req() request: AuthenticatedRequest,
@@ -292,7 +312,7 @@ export class ChatController {
           typeof result.data === 'object' &&
           result.data !== null &&
           'sessionId' in result.data
-            ? (result.data.sessionId as string)
+            ? result.data.sessionId
             : '';
         this.chatGateway.broadcastIncomingCall(dto.peerUserId, {
           senderId: actorUserId,

@@ -1,11 +1,38 @@
-import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsUUID,
+  MaxLength,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+} from 'class-validator';
 
 export class SendMessageDto {
   @IsUUID()
   receiverId: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(4000)
-  content: string;
+  content?: string;
+
+  @IsOptional()
+  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'CALL_LOG'])
+  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'CALL_LOG';
+
+  @IsOptional()
+  @IsString()
+  fileUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  fileSize?: number;
+
+  @IsOptional()
+  @IsString()
+  mimeType?: string;
 }

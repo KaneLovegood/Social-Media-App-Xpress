@@ -8,17 +8,26 @@ import {
   useRef,
   useState,
 } from "react";
-import { ReplyPreview as ReplyPreviewType } from "@/lib/realtime/types";
+import { ReplyPreview as ReplyPreviewType, MessageType } from "@/lib/realtime/types";
+import { getPresignedUrl, uploadFileToS3 } from "@/lib/chat-upload";
 import ReplyPreview from "./ReplyPreview";
 import AttachmentPreviewTray from "./message-input/AttachmentPreviewTray";
 import ComposerInputRow from "./message-input/ComposerInputRow";
 import ComposerToolbar from "./message-input/ComposerToolbar";
 import { PendingAttachment } from "./message-input/types";
 
+export interface SendMessageOptions {
+  messageType?: MessageType;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+}
+
 interface MessageInputProps {
   replyTo?: ReplyPreviewType;
   onClearReply: () => void;
-  onSend: (content: string) => void;
+  onSend: (content: string, options?: SendMessageOptions) => void;
   onTyping: (isTyping: boolean) => void;
 }
 
@@ -48,6 +57,7 @@ export default function MessageInput({
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -85,8 +95,26 @@ export default function MessageInput({
 
     const valid: PendingAttachment[] = [];
     const tooLargeNames: string[] = [];
+    const invalidTypeNames: string[] = [];
+
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+    ];
 
     files.forEach((file) => {
+      if (!allowedTypes.includes(file.type)) {
+        invalidTypeNames.push(file.name);
+        return;
+      }
       if (file.size > MAX_ATTACHMENT_BYTES) {
         tooLargeNames.push(file.name);
         return;
@@ -94,11 +122,15 @@ export default function MessageInput({
       valid.push(toPendingAttachment(file));
     });
 
-    if (tooLargeNames.length > 0) {
-      setAttachmentError(`File qua 10MB: ${tooLargeNames.join(", ")}`);
-    } else {
-      setAttachmentError("");
+    const errorMessages: string[] = [];
+    if (invalidTypeNames.length > 0) {
+      errorMessages.push(`Định dạng không hỗ trợ: ${invalidTypeNames.join(", ")}`);
     }
+    if (tooLargeNames.length > 0) {
+      errorMessages.push(`Vượt quá 10MB: ${tooLargeNames.join(", ")}`);
+    }
+    
+    setAttachmentError(errorMessages.join(" | "));
 
     if (valid.length > 0) {
       setAttachments((prev) => [...prev, ...valid]);
@@ -132,18 +164,53 @@ export default function MessageInput({
     });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSend) return;
+    if (!canSend || isUploading) return;
 
-    const attachmentSummary = attachments
-      .map((item) => `[file:${item.file.name}]`)
-      .join(" ");
-    const payload = [content.trim(), attachmentSummary]
-      .filter(Boolean)
-      .join("\n");
+    if (attachments.length > 0) {
+      setIsUploading(true);
+      try {
+        for (let i = 0; i < attachments.length; i++) {
+          const attachment = attachments[i];
+          const file = attachment.file;
+          const { uploadUrl, publicUrl } = await getPresignedUrl(
+            file.name,
+            file.type,
+            file.size
+          );
+          await uploadFileToS3(uploadUrl, file, (percent) => {
+            setAttachments((prev) =>
+              prev.map((item) =>
+                item.id === attachment.id ? { ...item, progress: percent } : item
+              )
+            );
+          });
+          
+          const messageType: MessageType = file.type.startsWith("image/") ? "IMAGE" : "FILE";
+          // Attach text to only the first sent file
+          const sentContent = i === 0 ? content.trim() : "";
+          
+          onSend(sentContent, {
+            messageType,
+            fileUrl: publicUrl,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to upload attachments", error);
+        setAttachmentError("Có lỗi xảy ra khi tải file lên, vui lòng thử lại.");
+        setIsUploading(false);
+        return; // Dừng lại nếu lỗi
+      } finally {
+        setIsUploading(false);
+      }
+    } else if (content.trim()) {
+      onSend(content.trim());
+    }
 
-    onSend(payload);
     setContent("");
     clearAttachments();
     setAttachmentError("");
@@ -274,7 +341,7 @@ export default function MessageInput({
 
       <ComposerInputRow
         content={content}
-        canSend={canSend}
+        canSend={canSend && !isUploading}
         textareaRef={textareaRef}
         onOpenFilePicker={openFilePicker}
         onContentChange={handleContentChange}

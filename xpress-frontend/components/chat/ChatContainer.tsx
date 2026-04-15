@@ -26,6 +26,7 @@ import CreateGroupModal from './CreateGroupModal';
 import VideoCallComponent from '../video/VideoCallComponent';
 import GroupCallComponent from '../video/GroupCallComponent';
 import ChatContent from './ChatContent';
+import { SendMessageOptions } from './MessageInput';
 import ChatNoRoomWelcome from './ChatNoRoomWelcome';
 import ChatSidebar, { SidebarChatItem } from './ChatSidebar';
 type CallMode = "voice" | "video" | null;
@@ -966,13 +967,18 @@ export default function ChatContainer({
     });
   }, [activeMessages]);
 
-  const handleSend = (content: string) => {
+  const handleSend = (content: string, options?: SendMessageOptions) => {
     if (!socketRef.current || !effectiveActiveRoomId) return;
+
+    const payload = {
+      content,
+      ...options,
+    };
 
     if (activeRoom?.roomType === "GROUP") {
       socketRef.current.emit(CHAT_EVENTS.GROUP_SEND, {
         roomId: effectiveActiveRoomId,
-        content,
+        ...payload,
       });
       return;
     }
@@ -982,8 +988,8 @@ export default function ChatContainer({
     if (replyTo) {
       socketRef.current.emit(CHAT_EVENTS.REPLY, {
         receiverId: peerUserId,
-        content,
         replyToMessageId: replyTo.messageId,
+        ...payload,
       });
       setReplyTo(undefined);
       return;
@@ -991,7 +997,7 @@ export default function ChatContainer({
 
     socketRef.current.emit(CHAT_EVENTS.SEND, {
       receiverId: peerUserId,
-      content,
+      ...payload,
     });
   };
 
@@ -1444,11 +1450,3 @@ export default function ChatContainer({
     </section>
   );
 }
-
-
-
-
-
-
-
-

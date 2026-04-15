@@ -141,9 +141,13 @@ export class UsersRepository {
     return phone.replace(/\s+/g, '').trim();
   }
 
-  private encodeCursor(lastEvaluatedKey?: Record<string, unknown>): string | null {
+  private encodeCursor(
+    lastEvaluatedKey?: Record<string, unknown>,
+  ): string | null {
     if (!lastEvaluatedKey) return null;
-    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString('base64');
+    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString(
+      'base64',
+    );
   }
 
   private decodeCursor(cursor?: string): Record<string, unknown> | undefined {
