@@ -32,6 +32,7 @@ export default function ChatMePage() {
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           User session not found. Please login again.
         </p>
+        <button onClick={() => router.push('/login')}>Login</button>
       </main>
     );
   }

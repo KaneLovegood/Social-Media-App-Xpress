@@ -25,7 +25,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           <div className="relative hidden min-h-[480px] items-center justify-center lg:flex">
             <Image
               src="/assets/—Pngtree—delivery person riding orange motor_23243503.png"
-              alt="Delivery rider"
+              alt="Shipper giao hàng"
               width={640}
               height={640}
               priority

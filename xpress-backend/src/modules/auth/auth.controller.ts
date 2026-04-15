@@ -12,9 +12,12 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -43,6 +46,24 @@ export class AuthController {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
+  }
+
+  @Post('google')
+  google(@Body() dto: GoogleAuthDto, @Req() req: Request) {
+    return this.authService.loginWithGoogle(dto, {
+      ipAddress: this.resolveIp(req),
+      userAgent: req.headers['user-agent'] ?? '',
+    });
+  }
+
+  @Post('otp/send')
+  sendOtp(@Body() dto: SendEmailOtpDto) {
+    return this.authService.sendEmailOtp(dto);
+  }
+
+  @Post('otp/verify')
+  verifyOtp(@Body() dto: VerifyEmailOtpDto) {
+    return this.authService.verifyEmailOtp(dto);
   }
 
   @Post('refresh')

@@ -1,17 +1,29 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomInt, randomUUID } from 'crypto';
+import { LoginTicket, OAuth2Client } from 'google-auth-library';
 import { JwtService } from '@nestjs/jwt';
 import { AuthSessionGateway } from './auth-session.gateway';
+import { EmailOtpService } from './email-otp.service';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
+import {
+  EmailOtpEntity,
+  EmailOtpPurpose,
+} from './interfaces/email-otp.interface';
 import { SessionEntity } from './interfaces/session.interface';
+import { EmailOtpRepository } from './repositories/email-otp.repository';
 import { UsersRepository } from './repositories/users.repository';
 import { SessionRepository } from './repositories/session.repository';
 import { UserEntity } from './interfaces/user.interface';
@@ -25,6 +37,12 @@ interface JwtPayload {
   exp?: number;
 }
 
+interface OtpTokenPayload {
+  type: 'otp';
+  email: string;
+  purpose: EmailOtpPurpose;
+}
+
 interface SessionClientContext {
   ipAddress?: string;
   userAgent?: string;
@@ -32,26 +50,36 @@ interface SessionClientContext {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly accessTokenExpiresIn = '10m';
+  private readonly otpTokenExpiresIn = '10m';
+  private readonly emailOtpExpiresInMs = 10 * 60 * 1000;
+  private readonly emailOtpMaxAttempts = 5;
   private readonly refreshTokenExpiresIn =
     process.env.REFRESH_TOKEN_EXPIRES_IN ?? '30d';
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
+  private readonly googleClient = new OAuth2Client();
 
   constructor(
     private readonly usersRepository: UsersRepository,
+    private readonly emailOtpRepository: EmailOtpRepository,
     private readonly sessionRepository: SessionRepository,
     private readonly authSessionGateway: AuthSessionGateway,
+    private readonly emailOtpService: EmailOtpService,
     private readonly jwtService: JwtService,
   ) {}
 
   async register(dto: RegisterDto, context: SessionClientContext = {}) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const otpToken = `${dto.otpToken}`;
+    await this.assertVerifiedOtpToken(normalizedEmail, otpToken, 'REGISTER');
+
     const existed = await this.usersRepository.findByEmail(dto.email);
     if (existed) throw new ConflictException('Email đã tồn tại');
 
     const userId = randomUUID();
     const now = new Date().toISOString();
-    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
     const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
     const passwordHash = await bcrypt.hash(dto.password, rounds);
 
@@ -92,6 +120,174 @@ export class AuthService {
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
       deviceName: dto.deviceName,
+      timezone: dto.timezone,
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
+  }
+
+  async sendEmailOtp(dto: SendEmailOtpDto) {
+    const purpose: EmailOtpPurpose = dto.purpose ?? 'REGISTER';
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+
+    if (purpose === 'REGISTER') {
+      const existed = await this.usersRepository.findByEmail(normalizedEmail);
+      if (existed) {
+        throw new ConflictException('Email đã tồn tại');
+      }
+    }
+
+    if (purpose === 'LOGIN') {
+      const existed = await this.usersRepository.findByEmail(normalizedEmail);
+      if (!existed) {
+        throw new BadRequestException('Email chưa được đăng ký');
+      }
+    }
+
+    const code = this.generateOtpCode();
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const codeHash = await bcrypt.hash(code, rounds);
+    const now = new Date().toISOString();
+    const expiresAt = new Date(
+      Date.now() + this.emailOtpExpiresInMs,
+    ).toISOString();
+
+    const otp: EmailOtpEntity = {
+      PK: `OTP#${normalizedEmail}`,
+      SK: `OTP#${purpose}`,
+      entityType: 'EMAIL_OTP',
+      email: normalizedEmail,
+      purpose,
+      codeHash,
+      expiresAt,
+      attempts: 0,
+      maxAttempts: this.emailOtpMaxAttempts,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.emailOtpRepository.upsertOtp(otp);
+    const channel = await this.emailOtpService.sendOtpEmail(
+      normalizedEmail,
+      code,
+      purpose,
+    );
+
+    return {
+      success: true,
+      purpose,
+      expiresAt,
+      channel,
+    };
+  }
+
+  async verifyEmailOtp(dto: VerifyEmailOtpDto) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const otp = await this.emailOtpRepository.findOtp(
+      normalizedEmail,
+      dto.purpose,
+    );
+    if (!otp) {
+      throw new BadRequestException('OTP không tồn tại hoặc đã hết hạn');
+    }
+
+    if (Date.parse(otp.expiresAt) <= Date.now()) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
+      throw new BadRequestException('OTP đã hết hạn');
+    }
+
+    if (otp.attempts >= otp.maxAttempts) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
+      throw new BadRequestException('OTP đã vượt quá số lần thử');
+    }
+
+    const matched = await bcrypt.compare(dto.code, otp.codeHash);
+    if (!matched) {
+      await this.emailOtpRepository.incrementAttempts(
+        normalizedEmail,
+        dto.purpose,
+      );
+      throw new BadRequestException('OTP không chính xác');
+    }
+
+    await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
+    const otpToken = await this.jwtService.signAsync<OtpTokenPayload>(
+      {
+        type: 'otp',
+        email: normalizedEmail,
+        purpose: dto.purpose,
+      },
+      {
+        expiresIn: this.otpTokenExpiresIn,
+      },
+    );
+
+    return {
+      verified: true,
+      otpToken,
+      purpose: dto.purpose,
+    };
+  }
+
+  async loginWithGoogle(
+    dto: GoogleAuthDto,
+    context: SessionClientContext = {},
+  ) {
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+    if (!googleClientId) {
+      throw new UnauthorizedException('Google auth chưa được cấu hình');
+    }
+
+    let ticket: LoginTicket;
+    try {
+      ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.idToken,
+        audience: googleClientId,
+      });
+    } catch {
+      throw new UnauthorizedException('Google token không hợp lệ');
+    }
+
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      throw new UnauthorizedException('Google token không chứa email');
+    }
+    if (!payload.email_verified) {
+      throw new UnauthorizedException('Email Google chưa được xác thực');
+    }
+
+    const normalizedEmail = this.usersRepository.normalizeEmail(payload.email);
+    let user = await this.usersRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      const userId = randomUUID();
+      const now = new Date().toISOString();
+      const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+      const passwordHash = await bcrypt.hash(randomUUID(), rounds);
+
+      user = {
+        PK: `USER#${userId}`,
+        SK: `PROFILE#${userId}`,
+        GSI1PK: `EMAIL#${normalizedEmail}`,
+        GSI1SK: `USER#${userId}`,
+        entityType: 'USER',
+        userId,
+        name: payload.name?.trim() || normalizedEmail.split('@')[0] || 'User',
+        email: normalizedEmail,
+        passwordHash,
+        role: 'CUSTOMER',
+        status: 'ACTIVE',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await this.usersRepository.createUser(user);
+      this.logger.log(`Created new user from Google auth: ${user.userId}`);
+    }
+
+    return this.buildAuthResponse(user, {
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName ?? 'Google Sign-in',
       timezone: dto.timezone,
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
@@ -308,7 +504,8 @@ export class AuthService {
 
     const decodedRefreshUnknown: unknown = this.jwtService.decode(refreshToken);
     const decodedRefresh =
-      decodedRefreshUnknown !== null && typeof decodedRefreshUnknown === 'object'
+      decodedRefreshUnknown !== null &&
+      typeof decodedRefreshUnknown === 'object'
         ? (decodedRefreshUnknown as { exp?: number })
         : null;
     const refreshTokenExpiresAt =
@@ -358,6 +555,33 @@ export class AuthService {
       session.refreshTokenHash,
       session.refreshTokenExpiresAt,
     );
+  }
+
+  private async assertVerifiedOtpToken(
+    email: string,
+    otpToken: string,
+    expectedPurpose: EmailOtpPurpose,
+  ): Promise<void> {
+    let payload: OtpTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<OtpTokenPayload>(otpToken);
+    } catch {
+      throw new UnauthorizedException('OTP token không hợp lệ');
+    }
+
+    if (payload.type !== 'otp') {
+      throw new UnauthorizedException('OTP token không đúng loại');
+    }
+    if (payload.purpose !== expectedPurpose) {
+      throw new UnauthorizedException('OTP token không đúng mục đích');
+    }
+    if (payload.email !== email) {
+      throw new UnauthorizedException('OTP token không khớp email');
+    }
+  }
+
+  private generateOtpCode(): string {
+    return String(randomInt(0, 10000)).padStart(4, '0');
   }
 
   private hashDeviceFingerprint(deviceId: string): string {

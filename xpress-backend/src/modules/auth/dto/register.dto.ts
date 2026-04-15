@@ -11,4 +11,8 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   password: string;
+
+  @IsString()
+  @IsNotEmpty()
+  otpToken: string;
 }

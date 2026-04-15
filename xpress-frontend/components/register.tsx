@@ -15,15 +15,15 @@ export default function Register() {
       <section className="relative w-full max-w-6xl rounded-3xl border border-white/30 bg-[#f8d7c2]/80 p-4 shadow-2xl backdrop-blur-sm sm:p-8 lg:p-10">
         <div className="grid items-center gap-8 lg:grid-cols-[440px_1fr]">
           <div className="rounded-3xl border border-white/30 bg-white/40 p-6 shadow-xl backdrop-blur-md sm:p-8">
-            <p className="text-sm font-medium text-[#f25019]">Your logo</p>
+            <p className="text-sm font-medium text-[#f25019]">Xpress</p>
             <h1 className="mt-1 text-5xl font-bold leading-tight text-[#333333]">
-              Register
+              Đăng ký
             </h1>
 
             <form className="mt-8 space-y-4">
               <div className="space-y-2">
                 <label htmlFor="name" className="block text-sm font-medium text-[#333333]">
-                  Name
+                  Họ và tên
                 </label>
                 <input
                   id="name"
@@ -37,7 +37,7 @@ export default function Register() {
 
               <div className="space-y-2">
                 <label htmlFor="phone" className="block text-sm font-medium text-[#333333]">
-                  Phone
+                  Số điện thoại
                 </label>
                 <input
                   id="phone"
@@ -54,7 +54,7 @@ export default function Register() {
                   htmlFor="password"
                   className="block text-sm font-medium text-[#333333]"
                 >
-                  Password
+                  Mật khẩu
                 </label>
                 <input
                   id="password"
@@ -70,20 +70,22 @@ export default function Register() {
                 type="submit"
                 className="mt-2 h-9 w-full rounded bg-[#f25019] text-sm font-semibold text-white transition hover:bg-[#df4614]"
               >
-                Create account
+                Tạo tài khoản
               </button>
             </form>
 
             <p className="mt-9 text-center text-sm text-[#333333]">
-              Already have an account?{" "}
-              <Link  href="/login" className="font-semibold text-[#ae4700]">Login now</Link>
+              Đã có tài khoản?{" "}
+              <Link href="/login" className="font-semibold text-[#ae4700]">
+                Đăng nhập ngay
+              </Link>
             </p>
           </div>
 
           <div className="relative hidden min-h-[480px] items-center justify-center lg:flex">
             <Image
               src="/assets/—Pngtree—delivery person riding orange motor_23243503.png"
-              alt="Delivery rider"
+              alt="Shipper giao hàng"
               width={640}
               height={640}
               priority
