@@ -7,7 +7,7 @@ const API_BASE_URL =
 export interface GroupMemberSummary {
   userId: string;
   name: string;
-  phone: string;
+  email: string;
   role: "ADMIN" | "MEMBER";
   nickname?: string;
   isOnline: boolean;

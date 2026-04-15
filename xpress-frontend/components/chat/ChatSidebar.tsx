@@ -1,4 +1,4 @@
-﻿import { MessageCircleMore, Settings } from "lucide-react";
+import { LogOut, MessageCircleMore, Settings } from "lucide-react";
 import Link from "next/link";
 
 export interface SidebarChatItem {
@@ -18,6 +18,7 @@ interface ChatSidebarProps {
   currentUserName: string;
   onSelectRoom: (roomId: string) => void;
   onCreateGroup: () => void;
+  onLogout: () => void;
 }
 
 export default function ChatSidebar({
@@ -26,6 +27,7 @@ export default function ChatSidebar({
   currentUserName,
   onSelectRoom,
   onCreateGroup,
+  onLogout,
 }: ChatSidebarProps) {
   return (
     <aside className="flex h-full w-full md:w-[24rem]">
@@ -53,6 +55,16 @@ export default function ChatSidebar({
         >
           <Settings className="h-4 w-4" />
         </Link>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="mt-auto rounded-lg p-3 text-red-700 hover:bg-[#f8d7da]"
+          aria-label="Đăng xuất"
+          title="Đăng xuất"
+        >
+          <LogOut className="inline-block h-4 w-4" />
+        </button>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col bg-[#f3f4f6]">

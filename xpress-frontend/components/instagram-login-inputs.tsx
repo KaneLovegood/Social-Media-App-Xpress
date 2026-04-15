@@ -1,18 +1,18 @@
 type InstagramLoginInputsProps = {
   accountInputId?: string;
   passwordInputId?: string;
-  phone: string;
+  email: string;
   password: string;
-  onPhoneChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
 };
 
 export default function InstagramLoginInputs({
   accountInputId = "account",
   passwordInputId = "password",
-  phone,
+  email,
   password,
-  onPhoneChange,
+  onEmailChange,
   onPasswordChange,
 }: InstagramLoginInputsProps) {
   return (
@@ -23,16 +23,16 @@ export default function InstagramLoginInputs({
       >
         <input
           id={accountInputId}
-          name="phone"
+          name="email"
           required
-          type="tel"
+          type="email"
           placeholder=" "
-          value={phone}
-          onChange={(event) => onPhoneChange(event.target.value)}
+          value={email}
+          onChange={(event) => onEmailChange(event.target.value)}
           className="peer h-full w-full border-0 bg-transparent px-2 pt-[9px] pb-[7px] text-base text-[#262626] outline-none valid:pt-[14px] valid:pb-[2px] valid:text-xs"
         />
         <span className="pointer-events-none absolute left-2 origin-left text-xs text-[#737373] transition-transform duration-100 ease-out peer-placeholder-shown:translate-y-0 peer-valid:-translate-y-[10px] peer-valid:scale-[0.833333]">
-          Phone number
+          Email
         </span>
       </label>
 
@@ -51,7 +51,7 @@ export default function InstagramLoginInputs({
           className="peer h-full w-full border-0 bg-transparent px-2 pt-[9px] pb-[7px] text-base text-[#262626] outline-none valid:pt-[14px] valid:pb-[2px] valid:text-xs"
         />
         <span className="pointer-events-none absolute left-2 origin-left text-xs text-[#737373] transition-transform duration-100 ease-out peer-placeholder-shown:translate-y-0 peer-valid:-translate-y-[10px] peer-valid:scale-[0.833333]">
-          Password
+          Mật khẩu
         </span>
       </label>
     </div>

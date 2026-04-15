@@ -6,7 +6,7 @@ const API_BASE_URL =
 export interface SocialUser {
   userId: string;
   name: string;
-  phone: string;
+  email: string;
   isOnline: boolean;
   lastSeenAt: string | null;
 }
@@ -42,12 +42,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export async function searchUsersByPhone(phone: string, cursor?: string) {
-  const params = new URLSearchParams({ phone, limit: '10' });
+export async function searchUsersByEmail(email: string, cursor?: string) {
+  const params = new URLSearchParams({ email, limit: '10' });
   if (cursor) params.set('cursor', cursor);
 
   return api<Paginated<SearchUserItem>>(
-    `/social/users/search-by-phone?${params.toString()}`,
+    `/social/users/search-by-email?${params.toString()}`,
     { method: 'GET' },
   );
 }
