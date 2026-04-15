@@ -1,4 +1,4 @@
-﻿import { MessageCircleMore, Settings } from "lucide-react";
+﻿import { UserPlus2, Users2 } from "lucide-react";
 import Link from "next/link";
 
 export interface SidebarChatItem {
@@ -29,54 +29,29 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <aside className="flex h-full w-full md:w-[24rem]">
-      <div className="hidden w-16 flex-col items-center bg-[#e7e8ea] py-4 md:flex">
-        <div className="relative mb-8 h-10 w-10 rounded-full bg-zinc-300" />
-
-        <Link
-          href="/chat/me"
-          className="rounded-lg bg-linear-to-br from-[#0052cc] to-[#0068ff] p-3 text-white"
-        >
-          <MessageCircleMore className="ml-1 inline-block text-xs" />
-        </Link>
-
-        <Link
-          href="/contacts"
-          className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
-        >
-          <span className="text-xs font-bold">DB</span>
-        </Link>
-
-        <Link
-          href="/profile"
-          className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
-          title="Cài đặt cá nhân"
-        >
-          <Settings className="h-4 w-4" />
-        </Link>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col bg-[#f3f4f6]">
+      <div className="flex min-w-0 flex-1 flex-col bg-[#ffffff]">
         <header className="border-b border-slate-200 bg-white p-4 text-zinc-900 md:border-none md:bg-transparent md:text-inherit">
           <div className="flex items-center justify-between">
-            <h1 className="truncate text-xl font-black md:text-zinc-900">
+            <h1 className="truncate text-xl font-bold md:text-zinc-900">
               {currentUserName}
             </h1>
-            <button
-              type="button"
-              onClick={onCreateGroup}
-              className="rounded-full p-2 hover:bg-slate-100 md:hover:bg-white"
-              aria-label="Tạo nhóm mới"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+            <div className="flex gap-1 items-center">
+              <button
+                type="button"
+                onClick={onCreateGroup}
+                className="rounded-full p-2 hover:bg-slate-100 md:hover:bg-white"
+                aria-label="Tạo nhóm mới"
               >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
+                <Users2 className="h-4 w-4 text-zinc-700" />
+              </button>
+              <Link
+                href="/chat/contacts"
+                className="rounded-full p-2 flex items-center justify-center hover:bg-slate-100 md:hover:bg-white"
+                aria-label="Danh bạ"
+              >
+                <UserPlus2 className="h-4 w-4 text-zinc-700" />
+              </Link>
+            </div>
           </div>
           <div className="mt-3 rounded-lg bg-[#e1e2e4] px-3 py-2">
             <input
@@ -102,9 +77,8 @@ export default function ChatSidebar({
                 <button
                   type="button"
                   onClick={() => onSelectRoom(room.id)}
-                  className={`w-full rounded-xl px-3 py-3 text-left transition ${
-                    active ? "bg-white shadow-sm" : "hover:bg-[#e7e8ea]"
-                  }`}
+                  className={`w-full rounded-xl px-3 py-3 text-left transition ${active ? "bg-[#dce0ff] shadow-sm" : "hover:bg-[#e6e9ff]"
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-zinc-900">

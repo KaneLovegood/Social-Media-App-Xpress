@@ -81,7 +81,7 @@ export default function ChatContent({
         onOpenVideoCall={onOpenVideoCall}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-3 lg:px-6 lg:pb-4 lg:pt-4">
+      <div className="flex min-h-0 flex-1 flex-col">
         <MessageList
           messages={activeMessages}
           currentUserId={currentUserId}
@@ -102,14 +102,12 @@ export default function ChatContent({
           }
           className="flex-1"
         />
-        <div className="mt-2 lg:mt-3">
           <MessageInput
             replyTo={replyTo}
             onClearReply={onClearReply}
             onSend={onSend}
             onTyping={onTyping}
           />
-        </div>
       </div>
 
       <ImageViewerModal

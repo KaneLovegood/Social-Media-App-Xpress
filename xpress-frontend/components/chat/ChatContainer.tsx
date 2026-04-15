@@ -56,8 +56,6 @@ export default function ChatContainer({
   const {
     clearedRoomAtById,
     setClearedRoomAtById,
-    isClearHistoryHydrated,
-    markRoomCleared,
   } = useClearedHistory(currentUserId);
 
   // Manage call states
@@ -76,8 +74,6 @@ export default function ChatContainer({
     setGroupCallDirection,
     pendingGroupCall,
     setPendingGroupCall,
-    resetPrivateCall,
-    resetGroupCall,
   } = useCallState();
 
   // Room management state

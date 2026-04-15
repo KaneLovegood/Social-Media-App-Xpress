@@ -1,6 +1,5 @@
 "use client";
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
@@ -20,7 +19,6 @@ import {
   unblockUser,
   unfriend,
 } from '@/lib/social';
-import { MessageCircleMore, Settings } from 'lucide-react';
 
 type TabKey = 'friends' | 'requests';
 
@@ -174,32 +172,11 @@ export default function ContactsPage() {
   };
 
   return (
-    <main className="flex h-screen overflow-hidden bg-[#f8f9fb] text-[#191c1e]">
-      <aside className="fixed left-0 top-0 hidden h-full w-16 flex-col items-center bg-[#e7e8ea] py-4 md:flex">
-        <div className="mb-8 h-10 w-10 rounded-full bg-zinc-300" />
-        <Link href="/chat/me" className="rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]">
-          <MessageCircleMore className="ml-1 inline-block text-xs text-[#0f61d4]" />
-        </Link>
-        <Link
-          href="/contacts"
-          className="mt-4 rounded-lg bg-linear-to-br from-[#0052cc] to-[#0068ff] p-3 text-white"
-        >
-          <span className="text-xs font-bold">DB</span>
-        </Link>
-
-        <Link
-          href="/profile"
-          className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
-          title="Cài đặt cá nhân"
-        >
-          <Settings className="h-4 w-4" />
-        </Link>
-      </aside>
-
-      <section className="ml-0 flex flex-1 overflow-hidden md:ml-16">
-        <div className="hidden w-80 flex-col bg-[#f3f4f6] lg:flex">
+    <main className="flex h-full w-full overflow-hidden bg-[#f8f9fb] text-[#191c1e]">
+      <section className="flex flex-1 overflow-hidden">
+        <div className="hidden w-80 flex-col bg-[#ffffff] lg:flex">
           <header className="flex h-16 items-center px-6">
-            <h1 className="text-xl font-black">Contacts</h1>
+            <h1 className="text-xl font-semibold">Danh bạ</h1>
           </header>
 
           <div className="px-4 pb-4">
@@ -337,7 +314,7 @@ export default function ContactsPage() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 items-center justify-between border-b border-[#c2c6d8]/40 bg-[#f8f9fb] px-4 lg:px-8">
-            <h2 className="text-lg font-bold">{activeTab === 'friends' ? 'All Friends' : 'Friend Requests'}</h2>
+            <h2 className="text-lg font-bold">{activeTab === 'friends' ? 'Tất cả bạn bè' : 'Yêu cầu kết bạn'}</h2>
             <div className="flex items-center gap-3">
               <button
                 type="button"
