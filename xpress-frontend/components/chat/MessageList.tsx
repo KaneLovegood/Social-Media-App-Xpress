@@ -1,6 +1,6 @@
 import { RefObject } from 'react';
 import { ChatMessage, ReplyPreview as ReplyPreviewType } from '@/lib/realtime/types';
-import MessageItemRow from './MessageItemRow';
+import MessageItemRow from './message-item/MessageItemRow';
 
 interface MessageListProps {
   messages: ChatMessage[];

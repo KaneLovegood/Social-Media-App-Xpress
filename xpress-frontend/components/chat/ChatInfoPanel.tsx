@@ -11,11 +11,11 @@ import {
   promoteGroupMember,
   removeGroupMember,
 } from "@/lib/chat-groups";
-import AddGroupMemberModal from "./AddGroupMemberModal";
-import MediaGalleryModal from "./MediaGalleryModal";
-import FilesListModal from "./FilesListModal";
-import DeleteChatHistoryModal from "./DeleteChatHistoryModal";
-import ShareGroupQrModal from "./ShareGroupQrModal";
+import AddGroupMemberModal from "./modal/AddGroupMemberModal";
+import MediaGalleryModal from "./modal/MediaGalleryModal";
+import FilesListModal from "./modal/FilesListModal";
+import DeleteChatHistoryModal from "./modal/DeleteChatHistoryModal";
+import ShareGroupQrModal from "./modal/ShareGroupQrModal";
 
 interface ChatInfoPanelProps {
   room: ChatRoomSummary | null;
