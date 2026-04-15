@@ -70,7 +70,8 @@
               "title": "Bookmarks"
             }
           }
-        ]
+        ],
+        "currentTab": 2
       }
     ],
     "direction": "horizontal",
@@ -176,14 +177,15 @@
       "bases:Create new base": false
     }
   },
-  "active": "5aa9dd4ddc5840e1",
+  "active": "b7ac072363912059",
   "lastOpenFiles": [
+    "Untitled.md",
+    "Untitled",
     "RUN_BACKEND_FRONTEND.md",
     "chat/PLAN_STEP4_SECURITY_CLEANUP.md",
     "chat/CHAT_FILE_UPLOAD_FEATURE.md",
     "chat/PLAN_STEP1_S3_PRESIGNED_URL.md",
     "Untitled.canvas",
-    "chat/PLAN_STEP3_UI_UX_POLISH_S3.md",
-    "Untitled.md"
+    "chat/PLAN_STEP3_UI_UX_POLISH_S3.md"
   ]
 }

@@ -10,6 +10,9 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
+build/
+dist/
+.env
 # testing
 coverage
 
