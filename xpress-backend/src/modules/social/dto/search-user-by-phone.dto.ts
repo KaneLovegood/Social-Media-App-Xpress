@@ -3,7 +3,7 @@ import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class SearchUserByPhoneDto {
   @IsString()
-  phone: string;
+  email: string;
 
   @IsOptional()
   @Type(() => Number)

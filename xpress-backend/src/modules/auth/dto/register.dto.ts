@@ -1,13 +1,12 @@
-import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   name: string;
 
-  @IsString()
-  @Matches(/^(0|\+84)[0-9]{9,10}$/, { message: 'phone không hợp lệ' })
-  phone: string;
+  @IsEmail({}, { message: 'email không hợp lệ' })
+  email: string;
 
   @IsString()
   @MinLength(8)

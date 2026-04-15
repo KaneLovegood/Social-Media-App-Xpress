@@ -93,7 +93,7 @@ interface ChatRoomSummary {
 interface GroupRoomMemberSummary {
   userId: string;
   name: string;
-  phone: string;
+  email: string;
   role: 'ADMIN' | 'MEMBER';
   nickname?: string;
   isOnline: boolean;
@@ -1177,7 +1177,7 @@ export class ChatService {
         return {
           userId: user.userId,
           name: user.name,
-          phone: user.phone,
+          email: user.email,
           role: member.role,
           ...(member.nickname ? { nickname: member.nickname } : {}),
           isOnline: this.presenceService.getPresence(user.userId).isOnline,

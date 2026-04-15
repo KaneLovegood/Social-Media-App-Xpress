@@ -27,13 +27,13 @@ export class SocialService {
     private readonly presenceService: PresenceService,
   ) {}
 
-  async searchUsersByPhone(actorUserId: string, dto: SearchUserByPhoneDto) {
-    const query = this.usersRepository.normalizePhone(dto.phone);
+  async searchUsersByEmail(actorUserId: string, dto: SearchUserByPhoneDto) {
+    const query = this.usersRepository.normalizeEmail(dto.email);
     if (!query) {
       return { items: [], nextCursor: null };
     }
 
-    const result = await this.usersRepository.searchByPhone(
+    const result = await this.usersRepository.searchByEmail(
       actorUserId,
       query,
       dto.limit ?? 20,
@@ -59,7 +59,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
-          phone: user.phone,
+          email: user.email,
           friendStatus: relation?.status ?? 'NONE',
           isOnline: presence.isOnline,
           lastSeenAt: presence.lastSeenAt,
@@ -177,7 +177,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
-          phone: user.phone,
+          email: user.email,
           isOnline: presence.isOnline,
           lastSeenAt: presence.lastSeenAt,
         };
@@ -204,7 +204,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
-          phone: user.phone,
+          email: user.email,
           isOnline: presence.isOnline,
           lastSeenAt: presence.lastSeenAt,
         };

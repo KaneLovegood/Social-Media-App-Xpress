@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { BlockUserDto } from './dto/block-user.dto';
 import { ListFriendsDto } from './dto/list-friends.dto';
 import { SearchUserByPhoneDto } from './dto/search-user-by-phone.dto';
@@ -21,7 +21,7 @@ import { SocialService } from './social.service';
 interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
-    phone: string;
+    email: string;
     role: string;
   };
 }
@@ -31,12 +31,12 @@ interface AuthenticatedRequest extends Request {
 export class SocialController {
   constructor(private readonly socialService: SocialService) {}
 
-  @Get('users/search-by-phone')
-  searchByPhone(
+  @Get('users/search-by-email')
+  searchByEmail(
     @Req() req: AuthenticatedRequest,
     @Query() query: SearchUserByPhoneDto,
   ) {
-    return this.socialService.searchUsersByPhone(this.getUserId(req), query);
+    return this.socialService.searchUsersByEmail(this.getUserId(req), query);
   }
 
   @Post('friends/requests')
