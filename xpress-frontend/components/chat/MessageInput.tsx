@@ -10,7 +10,7 @@ import {
 } from "react";
 import { ReplyPreview as ReplyPreviewType, MessageType } from "@/lib/realtime/types";
 import { getPresignedUrl, uploadFileToS3 } from "@/lib/chat-upload";
-import ReplyPreview from "./ReplyPreview";
+import ReplyPreview from "./message-item/ReplyPreview";
 import AttachmentPreviewTray from "./message-input/AttachmentPreviewTray";
 import ComposerInputRow from "./message-input/ComposerInputRow";
 import ComposerToolbar from "./message-input/ComposerToolbar";

@@ -55,7 +55,14 @@ export function uploadFileToS3(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Failed to upload to S3: ${xhr.statusText}`));
+        const responseBody = xhr.responseText?.trim();
+        reject(
+          new Error(
+            responseBody
+              ? `Failed to upload to S3: ${xhr.status} ${xhr.statusText} - ${responseBody}`
+              : `Failed to upload to S3: ${xhr.status} ${xhr.statusText}`,
+          ),
+        );
       }
     });
 

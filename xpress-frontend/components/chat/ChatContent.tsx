@@ -5,7 +5,7 @@ import { ChatMessage, ReplyPreview } from '@/lib/realtime/types';
 import ChatHeader from './ChatHeader';
 import MessageInput, { SendMessageOptions } from './MessageInput';
 import MessageList from './MessageList';
-import ImageViewerModal from './ImageViewerModal';
+import ImageViewerModal from './modal/ImageViewerModal';
 
 interface ChatContentProps {
   peerName: string;

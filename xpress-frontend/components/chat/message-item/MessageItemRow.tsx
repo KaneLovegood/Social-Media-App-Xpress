@@ -1,5 +1,5 @@
 import { ChatMessage, ReplyPreview as ReplyPreviewType } from '@/lib/realtime/types';
-import MessageActionsMenu from './MessageActionsMenu';
+import MessageActionsMenu from '../message-action/MessageActionsMenu';
 import MessageBubbleCard from './MessageBubbleCard';
 
 interface MessageItemRowProps {
