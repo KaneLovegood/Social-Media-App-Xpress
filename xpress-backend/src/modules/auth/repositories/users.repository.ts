@@ -24,8 +24,8 @@ export class UsersRepository {
     private readonly ddbDocClient: DynamoDBDocumentClient,
   ) {}
 
-  async findByPhone(phone: string): Promise<UserEntity | null> {
-    const normalizedPhone = this.normalizePhone(phone);
+  async findByEmail(email: string): Promise<UserEntity | null> {
+    const normalizedEmail = this.normalizeEmail(email);
 
     const result = await this.ddbDocClient.send(
       new QueryCommand({
@@ -33,7 +33,7 @@ export class UsersRepository {
         IndexName: 'GSI1',
         KeyConditionExpression: 'GSI1PK = :gsi1pk',
         ExpressionAttributeValues: {
-          ':gsi1pk': `PHONE#${normalizedPhone}`,
+          ':gsi1pk': `EMAIL#${normalizedEmail}`,
         },
         Limit: 1,
       }),
@@ -66,23 +66,23 @@ export class UsersRepository {
     return (result.Item as UserEntity) ?? null;
   }
 
-  async searchByPhone(
+  async searchByEmail(
     actorUserId: string,
-    phoneQuery: string,
+    emailQuery: string,
     limit = 20,
     cursor?: string,
   ): Promise<PaginatedUsers> {
-    const normalized = this.normalizePhone(phoneQuery);
+    const normalized = this.normalizeEmail(emailQuery);
 
     const result = await this.ddbDocClient.send(
       new ScanCommand({
         TableName: this.tableName,
         FilterExpression:
-          'entityType = :entityType AND userId <> :actorUserId AND contains(phone, :phoneQuery)',
+          'entityType = :entityType AND userId <> :actorUserId AND contains(email, :emailQuery)',
         ExpressionAttributeValues: {
           ':entityType': 'USER',
           ':actorUserId': actorUserId,
-          ':phoneQuery': normalized,
+          ':emailQuery': normalized,
         },
         Limit: limit,
         ExclusiveStartKey: this.decodeCursor(cursor),
@@ -137,8 +137,8 @@ export class UsersRepository {
     );
   }
 
-  normalizePhone(phone: string): string {
-    return phone.replace(/\s+/g, '').trim();
+  normalizeEmail(email: string): string {
+    return email.replace(/\s+/g, '').trim().toLowerCase();
   }
 
   private encodeCursor(

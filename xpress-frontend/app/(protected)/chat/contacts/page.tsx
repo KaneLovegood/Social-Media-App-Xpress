@@ -13,7 +13,7 @@ import {
   fetchIncomingRequests,
   rejectFriendRequest,
   SearchUserItem,
-  searchUsersByPhone,
+  searchUsersByEmail,
   sendFriendRequest,
   SocialUser,
   unblockUser,
@@ -42,7 +42,7 @@ function PresenceBadge({ isOnline }: { isOnline: boolean }) {
 export default function ContactsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('friends');
-  const [phoneQuery, setPhoneQuery] = useState('');
+  const [emailQuery, setEmailQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUserItem[]>([]);
   const [searchCursor, setSearchCursor] = useState<string | null>(null);
   const [friends, setFriends] = useState<SocialUser[]>([]);
@@ -52,8 +52,8 @@ export default function ContactsPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const normalizedPhone = phoneQuery.replace(/\s+/g, '').trim();
-  const canSearch = normalizedPhone.length >= 4;
+  const normalizedEmail = emailQuery.replace(/\s+/g, '').trim().toLowerCase();
+  const canSearch = normalizedEmail.length >= 4;
 
   const loadInitial = async () => {
     const [friendsPage, requestsPage] = await Promise.all([
@@ -127,7 +127,7 @@ export default function ContactsPage() {
     setLoading(true);
     setError('');
     try {
-      const page = await searchUsersByPhone(normalizedPhone);
+      const page = await searchUsersByEmail(normalizedEmail);
       setSearchResults(page.items);
       setSearchCursor(page.nextCursor);
     } catch (e) {
@@ -182,9 +182,9 @@ export default function ContactsPage() {
           <div className="px-4 pb-4">
             <form className="relative" onSubmit={onSearch}>
               <input
-                value={phoneQuery}
-                onChange={(event) => setPhoneQuery(event.target.value)}
-                placeholder="Tìm theo số điện thoại"
+                value={emailQuery}
+                onChange={(event) => setEmailQuery(event.target.value)}
+                placeholder="Tìm theo email"
                 className="h-10 w-full rounded-lg border-none bg-[#e1e2e4] px-3 text-sm outline-none"
               />
             </form>
@@ -231,7 +231,7 @@ export default function ContactsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <p className="text-sm font-semibold">{user.name}</p>
-                            <p className="text-xs text-[#727687]">{user.phone}</p>
+                            <p className="text-xs text-[#727687]">{user.email}</p>
                           </div>
                           <PresenceBadge isOnline={user.isOnline} />
                         </div>
@@ -297,7 +297,7 @@ export default function ContactsPage() {
                     type="button"
                     onClick={() =>
                       void (async () => {
-                        const page = await searchUsersByPhone(normalizedPhone, searchCursor);
+                        const page = await searchUsersByEmail(normalizedEmail, searchCursor);
                         setSearchResults((prev) => [...prev, ...page.items]);
                         setSearchCursor(page.nextCursor);
                       })()
@@ -344,7 +344,7 @@ export default function ContactsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-bold text-zinc-900">{user.name}</p>
-                      <p className="text-xs text-[#727687]">{user.phone}</p>
+                      <p className="text-xs text-[#727687]">{user.email}</p>
                     </div>
                     <PresenceBadge isOnline={user.isOnline} />
                   </div>

@@ -58,7 +58,7 @@ export default function AddGroupMemberModal({
     const keyword = searchKeyword.toLowerCase();
     return (
       f.name.toLowerCase().includes(keyword) ||
-      f.phone.toLowerCase().includes(keyword)
+      f.email.toLowerCase().includes(keyword)
     );
   });
 
@@ -121,7 +121,7 @@ export default function AddGroupMemberModal({
             />
             <input
               type="text"
-              placeholder="Tìm kiếm tên hoặc số điện thoại"
+              placeholder="Tìm kiếm tên hoặc email"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-3 text-sm focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"

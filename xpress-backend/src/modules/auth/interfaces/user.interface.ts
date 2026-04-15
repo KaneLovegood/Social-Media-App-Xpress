@@ -10,12 +10,10 @@ export interface UserEntity {
   entityType: 'USER';
   userId: string;
   name: string;
-  phone: string;
+  email: string;
   passwordHash: string;
   role: UserRole;
   status: UserStatus;
-  refreshTokenHash?: string;
-  refreshTokenExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }

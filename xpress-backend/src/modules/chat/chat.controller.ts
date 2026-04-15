@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { PresenceService } from '../../common/presence/presence.service';
 import { UsersRepository } from '../auth/repositories/users.repository';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -25,7 +25,7 @@ import { StorageService } from '../storage/storage.service';
 interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
-    phone: string;
+    email: string;
     role: string;
   };
 }

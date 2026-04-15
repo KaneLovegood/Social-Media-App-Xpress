@@ -19,6 +19,7 @@ interface ChatSidebarProps {
   currentUserName: string;
   onSelectRoom: (roomId: string) => void;
   onCreateGroup: () => void;
+  onLogout: () => void;
 }
 
 export default function ChatSidebar({
@@ -27,6 +28,7 @@ export default function ChatSidebar({
   currentUserName,
   onSelectRoom,
   onCreateGroup,
+  onLogout,
 }: ChatSidebarProps) {
   const [searchTerm, setSearchTerm] = useState("");
 

@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
+import { useRouter } from "next/navigation";
 import {
   leaveGroup,
   dissolveGroup,
   fetchGroupRoomDetails,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
-import { getValidAccessToken } from "@/lib/auth-client";
+import { clearSession, getValidAccessToken } from "@/lib/auth-client";
 import { sendChatAction } from "@/lib/chat-actions";
 import { fetchChatRoomMessages } from "@/lib/chat-messages";
 import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
@@ -50,6 +51,7 @@ export default function ChatContainer({
   initialPeerUserId,
   onRoomResolved,
 }: ChatContainerProps) {
+  const router = useRouter();
   // Manage cleared history
   const {
     clearedRoomAtById,
@@ -672,6 +674,12 @@ export default function ChatContainer({
     setIsCreateGroupOpen(true);
   };
 
+  const handleLogout = useCallback(() => {
+    clearSession();
+    router.replace("/login");
+    router.refresh();
+  }, [router]);
+
   const handleGroupCreated = async (roomId: string) => {
     await reloadRooms();
     setActiveRoomId(roomId);
@@ -800,6 +808,7 @@ export default function ChatContainer({
             currentUserName={currentUserName}
             onSelectRoom={handleSelectRoom}
             onCreateGroup={handleCreateGroup}
+            onLogout={handleLogout}
           />
         </div>
 

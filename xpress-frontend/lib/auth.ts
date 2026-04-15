@@ -3,7 +3,7 @@ import { persistSession } from './auth-client';
 export type AuthUser = {
   userId: string;
   name: string;
-  phone: string;
+  email: string;
   role: string;
   status: string;
 };
@@ -16,27 +16,77 @@ export type AuthResponse = {
 };
 
 type AuthPayload = {
-  phone: string;
+  email: string;
   password: string;
 };
 
 type RegisterPayload = AuthPayload & {
   name: string;
+  otpToken: string;
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3001";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
+
+type SendOtpPayload = {
+  email: string;
+  purpose?: 'REGISTER' | 'LOGIN';
+};
+
+type VerifyOtpPayload = {
+  email: string;
+  code: string;
+  purpose: 'REGISTER' | 'LOGIN';
+};
+
+type VerifyOtpResponse = {
+  verified: boolean;
+  otpToken: string;
+  purpose: 'REGISTER' | 'LOGIN';
+};
+
+type DevicePayload = {
+  deviceId: string;
+  deviceName: string;
+  timezone: string;
+};
 
 export async function login(payload: AuthPayload) {
-  const result = await request<AuthResponse>("/auth/login", payload);
+  const result = await request<AuthResponse>("/auth/login", {
+    ...payload,
+    ...getDevicePayload(),
+  });
   persistSession(result);
   return result;
 }
 
 export async function register(payload: RegisterPayload) {
-  const result = await request<AuthResponse>("/auth/register", payload);
+  return request<AuthResponse>("/auth/register", payload);
+}
+
+export async function sendEmailOtp(payload: SendOtpPayload) {
+  return request<{ success: boolean; purpose: 'REGISTER' | 'LOGIN'; expiresAt: string }>(
+    '/auth/otp/send',
+    payload,
+  );
+}
+
+export async function verifyEmailOtp(payload: VerifyOtpPayload) {
+  return request<VerifyOtpResponse>('/auth/otp/verify', payload);
+}
+
+export async function loginWithGoogle(idToken: string) {
+  const result = await request<AuthResponse>('/auth/google', {
+    idToken,
+    ...getDevicePayload(),
+  });
   persistSession(result);
   return result;
+}
+
+export function getGoogleClientId() {
+  return GOOGLE_CLIENT_ID;
 }
 
 async function request<TResponse>(path: string, payload: Record<string, unknown>) {
@@ -54,6 +104,26 @@ async function request<TResponse>(path: string, payload: Record<string, unknown>
   }
 
   return data as TResponse;
+}
+
+function getDevicePayload(): DevicePayload {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const userAgent =
+    typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown-user-agent';
+  return {
+    deviceId: `web-${hashString(userAgent)}`,
+    deviceName: 'Web Browser',
+    timezone,
+  };
+}
+
+function hashString(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16);
 }
 
 function getErrorMessage(message: unknown) {

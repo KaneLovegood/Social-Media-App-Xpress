@@ -60,7 +60,7 @@ export default function CreateGroupModal({
     return friends.filter((friend) => {
       return (
         friend.name.toLowerCase().includes(keyword) ||
-        friend.phone.toLowerCase().includes(keyword)
+        friend.email.toLowerCase().includes(keyword)
       );
     });
   }, [friends, searchKeyword]);
@@ -183,7 +183,7 @@ export default function CreateGroupModal({
                 <input
                   value={searchKeyword}
                   onChange={(event) => setSearchKeyword(event.target.value)}
-                  placeholder="Tìm kiếm tên hoặc số điện thoại"
+                  placeholder="Tìm kiếm tên hoặc email"
                   className="w-full border-none bg-transparent text-sm text-[#33466f] outline-none placeholder:text-[#a1adc7]"
                 />
               </div>
@@ -313,7 +313,7 @@ export default function CreateGroupModal({
         </div>
 
         <div className="border-t border-[#e3e8f2] bg-white px-6 py-2 text-[11px] text-[#9aa5bf]">
-          Mẹo: bạn có thể tìm kiếm theo tên hoặc số điện thoại để thêm thành
+          Mẹo: bạn có thể tìm kiếm theo tên hoặc email để thêm thành
           viên nhanh hơn.
         </div>
       </form>
