@@ -24,7 +24,9 @@ async function bootstrap() {
 
   // Configure CORS for HTTP
   app.enableCors({
-    origin: '*',
+    origin: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
   });
 
   // Configure Socket.IO adapter with CORS

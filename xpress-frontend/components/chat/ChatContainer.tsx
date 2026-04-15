@@ -206,10 +206,6 @@ export default function ChatContainer({
   }, []);
 
   useEffect(() => {
-    if (!token) {
-      socketRef.current = null;
-      return;
-    }
     let cancelled = false;
     let socket: Socket | null = null;
 
