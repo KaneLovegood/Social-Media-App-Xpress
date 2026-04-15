@@ -1,7 +1,6 @@
 import { RefObject } from 'react';
 import { ChatMessage, ReplyPreview as ReplyPreviewType } from '@/lib/realtime/types';
-import MessageItemRow from './MessageItemRow';
-import MessageItem from "./MessageItem";
+import MessageItemRow from './message-item/MessageItemRow';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -19,6 +18,7 @@ interface MessageListProps {
   onSelectMany: (message: ChatMessage) => void;
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: 'voice' | 'video') => void;
+  onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
   className?: string;
 }
 
@@ -27,7 +27,6 @@ export default function MessageList({
   currentUserId,
   currentUserName,
   peerName,
-  canReply = true,
   listRef,
   onReply,
   onRecall,
@@ -38,6 +37,7 @@ export default function MessageList({
   onSelectMany,
   onViewDetails,
   onRedial,
+  onImageClick,
   className,
 }: MessageListProps) {
   const isEmpty = messages.length === 0;
@@ -79,6 +79,7 @@ export default function MessageList({
           onSelectMany={onSelectMany}
           onViewDetails={onViewDetails}
           onRedial={onRedial}
+          onImageClick={onImageClick}
         />
       ))}
     </ul>

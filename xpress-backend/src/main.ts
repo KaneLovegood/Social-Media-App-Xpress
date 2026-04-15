@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 
 class SocketIoCorsAdapter extends IoAdapter {
   override createIOServer(port: number, options?: ServerOptions) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return super.createIOServer(port, {
       ...options,
       cors: {
@@ -20,7 +21,7 @@ class SocketIoCorsAdapter extends IoAdapter {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+
   // Configure CORS for HTTP
   app.enableCors({
     origin: '*',

@@ -28,7 +28,7 @@ interface GroupCallComponentProps {
 interface RemoteStreamState {
   userId: string;
   name: string;
-  stream: MediaStream;
+  stream: MediaStream | null;
 }
 
 const rtcConfig: RTCConfiguration = {
@@ -94,6 +94,7 @@ export default function GroupCallComponent({
   const [cameraOff, setCameraOff] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isActive, setIsActive] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
   const remoteMembers = useMemo(
     () =>
@@ -101,16 +102,7 @@ export default function GroupCallComponent({
     [currentUserId, groupDetails.members],
   );
 
-  const cleanupConnection = useCallback((userId: string) => {
-    const peer = peerConnectionsRef.current.get(userId);
-    if (peer) {
-      peer.close();
-      peerConnectionsRef.current.delete(userId);
-    }
-
-    pendingIceCandidatesRef.current.delete(userId);
-    setRemoteStreams((prev) => prev.filter((item) => item.userId !== userId));
-  }, []);
+  // ...existing code...
 
   useEffect(() => {
     remoteStreamsRef.current = remoteStreams;
@@ -132,13 +124,16 @@ export default function GroupCallComponent({
       }
 
       for (const stream of remoteStreamsRef.current) {
-        stream.stream.getTracks().forEach((track) => track.stop());
+        if (stream.stream) {
+          stream.stream.getTracks().forEach((track) => track.stop());
+        }
       }
 
       const localStream = localStreamRef.current;
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
+        setLocalStream(null);
       }
 
       if (localVideoRef.current) {
@@ -172,7 +167,7 @@ export default function GroupCallComponent({
         candidate,
       } satisfies GroupCallIcePayload);
     },
-    [callMode, roomId, socket],
+    [callMode, roomId, socket, currentUserId],
   );
 
   const ensurePeerConnection = useCallback(
@@ -246,7 +241,7 @@ export default function GroupCallComponent({
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
     }
-
+    setLocalStream(stream);
     setIsActive(true);
 
     for (const member of remoteMembers) {
@@ -369,6 +364,7 @@ export default function GroupCallComponent({
     socket,
     startConference,
     stopConference,
+    ensurePeerConnection,
   ]);
 
   useEffect(() => {
@@ -385,9 +381,12 @@ export default function GroupCallComponent({
       return;
     }
 
-    void startConference().catch(() => {
-      stopConference(false);
-    });
+    // Defer startConference to avoid synchronous setState inside effect
+    setTimeout(() => {
+      void startConference().catch(() => {
+        stopConference(false);
+      });
+    }, 0);
   }, [
     callDirection,
     groupDetails.members.length,
@@ -411,7 +410,7 @@ export default function GroupCallComponent({
     () => () => {
       stopConference(false);
     },
-    [],
+    [stopConference],
   );
 
   const toggleMute = () => {
@@ -497,7 +496,7 @@ export default function GroupCallComponent({
                 {
                   userId: currentUserId,
                   name: currentUserName,
-                  stream: localStreamRef.current,
+                  stream: localStream,
                 } as RemoteStreamState,
                 ...remoteStreams,
               ].map((participant) => (

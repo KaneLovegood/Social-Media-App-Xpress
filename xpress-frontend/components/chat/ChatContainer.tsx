@@ -1,97 +1,41 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Socket } from 'socket.io-client';
-import { getAccessToken } from '@/lib/auth-client';
-import { leaveGroup, dissolveGroup, fetchGroupRoomDetails, type GroupRoomDetails } from '@/lib/chat-groups';
-import { getValidAccessToken } from '@/lib/auth-client';
-import { sendChatAction } from '@/lib/chat-actions';
-import { fetchChatRoomMessages } from '@/lib/chat-messages';
-import { ChatRoomSummary, fetchChatRooms } from '@/lib/chat-rooms';
-import { CALL_EVENTS, CHAT_EVENTS } from '@/lib/realtime/events';
-import { createChatSocket } from '@/lib/realtime/socket-client';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Socket } from "socket.io-client";
 import {
-  CallEndPayload,
-  ChatMessage,
-  GroupCallEndPayload,
-  GroupCallStartedPayload,
-  MessageStateUpdate,
-  PresencePayload,
-  ReplyPreview,
-  TypingPayload,
-} from '@/lib/realtime/types';
-import IncomingCallModal from './IncomingCallModal';
-import IncomingGroupCallModal from './IncomingGroupCallModal';
-import ChatInfoPanel from './ChatInfoPanel';
-import CreateGroupModal from './CreateGroupModal';
-import VideoCallComponent from '../video/VideoCallComponent';
-import GroupCallComponent from '../video/GroupCallComponent';
-import ChatContent from './ChatContent';
-import ChatNoRoomWelcome from './ChatNoRoomWelcome';
-import ChatSidebar, { SidebarChatItem } from './ChatSidebar';
-type CallMode = "voice" | "video" | null;
-type CallDirection = "incoming" | "outgoing" | null;
-
-function getClearHistoryStorageKey(userId: string): string {
-  return `xpress.chat.cleared.${userId}`;
-}
-
-function toPrivateRoomId(userAId: string, userBId: string): string {
-  const [first, second] = [userAId, userBId].sort();
-  return `${first}:${second}`;
-}
-
-function toAgeLabel(isoTimestamp: string): string {
-  const at = new Date(isoTimestamp).getTime();
-  if (Number.isNaN(at)) return 'vài giây trước';
-
-  const deltaMs = Math.max(0, Date.now() - at);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (deltaMs < minute) return 'vài giây trước';
-  if (deltaMs < hour) return `${Math.floor(deltaMs / minute)} phút trước`;
-  if (deltaMs < day) return `${Math.floor(deltaMs / hour)} giờ trước`;
-  return `${Math.floor(deltaMs / day)} ngày trước`;
-}
-function sortMessages(messages: ChatMessage[]): ChatMessage[] {
-  return [...messages].sort((first, second) => {
-    const timeDiff = first.createdAt.localeCompare(second.createdAt);
-    if (timeDiff !== 0) return timeDiff;
-
-    return first.messageId.localeCompare(second.messageId);
-  });
-}
-
-function mergeMessages(
-  existing: ChatMessage[] = [],
-  incoming: ChatMessage[] = [],
-): ChatMessage[] {
-  const merged = new Map<string, ChatMessage>();
-
-  for (const message of existing) {
-    merged.set(message.messageId, message);
-  }
-
-  for (const message of incoming) {
-    merged.set(message.messageId, message);
-  }
-
-  return sortMessages(Array.from(merged.values()));
-}
-
-function toMessagePreview(message: ChatMessage): string {
-  if (message.isRecalled) {
-    return 'Tin nhắn đã được thu hồi';
-  }
-
-  if (message.messageType === 'CALL_LOG') {
-    return message.callLog?.mode === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
-  }
-
-  return message.content;
-}
+  leaveGroup,
+  dissolveGroup,
+  fetchGroupRoomDetails,
+  type GroupRoomDetails,
+} from "@/lib/chat-groups";
+import { getValidAccessToken } from "@/lib/auth-client";
+import { sendChatAction } from "@/lib/chat-actions";
+import { fetchChatRoomMessages } from "@/lib/chat-messages";
+import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
+import { CHAT_EVENTS, CALL_EVENTS } from "@/lib/realtime/events";
+import { createChatSocket } from "@/lib/realtime/socket-client";
+import { ChatMessage, ReplyPreview } from "@/lib/realtime/types";
+import {
+  toPrivateRoomId,
+  toAgeLabel,
+  toMessagePreview,
+  mergeMessages,
+  getClearHistoryStorageKey,
+} from "@/lib/chat-utils";
+import IncomingCallModal from "./modal/IncomingCallModal";
+import IncomingGroupCallModal from "./modal/IncomingGroupCallModal";
+import ChatInfoPanel from "./ChatInfoPanel";
+import CreateGroupModal from "./modal/CreateGroupModal";
+import VideoCallComponent from "../video/VideoCallComponent";
+import GroupCallComponent from "../video/GroupCallComponent";
+import ChatContent from "./ChatContent";
+import { SendMessageOptions } from "./MessageInput";
+import ChatNoRoomWelcome from "./ChatNoRoomWelcome";
+import ChatSidebar, { SidebarChatItem } from "./ChatSidebar";
+import { useClearedHistory } from "@/hooks/useClearedHistory";
+import { useCallState } from "@/hooks/useCallState";
+import { useMessageActions } from "@/hooks/useMessageActions";
+import { useChatSocketHandlers } from "@/hooks/useChatSocketHandlers";
 
 interface ChatContainerProps {
   currentUserId: string;
@@ -108,6 +52,35 @@ export default function ChatContainer({
   initialPeerUserId,
   onRoomResolved,
 }: ChatContainerProps) {
+  // Manage cleared history
+  const {
+    clearedRoomAtById,
+    setClearedRoomAtById,
+    isClearHistoryHydrated,
+    markRoomCleared,
+  } = useClearedHistory(currentUserId);
+
+  // Manage call states
+  const {
+    callMode,
+    setCallMode,
+    callDirection,
+    setCallDirection,
+    incomingCall,
+    setIncomingCall,
+    groupCallRoomId,
+    setGroupCallRoomId,
+    groupCallMode,
+    setGroupCallMode,
+    groupCallDirection,
+    setGroupCallDirection,
+    pendingGroupCall,
+    setPendingGroupCall,
+    resetPrivateCall,
+    resetGroupCall,
+  } = useCallState();
+
+  // Room management state
   const [rooms, setRooms] = useState<ChatRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [activeRoomId, setActiveRoomId] = useState("");
@@ -117,77 +90,21 @@ export default function ChatContainer({
   const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>(
     {},
   );
-  const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
-  const [typingText, setTypingText] = useState("");
   const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<
     Record<string, GroupRoomDetails>
   >({});
-  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
-  const [callMode, setCallMode] = useState<CallMode>(null);
-  const [callDirection, setCallDirection] = useState<CallDirection>(null);
-  const [groupCallRoomId, setGroupCallRoomId] = useState("");
-  const [groupCallMode, setGroupCallMode] = useState<CallMode>(null);
-  const [groupCallDirection, setGroupCallDirection] =
-    useState<CallDirection>(null);
-  const [pendingGroupCall, setPendingGroupCall] = useState<{
-    roomId: string;
-    callMode: "voice" | "video";
-    senderId: string;
-  } | null>(null);
-  const [incomingCall, setIncomingCall] = useState<{
-    senderId: string;
-    senderName: string;
-    callMode: "voice" | "video";
-    sessionId: string;
-    isOnline: boolean;
-  } | null>(null);
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>(
     {},
   );
-  const [clearedRoomAtById, setClearedRoomAtById] = useState<
-    Record<string, string>
-  >({});
-  const [isClearHistoryHydrated, setIsClearHistoryHydrated] = useState(false);
-  const typingTimeoutRef = useRef<number | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
+  const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
+  const [typingText, setTypingText] = useState("");
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
+
   const socketRef = useRef<Socket | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      setIsClearHistoryHydrated(true);
-      return;
-    }
-
-    const raw = window.localStorage.getItem(
-      getClearHistoryStorageKey(currentUserId),
-    );
-    if (!raw) {
-      setClearedRoomAtById({});
-      setIsClearHistoryHydrated(true);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as Record<string, string>;
-      setClearedRoomAtById(parsed ?? {});
-    } catch {
-      setClearedRoomAtById({});
-    }
-
-    setIsClearHistoryHydrated(true);
-  }, [currentUserId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !isClearHistoryHydrated) {
-      return;
-    }
-
-    window.localStorage.setItem(
-      getClearHistoryStorageKey(currentUserId),
-      JSON.stringify(clearedRoomAtById),
-    );
-  }, [clearedRoomAtById, currentUserId, isClearHistoryHydrated]);
-
+  // Load rooms
   const reloadRooms = useCallback(async () => {
     setIsLoadingRooms(true);
     try {
@@ -204,11 +121,8 @@ export default function ChatContainer({
     }
   }, []);
 
+  // Initialize socket
   useEffect(() => {
-    if (!token) {
-      socketRef.current = null;
-      return;
-    }
     let cancelled = false;
     let socket: Socket | null = null;
 
@@ -227,6 +141,7 @@ export default function ChatContainer({
     };
   }, []);
 
+  // Load initial rooms
   useEffect(() => {
     let mounted = true;
 
@@ -301,7 +216,10 @@ export default function ChatContainer({
       return true;
     }
 
-    if (initialPeerUserId && rooms.some((room) => room.peerUserId === initialPeerUserId)) {
+    if (
+      initialPeerUserId &&
+      rooms.some((room) => room.peerUserId === initialPeerUserId)
+    ) {
       return true;
     }
 
@@ -309,13 +227,12 @@ export default function ChatContainer({
   }, [hasInitialSelection, initialPeerUserId, initialRoomId, rooms]);
 
   const isResolvingInitialSelection =
-    hasInitialSelection
-    && !effectiveActiveRoomId
-    && (isLoadingRooms || hasInitialSelectionMatch);
+    hasInitialSelection &&
+    !effectiveActiveRoomId &&
+    (isLoadingRooms || hasInitialSelectionMatch);
 
   const shouldShowNoRoomWelcome =
-    !isResolvingInitialSelection
-    && !effectiveActiveRoomId;
+    !isResolvingInitialSelection && !effectiveActiveRoomId;
 
   useEffect(() => {
     if (hasInitialSelection && effectiveActiveRoomId && onRoomResolved) {
@@ -356,6 +273,7 @@ export default function ChatContainer({
     setActiveRoomId(roomId);
     setReplyTo(undefined);
     setTypingText("");
+    setIsMobileInfoOpen(false);
   };
 
   const ensureGroupDetails = useCallback(
@@ -484,490 +402,29 @@ export default function ChatContainer({
     }
   }, [effectiveActiveRoomId, activeRoom?.roomType]);
 
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return;
-
-    const onMessage = (message: ChatMessage) => {
-      const isPrivateConversation =
-        message.roomType === "PRIVATE" || message.conversationId.includes(":");
-      if (message.roomType === "GROUP" || !isPrivateConversation) {
-        return;
-      }
-
-      const counterpartUserId =
-        message.senderId === currentUserId
-          ? message.receiverId
-          : message.senderId;
-      let roomId = roomByPeer.get(counterpartUserId);
-
-      if (!roomId) {
-        roomId = toPrivateRoomId(currentUserId, counterpartUserId);
-      }
-
-      const isIncoming = message.receiverId === currentUserId;
-      const shouldIncreaseUnread =
-        isIncoming && roomId !== effectiveActiveRoomId;
-
-      if (isIncoming) {
-        socket.emit(CHAT_EVENTS.RECEIVE, { messageId: message.messageId });
-
-        if (roomId === effectiveActiveRoomId) {
-          socket.emit(CHAT_EVENTS.READ, { roomId });
-        }
-      }
-
-      setMessagesByRoom((prev) => {
-        return {
-          ...prev,
-          [roomId]: mergeMessages(prev[roomId], [message]),
-        };
-      });
-
-      setRooms((prev) => {
-        const existed = prev.find((room) => room.id === roomId);
-        if (!existed) {
-          void reloadRooms().catch(() => {
-            // Keep current sidebar state when refresh fails.
-          });
-          return prev;
-        }
-
-        return prev.map((room) => {
-          if (room.id !== roomId) return room;
-          return {
-            ...room,
-            preview: message.content,
-            lastMessageAt: message.createdAt,
-            age: toAgeLabel(message.createdAt),
-            unreadCount: shouldIncreaseUnread
-              ? room.unreadCount + 1
-              : room.unreadCount,
-          };
-        });
-      });
-    };
-
-    const onGroupMessage = (message: ChatMessage) => {
-      const roomId = message.roomId ?? message.conversationId;
-      if (!roomId) return;
-
-      const shouldIncreaseUnread =
-        message.senderId !== currentUserId && roomId !== effectiveActiveRoomId;
-
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [roomId]: mergeMessages(prev[roomId], [message]),
-      }));
-
-      setRooms((prev) => {
-        const existed = prev.find((room) => room.id === roomId);
-
-        if (!existed) {
-          void reloadRooms().catch(() => {
-            // Keep current sidebar state when refresh fails.
-          });
-          return prev;
-        }
-
-        return prev.map((room) => {
-          if (room.id !== roomId) return room;
-          return {
-            ...room,
-            preview: toMessagePreview(message),
-            lastMessageAt: message.createdAt,
-            age: toAgeLabel(message.createdAt),
-            unreadCount: shouldIncreaseUnread
-              ? room.unreadCount + 1
-              : room.unreadCount,
-          };
-        });
-      });
-      setGroupDetailsByRoom((prev) => {
-        const existed = prev[roomId];
-        if (!existed) return prev;
-
-        return {
-          ...prev,
-          [roomId]: {
-            ...existed,
-            lastMessageAt: message.createdAt,
-            lastMessagePreview: message.content,
-          },
-        };
-      });
-
-      if (roomId === effectiveActiveRoomId) {
-        socket.emit(CHAT_EVENTS.GROUP_READ, { roomId });
-      }
-    };
-
-    const onRecalled = (payload: MessageStateUpdate) => {
-      const roomId =
-        payload.roomId ??
-        (() => {
-          const counterpartUserId =
-            payload.senderId === currentUserId
-              ? payload.receiverId
-              : payload.senderId;
-          return (
-            roomByPeer.get(counterpartUserId) ??
-            toPrivateRoomId(currentUserId, counterpartUserId)
-          );
-        })();
-
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [roomId]: sortMessages(
-          (prev[roomId] ?? []).map((message) =>
-            message.messageId === payload.messageId
-              ? {
-                  ...message,
-                  isRecalled: true,
-                  updatedAt: payload.updatedAt ?? message.updatedAt,
-                }
-              : message,
-          ),
-        ),
-      }));
-      setMessagesByRoom((prev) => {
-        const updatedRoomMessages = sortMessages((prev[roomId] ?? []).map((message) =>
-          message.messageId === payload.messageId
-            ? { ...message, isRecalled: true, updatedAt: payload.updatedAt ?? message.updatedAt }
-            : message,
-        ));
-
-        const latestMessage = updatedRoomMessages[updatedRoomMessages.length - 1];
-
-        if (latestMessage) {
-          setRooms((prevRooms) =>
-            prevRooms.map((room) =>
-              room.id === roomId
-                ? {
-                  ...room,
-                  preview: toMessagePreview(latestMessage),
-                  age: toAgeLabel(latestMessage.createdAt),
-                }
-                : room,
-            ),
-          );
-        }
-
-        return {
-          ...prev,
-          [roomId]: updatedRoomMessages,
-        };
-      });
-    };
-
-    const onReceived = (payload: MessageStateUpdate) => {
-      const roomId =
-        payload.roomId ??
-        (() => {
-          const counterpartUserId =
-            payload.senderId === currentUserId
-              ? payload.receiverId
-              : payload.senderId;
-          return (
-            roomByPeer.get(counterpartUserId) ??
-            toPrivateRoomId(currentUserId, counterpartUserId)
-          );
-        })();
-
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [roomId]: sortMessages(
-          (prev[roomId] ?? []).map((message) =>
-            message.messageId === payload.messageId
-              ? {
-                  ...message,
-                  receivedAt: payload.receivedAt,
-                  updatedAt: payload.updatedAt ?? message.updatedAt,
-                }
-              : message,
-          ),
-        ),
-      }));
-    };
-
-    const onTyping = (payload: TypingPayload) => {
-      const isGroupTyping = Boolean(payload.roomId);
-      const isCurrentRoom = isGroupTyping
-        ? payload.roomId === effectiveActiveRoomId
-        : payload.senderId === peerUserId &&
-          payload.receiverId === currentUserId;
-
-      if (!isCurrentRoom) return;
-
-      setTypingText(
-        payload.isTyping
-          ? isGroupTyping
-            ? "Có người đang nhập..."
-            : "Typing..."
-          : "",
-      );
-
-      if (typingTimeoutRef.current) {
-        window.clearTimeout(typingTimeoutRef.current);
-      }
-
-      typingTimeoutRef.current = window.setTimeout(() => {
-        setTypingText("");
-      }, 1500);
-    };
-
-    const onGroupRoomUpdated = (payload: GroupRoomDetails) => {
-      setGroupDetailsByRoom((prev) => ({
-        ...prev,
-        [payload.roomId]: payload,
-      }));
-
-      setRooms((prev) => {
-        const existed = prev.find((room) => room.id === payload.roomId);
-        const nextItem: ChatRoomSummary = {
-          id: payload.roomId,
-          roomType: "GROUP",
-          title: payload.title,
-          peerUserId: payload.roomId,
-          peerName: payload.title,
-          avatarUrl: payload.avatarUrl,
-          description: payload.description,
-          emoji: payload.emoji,
-          memberCount: payload.memberCount,
-          preview:
-            payload.lastMessagePreview ??
-            existed?.preview ??
-            "Bắt đầu trò chuyện trong nhóm",
-          lastMessageAt:
-            payload.lastMessageAt ??
-            existed?.lastMessageAt ??
-            new Date().toISOString(),
-          age: payload.lastMessageAt
-            ? toAgeLabel(payload.lastMessageAt)
-            : (existed?.age ?? "Now"),
-          unreadCount: existed?.unreadCount ?? 0,
-          isPeerOnline: false,
-        };
-
-        if (!existed) {
-          return [nextItem, ...prev];
-        }
-
-        return prev.map((room) =>
-          room.id === payload.roomId ? { ...room, ...nextItem } : room,
-        );
-      });
-    };
-
-    const onGroupMemberLeft = (payload: {
-      roomId: string;
-      userId: string;
-      payload?: GroupRoomDetails;
-    }) => {
-      if (payload.payload) {
-        onGroupRoomUpdated(payload.payload);
-      }
-      setGroupDetailsByRoom((prev) => {
-        const existing = prev[payload.roomId];
-        if (!existing) return prev;
-
-        return {
-          ...prev,
-          [payload.roomId]: {
-            ...existing,
-            members: existing.members.filter(
-              (member) => member.userId !== payload.userId,
-            ),
-            memberCount: Math.max(0, existing.memberCount - 1),
-          },
-        };
-      });
-    };
-
-    const onGroupCallStarted = async (payload: GroupCallStartedPayload) => {
-      if (
-        payload.roomId === groupCallRoomId &&
-        groupCallMode === payload.callMode
-      ) {
-        return;
-      }
-
-      try {
-        await ensureGroupDetails(payload.roomId);
-      } catch {
-        return;
-      }
-
-      setCallMode(null);
-      setCallDirection(null);
-      setIncomingCall(null);
-      if (payload.senderId === currentUserId) {
-        setPendingGroupCall(null);
-        setGroupCallRoomId(payload.roomId);
-        setGroupCallMode(payload.callMode);
-        setGroupCallDirection("outgoing");
-        return;
-      }
-
-      setGroupCallRoomId("");
-      setGroupCallMode(null);
-      setGroupCallDirection(null);
-      setPendingGroupCall({
-        roomId: payload.roomId,
-        callMode: payload.callMode,
-        senderId: payload.senderId,
-      });
-    };
-
-    const onGroupCallEnded = (payload: GroupCallEndPayload) => {
-      if (payload.roomId !== groupCallRoomId) {
-        if (pendingGroupCall?.roomId !== payload.roomId) {
-          return;
-        }
-      }
-
-      setGroupCallRoomId("");
-      setGroupCallMode(null);
-      setGroupCallDirection(null);
-      setPendingGroupCall(null);
-    };
-
-    const onGroupDissolved = (payload: { roomId: string }) => {
-      setRooms((prev) => prev.filter((room) => room.id !== payload.roomId));
-      setGroupDetailsByRoom((prev) => {
-        if (!prev[payload.roomId]) return prev;
-
-        const next = { ...prev };
-        delete next[payload.roomId];
-        return next;
-      });
-
-      if (activeRoomId === payload.roomId) {
-        setActiveRoomId("");
-      }
-
-      if (groupCallRoomId === payload.roomId) {
-        setGroupCallRoomId("");
-        setGroupCallMode(null);
-        setGroupCallDirection(null);
-        setPendingGroupCall(null);
-      }
-    };
-
-    const onIncomingCall = (payload: {
-      senderId: string;
-      senderName: string;
-      callMode: "voice" | "video";
-      sessionId: string;
-      isOnline: boolean;
-    }) => {
-      setIncomingCall(payload);
-    };
-
-    const onCallEnd = (payload: CallEndPayload) => {
-      if (payload.receiverId !== currentUserId) return;
-
-      setIncomingCall((prev) => {
-        if (!prev || prev.senderId !== payload.senderId) {
-          return prev;
-        }
-
-        return null;
-      });
-    };
-
-    const onPresence = (payload: PresencePayload) => {
-      setPresenceByUser((prev) => ({
-        ...prev,
-        [payload.userId]: payload.isOnline,
-      }));
-
-      setRooms((prev) =>
-        prev.map((room) =>
-          room.roomType === "PRIVATE" && room.peerUserId === payload.userId
-            ? { ...room, isPeerOnline: payload.isOnline }
-            : room,
-        ),
-      );
-
-      setGroupDetailsByRoom((prev) => {
-        let changed = false;
-        const next: Record<string, GroupRoomDetails> = { ...prev };
-
-        for (const [roomId, details] of Object.entries(prev)) {
-          const updatedMembers = details.members.map((member) => {
-            if (
-              member.userId !== payload.userId ||
-              member.isOnline === payload.isOnline
-            ) {
-              return member;
-            }
-
-            changed = true;
-            return {
-              ...member,
-              isOnline: payload.isOnline,
-            };
-          });
-
-          if (changed) {
-            next[roomId] = {
-              ...details,
-              members: updatedMembers,
-            };
-          }
-        }
-
-        return changed ? next : prev;
-      });
-    };
-
-    socket.on(CHAT_EVENTS.MESSAGE, onMessage);
-    socket.on(CHAT_EVENTS.GROUP_MESSAGE, onGroupMessage);
-    socket.on(CHAT_EVENTS.RECALLED, onRecalled);
-    socket.on(CHAT_EVENTS.RECEIVED, onReceived);
-    socket.on(CHAT_EVENTS.PRESENCE, onPresence);
-    socket.on(CHAT_EVENTS.TYPING, onTyping);
-    socket.on(CHAT_EVENTS.GROUP_ROOM_UPDATED, onGroupRoomUpdated);
-    socket.on(CHAT_EVENTS.GROUP_MEMBER_LEFT, onGroupMemberLeft);
-    socket.on(CHAT_EVENTS.GROUP_CALL_STARTED, onGroupCallStarted);
-    socket.on(CHAT_EVENTS.GROUP_CALL_END, onGroupCallEnded);
-    socket.on(CHAT_EVENTS.GROUP_DISSOLVED, onGroupDissolved);
-    socket.on(CALL_EVENTS.INCOMING, onIncomingCall);
-    socket.on(CALL_EVENTS.END, onCallEnd);
-
-    return () => {
-      if (typingTimeoutRef.current) {
-        window.clearTimeout(typingTimeoutRef.current);
-      }
-      socket.off(CHAT_EVENTS.MESSAGE, onMessage);
-      socket.off(CHAT_EVENTS.GROUP_MESSAGE, onGroupMessage);
-      socket.off(CHAT_EVENTS.RECALLED, onRecalled);
-      socket.off(CHAT_EVENTS.RECEIVED, onReceived);
-      socket.off(CHAT_EVENTS.PRESENCE, onPresence);
-      socket.off(CHAT_EVENTS.TYPING, onTyping);
-      socket.off(CHAT_EVENTS.GROUP_ROOM_UPDATED, onGroupRoomUpdated);
-      socket.off(CHAT_EVENTS.GROUP_MEMBER_LEFT, onGroupMemberLeft);
-      socket.off(CHAT_EVENTS.GROUP_CALL_STARTED, onGroupCallStarted);
-      socket.off(CHAT_EVENTS.GROUP_CALL_END, onGroupCallEnded);
-      socket.off(CHAT_EVENTS.GROUP_DISSOLVED, onGroupDissolved);
-      socket.off(CALL_EVENTS.INCOMING, onIncomingCall);
-      socket.off(CALL_EVENTS.END, onCallEnd);
-    };
-  }, [
+  // Setup socket event handlers
+  useChatSocketHandlers({
+    socket: socketRef.current,
     currentUserId,
     effectiveActiveRoomId,
-    activeRoomId,
-    peerName,
+    activeRoomRoomType: activeRoom?.roomType ?? null,
     peerUserId,
-    presenceByUser,
-    ensureGroupDetails,
-    groupCallMode,
-    groupCallRoomId,
-    pendingGroupCall,
     roomByPeer,
     reloadRooms,
-  ]);
+    ensureGroupDetails,
+    setMessages: setMessagesByRoom,
+    setRooms,
+    setGroupDetails: setGroupDetailsByRoom,
+    setPresenceByUser,
+    setTypingText,
+    setIncomingCall,
+    setGroupCallRoomId,
+    setGroupCallMode,
+    setGroupCallDirection,
+    setPendingGroupCall,
+    setCallMode,
+    setCallDirection,
+  } as any);
 
   useEffect(() => {
     const listElement = listRef.current;
@@ -978,13 +435,18 @@ export default function ChatContainer({
     });
   }, [activeMessages]);
 
-  const handleSend = (content: string) => {
+  const handleSend = (content: string, options?: SendMessageOptions) => {
     if (!socketRef.current || !effectiveActiveRoomId) return;
+
+    const payload = {
+      content,
+      ...options,
+    };
 
     if (activeRoom?.roomType === "GROUP") {
       socketRef.current.emit(CHAT_EVENTS.GROUP_SEND, {
         roomId: effectiveActiveRoomId,
-        content,
+        ...payload,
       });
       return;
     }
@@ -994,8 +456,8 @@ export default function ChatContainer({
     if (replyTo) {
       socketRef.current.emit(CHAT_EVENTS.REPLY, {
         receiverId: peerUserId,
-        content,
         replyToMessageId: replyTo.messageId,
+        ...payload,
       });
       setReplyTo(undefined);
       return;
@@ -1003,7 +465,7 @@ export default function ChatContainer({
 
     socketRef.current.emit(CHAT_EVENTS.SEND, {
       receiverId: peerUserId,
-      content,
+      ...payload,
     });
   };
 
@@ -1011,62 +473,39 @@ export default function ChatContainer({
     socketRef.current?.emit(CHAT_EVENTS.RECALL, { messageId });
   };
 
-  const handleDeleteForMe = useCallback((messageId: string) => {
-    if (!effectiveActiveRoomId) return;
+  // Message actions
+  const {
+    handleCopyMessage,
+    handlePinMessage,
+    handleMarkMessage,
+    handleSelectManyMessage,
+    handleViewMessageDetails,
+    emitMessageActionEvent,
+  } = useMessageActions(effectiveActiveRoomId, peerUserId);
 
-    setMessagesByRoom((prev) => ({
-      ...prev,
-      [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter((message) => message.messageId !== messageId),
-    }));
+  const handleDeleteForMe = useCallback(
+    (messageId: string) => {
+      if (!effectiveActiveRoomId) return;
 
-    setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
-  }, [effectiveActiveRoomId]);
+      setMessagesByRoom((prev) => ({
+        ...prev,
+        [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter(
+          (message) => message.messageId !== messageId,
+        ),
+      }));
 
-  const emitMessageActionEvent = useCallback((action: string, metadata: Record<string, unknown>) => {
-    window.dispatchEvent(new CustomEvent('chat-message-action', {
-      detail: {
-        action,
-        roomId: effectiveActiveRoomId,
-        peerUserId,
-        ...metadata,
-      },
-    }));
-  }, [effectiveActiveRoomId, peerUserId]);
+      setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
+    },
+    [effectiveActiveRoomId],
+  );
 
-  const handleCopyMessage = useCallback((message: ChatMessage) => {
-    if (!message.content) return;
-
-    void navigator.clipboard.writeText(message.content).then(() => {
-      emitMessageActionEvent('copy_message', { messageId: message.messageId });
-    }).catch(() => {
-      // Ignore clipboard permission errors.
-    });
-  }, [emitMessageActionEvent]);
-
-  const handlePinMessage = useCallback((message: ChatMessage) => {
-    emitMessageActionEvent('pin_message', { messageId: message.messageId });
-  }, [emitMessageActionEvent]);
-
-  const handleMarkMessage = useCallback((message: ChatMessage) => {
-    emitMessageActionEvent('mark_message', { messageId: message.messageId });
-  }, [emitMessageActionEvent]);
-
-  const handleSelectManyMessage = useCallback((message: ChatMessage) => {
-    emitMessageActionEvent('select_many_messages', { fromMessageId: message.messageId });
-  }, [emitMessageActionEvent]);
-
-  const handleViewMessageDetails = useCallback((message: ChatMessage) => {
-    emitMessageActionEvent('view_message_details', {
-      messageId: message.messageId,
-      senderId: message.senderId,
-      createdAt: message.createdAt,
-    });
-  }, [emitMessageActionEvent]);
-
-  const handleDeleteForMeWithEvent = useCallback((messageId: string) => {
-    handleDeleteForMe(messageId);
-    emitMessageActionEvent('delete_message_for_me', { messageId });
-  }, [emitMessageActionEvent, handleDeleteForMe]);
+  const handleDeleteForMeWithEvent = useCallback(
+    (messageId: string) => {
+      handleDeleteForMe(messageId);
+      emitMessageActionEvent("delete_message_for_me", { messageId });
+    },
+    [emitMessageActionEvent, handleDeleteForMe],
+  );
 
   const handleTyping = (isTyping: boolean) => {
     if (!effectiveActiveRoomId || !socketRef.current) return;
@@ -1325,15 +764,25 @@ export default function ChatContainer({
   return (
     <section className="h-full w-full overflow-hidden bg-[#f8f9fb]">
       <div className="flex h-full">
-        <ChatSidebar
-          rooms={sidebarRooms}
-          activeRoomId={effectiveActiveRoomId}
-          currentUserName={currentUserName}
-          onSelectRoom={handleSelectRoom}
-          onCreateGroup={handleCreateGroup}
-        />
+        <div
+          className={
+            effectiveActiveRoomId ? "hidden md:flex" : "flex w-full md:w-auto"
+          }
+        >
+          <ChatSidebar
+            rooms={sidebarRooms}
+            activeRoomId={effectiveActiveRoomId}
+            currentUserName={currentUserName}
+            onSelectRoom={handleSelectRoom}
+            onCreateGroup={handleCreateGroup}
+          />
+        </div>
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-[#f8f9fb] lg:min-h-0">
+        <div
+          className={`min-h-0 min-w-0 flex-1 flex-col bg-[#f8f9fb] ${
+            effectiveActiveRoomId ? "flex" : "hidden md:flex"
+          }`}
+        >
           {shouldShowNoRoomWelcome ? (
             <ChatNoRoomWelcome />
           ) : (
@@ -1347,6 +796,11 @@ export default function ChatContainer({
               currentUserName={currentUserName}
               listRef={listRef}
               replyTo={replyTo}
+              onBackToList={() => {
+                setIsMobileInfoOpen(false);
+                setActiveRoomId("");
+              }}
+              onOpenInfo={() => setIsMobileInfoOpen(true)}
               onOpenVoiceCall={handleOpenVoiceCall}
               onOpenVideoCall={handleOpenVideoCall}
               onClearReply={() => setReplyTo(undefined)}
@@ -1380,6 +834,32 @@ export default function ChatContainer({
             }}
           />
         ) : null}
+
+        {effectiveActiveRoomId && isMobileInfoOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Đóng thông tin hội thoại"
+              className="fixed inset-0 z-40 bg-slate-900/35 lg:hidden"
+              onClick={() => setIsMobileInfoOpen(false)}
+            />
+            <ChatInfoPanel
+              room={activeRoom}
+              groupDetails={activeGroupDetails}
+              currentUserId={currentUserId}
+              onLeaveGroup={handleLeaveGroup}
+              onDissolveGroup={handleDissolveGroup}
+              onOpenCreateGroup={handleCreateGroup}
+              onDeleteChatHistory={handleDeleteChatHistory}
+              onGroupDetailsChange={handleGroupDetailsChange}
+              onMembersAdded={() => {
+                void handleGroupMembersAdded();
+              }}
+              isMobileOpen
+              onCloseMobile={() => setIsMobileInfoOpen(false)}
+            />
+          </>
+        ) : null}
       </div>
 
       <CreateGroupModal
@@ -1392,8 +872,8 @@ export default function ChatContainer({
 
       <IncomingCallModal
         isOpen={incomingCall !== null}
-        senderName={incomingCall?.senderName ?? ''}
-        callMode={incomingCall?.callMode ?? 'voice'}
+        senderName={incomingCall?.senderName ?? ""}
+        callMode={incomingCall?.callMode ?? "voice"}
         isOnline={incomingCall?.isOnline ?? false}
         onAccept={handleAcceptIncomingCall}
         onDecline={handleDeclineIncomingCall}
@@ -1405,17 +885,17 @@ export default function ChatContainer({
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.title ??
               activeRoom?.title ??
-              'Nhóm')
-            : 'Nhóm'
+              "Nhóm")
+            : "Nhóm"
         }
         callerName={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.members.find(
                 (member) => member.userId === pendingGroupCall.senderId,
-              )?.name ?? 'Thành viên')
-            : 'Thành viên'
+              )?.name ?? "Thành viên")
+            : "Thành viên"
         }
-        callMode={pendingGroupCall?.callMode ?? 'voice'}
+        callMode={pendingGroupCall?.callMode ?? "voice"}
         participantCount={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.memberCount ?? 0)
@@ -1433,9 +913,9 @@ export default function ChatContainer({
           roomId={groupCallRoomId}
           groupDetails={activeGroupCallDetails}
           callMode={groupCallMode}
-          callDirection={groupCallDirection ?? 'incoming'}
+          callDirection={groupCallDirection ?? "incoming"}
           onClose={() => {
-            setGroupCallRoomId('');
+            setGroupCallRoomId("");
             setGroupCallMode(null);
             setGroupCallDirection(null);
           }}
@@ -1456,11 +936,3 @@ export default function ChatContainer({
     </section>
   );
 }
-
-
-
-
-
-
-
-

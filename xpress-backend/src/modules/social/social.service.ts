@@ -42,9 +42,18 @@ export class SocialService {
 
     const items = await Promise.all(
       result.items.map(async (user) => {
-        const relation = await this.socialRepository.getFriend(actorUserId, user.userId);
-        const blockedByMe = await this.socialRepository.isBlocked(actorUserId, user.userId);
-        const blockedMe = await this.socialRepository.isBlocked(user.userId, actorUserId);
+        const relation = await this.socialRepository.getFriend(
+          actorUserId,
+          user.userId,
+        );
+        const blockedByMe = await this.socialRepository.isBlocked(
+          actorUserId,
+          user.userId,
+        );
+        const blockedMe = await this.socialRepository.isBlocked(
+          user.userId,
+          actorUserId,
+        );
         const presence = this.presenceService.getPresence(user.userId);
 
         return {
@@ -73,12 +82,18 @@ export class SocialService {
 
     await this.ensureUserExists(dto.targetUserId);
 
-    const blocked = await this.socialRepository.isEitherBlocked(actorUserId, dto.targetUserId);
+    const blocked = await this.socialRepository.isEitherBlocked(
+      actorUserId,
+      dto.targetUserId,
+    );
     if (blocked) {
       throw new ForbiddenException('Khong the gui loi moi ket ban do bi chan');
     }
 
-    const relation = await this.socialRepository.getFriend(actorUserId, dto.targetUserId);
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      dto.targetUserId,
+    );
     if (relation?.status === 'FRIEND') {
       throw new ConflictException('Hai nguoi da la ban');
     }
@@ -100,7 +115,10 @@ export class SocialService {
   }
 
   async acceptFriendRequest(actorUserId: string, requesterUserId: string) {
-    const relation = await this.socialRepository.getFriend(actorUserId, requesterUserId);
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      requesterUserId,
+    );
     if (relation?.status !== 'PENDING_RECEIVED') {
       throw new NotFoundException('Khong tim thay loi moi');
     }
@@ -116,7 +134,10 @@ export class SocialService {
   }
 
   async rejectFriendRequest(actorUserId: string, requesterUserId: string) {
-    const relation = await this.socialRepository.getFriend(actorUserId, requesterUserId);
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      requesterUserId,
+    );
     if (relation?.status !== 'PENDING_RECEIVED') {
       throw new NotFoundException('Khong tim thay loi moi');
     }
@@ -126,7 +147,10 @@ export class SocialService {
   }
 
   async unfriend(actorUserId: string, friendUserId: string) {
-    const relation = await this.socialRepository.getFriend(actorUserId, friendUserId);
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      friendUserId,
+    );
     if (relation?.status !== 'FRIEND') {
       throw new NotFoundException('Khong tim thay ban be');
     }
@@ -143,7 +167,9 @@ export class SocialService {
       dto.cursor,
     );
 
-    const users = await this.loadUsers(page.items.map((item) => item.targetUserId));
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
 
     return {
       items: users.map((user) => {
@@ -168,7 +194,9 @@ export class SocialService {
       dto.cursor,
     );
 
-    const users = await this.loadUsers(page.items.map((item) => item.targetUserId));
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
 
     return {
       items: users.map((user) => {
@@ -186,7 +214,10 @@ export class SocialService {
   }
 
   async listAllFriendUsers(actorUserId: string): Promise<ChatFriendUser[]> {
-    const relationItems = [] as Array<{ targetUserId: string; updatedAt: string }>;
+    const relationItems = [] as Array<{
+      targetUserId: string;
+      updatedAt: string;
+    }>;
     let cursor: string | undefined;
 
     do {
@@ -247,7 +278,10 @@ export class SocialService {
   }
 
   async assertNotBlocked(userAId: string, userBId: string): Promise<void> {
-    const blocked = await this.socialRepository.isEitherBlocked(userAId, userBId);
+    const blocked = await this.socialRepository.isEitherBlocked(
+      userAId,
+      userBId,
+    );
     if (blocked) {
       throw new ForbiddenException('Khong the thao tac vi co quan he chan');
     }
@@ -261,7 +295,9 @@ export class SocialService {
   }
 
   private async loadUsers(userIds: string[]): Promise<UserEntity[]> {
-    const loaded = await Promise.all(userIds.map((userId) => this.usersRepository.findByUserId(userId)));
+    const loaded = await Promise.all(
+      userIds.map((userId) => this.usersRepository.findByUserId(userId)),
+    );
     return loaded.filter((item): item is UserEntity => item != null);
   }
 }

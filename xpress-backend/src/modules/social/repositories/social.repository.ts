@@ -7,7 +7,11 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
-import { BlockEntity, FriendEntity, FriendStatus } from '../interfaces/social.interface';
+import {
+  BlockEntity,
+  FriendEntity,
+  FriendStatus,
+} from '../interfaces/social.interface';
 
 @Injectable()
 export class SocialRepository {
@@ -18,7 +22,10 @@ export class SocialRepository {
     private readonly ddbDocClient: DynamoDBDocumentClient,
   ) {}
 
-  async getFriend(ownerUserId: string, targetUserId: string): Promise<FriendEntity | null> {
+  async getFriend(
+    ownerUserId: string,
+    targetUserId: string,
+  ): Promise<FriendEntity | null> {
     const result = await this.ddbDocClient.send(
       new GetCommand({
         TableName: this.tableName,
@@ -175,9 +182,13 @@ export class SocialRepository {
     return a || b;
   }
 
-  private encodeCursor(lastEvaluatedKey?: Record<string, unknown>): string | null {
+  private encodeCursor(
+    lastEvaluatedKey?: Record<string, unknown>,
+  ): string | null {
     if (!lastEvaluatedKey) return null;
-    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString('base64');
+    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString(
+      'base64',
+    );
   }
 
   private decodeCursor(cursor?: string): Record<string, unknown> | undefined {

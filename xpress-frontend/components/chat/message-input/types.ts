@@ -3,4 +3,6 @@ export interface PendingAttachment {
   file: File;
   previewUrl: string;
   kind: 'image' | 'video' | 'file';
+  progress?: number;
 }
+

@@ -187,8 +187,12 @@ export class ChatService {
       conversationId,
       senderId,
       receiverId: dto.receiverId,
-      content: dto.content,
-      messageType: 'TEXT',
+      content: dto.content || '',
+      messageType: dto.messageType || 'TEXT',
+      fileUrl: dto.fileUrl,
+      fileName: dto.fileName,
+      fileSize: dto.fileSize,
+      mimeType: dto.mimeType,
       isDeleted: false,
       isRecalled: false,
       createdAt: now,
@@ -254,6 +258,17 @@ export class ChatService {
     actorUserId: string,
     dto: CreateGroupDto,
   ): Promise<GroupRoomDetails> {
+    const initialMemberIds = Array.from(
+      new Set([actorUserId, ...(dto.memberUserIds ?? [])]),
+    ).filter((userId) => userId !== actorUserId);
+
+    const totalMembers = 1 + initialMemberIds.length;
+    if (totalMembers < 3) {
+      throw new BadRequestException(
+        'Nhom can it nhat 3 nguoi (bao gom ban va 2 thanh vien khac)',
+      );
+    }
+
     const room = await this.groupRoomsRepository.createGroupRoom({
       title: dto.title,
       description: dto.description,
@@ -261,10 +276,6 @@ export class ChatService {
       emoji: dto.emoji,
       createdByUserId: actorUserId,
     });
-
-    const initialMemberIds = Array.from(
-      new Set([actorUserId, ...(dto.memberUserIds ?? [])]),
-    ).filter((userId) => userId !== actorUserId);
 
     for (const memberUserId of initialMemberIds) {
       const exists = await this.usersRepository.findByUserId(memberUserId);
@@ -350,7 +361,7 @@ export class ChatService {
     if (allMembers.length === 0) {
       throw new Error('Cannot fetch group details after leaving');
     }
-    return this.buildGroupRoomDetails(allMembers[0]!.userId, roomId);
+    return this.buildGroupRoomDetails(allMembers[0].userId, roomId);
   }
 
   async promoteGroupMember(
@@ -430,8 +441,12 @@ export class ChatService {
       roomType: 'GROUP',
       senderId,
       receiverId: room.roomId,
-      content: dto.content,
-      messageType: 'TEXT',
+      content: dto.content || '',
+      messageType: dto.messageType || 'TEXT',
+      fileUrl: dto.fileUrl,
+      fileName: dto.fileName,
+      fileSize: dto.fileSize,
+      mimeType: dto.mimeType,
       isDeleted: false,
       isRecalled: false,
       createdAt: now,

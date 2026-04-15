@@ -5,7 +5,7 @@ export interface ReplyPreview {
   content: string;
 }
 
-export type MessageType = "TEXT" | "CALL_LOG";
+export type MessageType = "TEXT" | "CALL_LOG" | "IMAGE" | "FILE";
 
 export interface CallLogPayload {
   mode: "voice" | "video";
@@ -24,6 +24,10 @@ export interface ChatMessage {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
   callLog?: CallLogPayload;
   replyToMessageId?: string;
   replyPreview?: ReplyPreview;

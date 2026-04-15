@@ -1,5 +1,5 @@
 import { ChatMessage } from '@/lib/realtime/types';
-import { PhoneCall, PhoneMissed, PhoneOutgoing, Video, VideoOff } from 'lucide-react';
+import { PhoneCall, PhoneMissed, PhoneOutgoing, Video, VideoOff, FileText, Download } from 'lucide-react';
 import ReplyPreview from './ReplyPreview';
 
 interface MessageBubbleCardProps {
@@ -9,6 +9,7 @@ interface MessageBubbleCardProps {
   currentUserName: string;
   peerName: string;
   onRedial: (mode: 'voice' | 'video') => void;
+  onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
 }
 
 function formatCallDuration(totalSeconds: number): string {
@@ -68,6 +69,7 @@ export default function MessageBubbleCard({
   currentUserName,
   peerName,
   onRedial,
+  onImageClick,
 }: MessageBubbleCardProps) {
   const isCallLog = message.messageType === 'CALL_LOG' && !!message.callLog;
 
@@ -124,7 +126,49 @@ export default function MessageBubbleCard({
       {message.isRecalled ? (
         <p className={`italic ${isOwn ? 'text-orange-100' : 'text-zinc-500'}`}>Tin nhắn đã được thu hồi</p>
       ) : (
-        <p className="wrap-break-word whitespace-pre-wrap">{message.content}</p>
+        <div className="flex flex-col gap-2">
+          {message.messageType === 'IMAGE' && message.fileUrl && (
+            <img 
+              src={message.fileUrl} 
+              alt={message.fileName || 'Image'} 
+              className={`max-w-60 max-h-75 rounded-lg object-cover border border-white/20 ${onImageClick ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
+              loading="lazy" 
+              onClick={() => {
+                if (onImageClick) {
+                  const senderName = isOwn ? currentUserName : peerName;
+                  const timestamp = new Date(message.createdAt).toLocaleString('vi-VN');
+                  onImageClick(message.fileUrl!, senderName, timestamp);
+                }
+              }}
+            />
+          )}
+
+          {message.messageType === 'FILE' && message.fileUrl && (
+            <a 
+              href={message.fileUrl} 
+              target="_blank" 
+              rel="noreferrer" 
+              className={`flex items-center gap-3 rounded-lg p-2 transition-colors ${
+                isOwn ? 'bg-white/20 hover:bg-white/30' : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+            >
+              <div className={`p-2 rounded-full shrink-0 ${isOwn ? 'bg-white/30 text-white' : 'bg-white text-gray-700'}`}>
+                <FileText size={20} />
+              </div>
+              <div className="flex flex-col min-w-0 max-w-40 overflow-hidden">
+                <span className="font-semibold text-sm truncate">{message.fileName || 'Tài liệu đính kèm'}</span>
+                {message.fileSize && (
+                  <span className="text-xs opacity-80">{Math.round(message.fileSize / 1024)} KB</span>
+                )}
+              </div>
+              <Download size={16} className={`ml-2 ${isOwn ? 'text-white/80' : 'text-gray-500'}`} />
+            </a>
+          )}
+
+          {message.content && (
+            <p className="wrap-break-word whitespace-pre-wrap">{message.content}</p>
+          )}
+        </div>
       )}
     </div>
   );
