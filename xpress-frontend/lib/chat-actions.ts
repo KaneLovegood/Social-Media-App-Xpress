@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth-client';
+import { authFetch } from './auth-client';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
@@ -20,14 +20,11 @@ interface ChatActionPayload {
 }
 
 export async function sendChatAction(action: ChatActionName, payload: ChatActionPayload) {
-  const token = getAccessToken();
-
   try {
-    await fetch(`${API_BASE_URL}/chat/actions`, {
+    await authFetch(`${API_BASE_URL}/chat/actions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
         action,

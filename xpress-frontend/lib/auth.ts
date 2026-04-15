@@ -1,3 +1,5 @@
+import { persistSession } from './auth-client';
+
 export type AuthUser = {
   userId: string;
   name: string;
@@ -22,10 +24,6 @@ type RegisterPayload = AuthPayload & {
   name: string;
 };
 
-const ACCESS_TOKEN_KEY = "xpress_access_token";
-const REFRESH_TOKEN_KEY = "xpress_refresh_token";
-const USER_KEY = "xpress_user";
-const TOKEN_COOKIE = "xpress_access_token";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
 
@@ -39,15 +37,6 @@ export async function register(payload: RegisterPayload) {
   const result = await request<AuthResponse>("/auth/register", payload);
   persistSession(result);
   return result;
-}
-
-export function persistSession(session: AuthResponse) {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
-  window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
-  document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(session.accessToken)}; path=/; max-age=2592000; samesite=lax`;
 }
 
 async function request<TResponse>(path: string, payload: Record<string, unknown>) {

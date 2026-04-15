@@ -19,7 +19,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({ name, phone, password });
-      router.push("/");
+      router.push("/login");
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Đăng ký thất bại.");

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { getAccessToken } from '@/lib/auth-client';
 import { leaveGroup, dissolveGroup, fetchGroupRoomDetails, type GroupRoomDetails } from '@/lib/chat-groups';
+import { getValidAccessToken } from '@/lib/auth-client';
 import { sendChatAction } from '@/lib/chat-actions';
 import { fetchChatRoomMessages } from '@/lib/chat-messages';
 import { ChatRoomSummary, fetchChatRooms } from '@/lib/chat-rooms';
@@ -151,7 +152,6 @@ export default function ChatContainer({
   const typingTimeoutRef = useRef<number | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const token = useMemo(() => getAccessToken(), []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -210,11 +210,23 @@ export default function ChatContainer({
       socketRef.current = null;
       return;
     }
+    let cancelled = false;
+    let socket: Socket | null = null;
 
-    if (!socketRef.current) {
-      socketRef.current = createChatSocket(token);
-    }
-  }, [token]);
+    void getValidAccessToken().then((token) => {
+      if (!token || cancelled || socketRef.current) return;
+      socket = createChatSocket(token);
+      socketRef.current = socket;
+    });
+
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
