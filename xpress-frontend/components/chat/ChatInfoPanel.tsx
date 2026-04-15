@@ -421,7 +421,7 @@ export default function ChatInfoPanel({
       >
         <div className="flex h-full w-full flex-col">
           <div className="border-b border-slate-200 px-6 py-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="relative flex items-center justify-center gap-3">
               <p className="flex items-center justify-center gap-2 text-center text-base font-semibold text-slate-900">
                 <Icon name="circle-info" size="lg" />
                 Thông tin hội thoại
@@ -430,7 +430,7 @@ export default function ChatInfoPanel({
                 <button
                   type="button"
                   onClick={onCloseMobile}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                  className="absolute right-0 inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Đóng thông tin hội thoại"
                 >
                   <Icon name="xmark" size="lg" />
