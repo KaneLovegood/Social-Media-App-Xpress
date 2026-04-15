@@ -1,4 +1,4 @@
-﻿import { MessageCircleMore } from "lucide-react";
+﻿import { MessageCircleMore, Settings } from "lucide-react";
 import Link from "next/link";
 
 export interface SidebarChatItem {
@@ -44,6 +44,14 @@ export default function ChatSidebar({
           className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
         >
           <span className="text-xs font-bold">DB</span>
+        </Link>
+
+        <Link
+          href="/profile"
+          className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
+          title="Cài đặt cá nhân"
+        >
+          <Settings className="h-4 w-4" />
         </Link>
       </div>
 
