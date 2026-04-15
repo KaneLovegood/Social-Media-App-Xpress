@@ -20,7 +20,7 @@ import {
   unblockUser,
   unfriend,
 } from '@/lib/social';
-import { MessageCircleMore } from 'lucide-react';
+import { MessageCircleMore, Settings } from 'lucide-react';
 
 type TabKey = 'friends' | 'requests';
 
@@ -185,6 +185,14 @@ export default function ContactsPage() {
           className="mt-4 rounded-lg bg-linear-to-br from-[#0052cc] to-[#0068ff] p-3 text-white"
         >
           <span className="text-xs font-bold">DB</span>
+        </Link>
+
+        <Link
+          href="/profile"
+          className="mt-4 rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
+          title="Cài đặt cá nhân"
+        >
+          <Settings className="h-4 w-4" />
         </Link>
       </aside>
 
