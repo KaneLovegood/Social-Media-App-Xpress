@@ -424,6 +424,7 @@ export default function ChatContainer({
     setPendingGroupCall,
     setCallMode,
     setCallDirection,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 
   useEffect(() => {
