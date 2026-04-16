@@ -45,7 +45,7 @@ function toProfileModel(user: StoredUser | null): ProfileModel {
     return {
       userId: '',
       displayName: 'Chưa có dữ liệu người dùng',
-      phone: '---',
+      email: '---',
       roleLabel: '---',
       statusLabel: 'Chưa đăng nhập',
       status: 'unknown',
@@ -54,7 +54,7 @@ function toProfileModel(user: StoredUser | null): ProfileModel {
     };
   }
 
-  const hasPhone = user.phone.trim().length > 0;
+  const hasPhone = user.email.trim().length > 0;
   const hasRole = user.role.trim().length > 0;
   const hasStatus = user.status.trim().length > 0;
   const completionScore = [hasPhone, hasRole, hasStatus].filter(Boolean).length;
@@ -62,7 +62,7 @@ function toProfileModel(user: StoredUser | null): ProfileModel {
   return {
     userId: user.userId,
     displayName: user.name,
-    phone: user.phone,
+    email: user.email,
     roleLabel: mapRole(user.role),
     statusLabel: mapStatusLabel(user.status),
     status: mapStatus(user.status),

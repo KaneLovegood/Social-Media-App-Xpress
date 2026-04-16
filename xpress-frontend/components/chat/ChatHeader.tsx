@@ -1,3 +1,5 @@
+import { ChevronLeft, Phone, TextAlignJustify, Video } from "lucide-react";
+
 interface ChatHeaderProps {
   peerName: string;
   orderTitle: string;
@@ -9,7 +11,7 @@ interface ChatHeaderProps {
   onOpenVideoCall: () => void;
 }
 
-function initials(value: string) {
+const initials = (value: string) => {
   const words = value.split(/[\s._-]+/).filter(Boolean);
   const chars = words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "");
   return chars.join("") || "GC";
@@ -41,15 +43,7 @@ export default function ChatHeader({
             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#0052cc] hover:bg-[#eaf2ff] md:hidden"
             aria-label="Quay lại danh sách hội thoại"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="m15 5-7 7 7 7" />
-            </svg>
+            <ChevronLeft className="h-5 w-5" />
           </button>
           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-sm font-bold text-[#294486] md:flex">
             {initials(peerName)}
@@ -71,15 +65,7 @@ export default function ChatHeader({
             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#eaf2ff]"
             aria-label="Mở gọi thoại"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-            >
-              <path d="M4.8 3.5h4.1l1.5 4.4-2.4 1.7a14.7 14.7 0 0 0 6.3 6.3l1.7-2.4 4.4 1.5v4.1l-2.3 1.1a5.2 5.2 0 0 1-5 .2A20.9 20.9 0 0 1 3.2 9a5.2 5.2 0 0 1 .2-5l1.4-.5Z" />
-            </svg>
+            <Phone className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -87,16 +73,7 @@ export default function ChatHeader({
             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#eaf2ff]"
             aria-label="Mở gọi video"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <rect x="3" y="6" width="13" height="12" rx="2" />
-              <path d="m16 10 5-3v10l-5-3" />
-            </svg>
+            <Video className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -104,15 +81,7 @@ export default function ChatHeader({
             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#eaf2ff] md:hidden"
             aria-label="Mở thông tin hội thoại"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
+            <TextAlignJustify className="h-4 w-4" />
           </button>
         </div>
       </div>

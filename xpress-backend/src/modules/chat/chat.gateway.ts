@@ -7,11 +7,11 @@ import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
   MessageBody,
+  OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
-  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
@@ -21,70 +21,23 @@ import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
-
-interface IncomingCallPayload {
-  senderId: string;
-  senderName: string;
-  callMode: 'voice' | 'video';
-  sessionId: string;
-  isOnline: boolean;
-}
-
-interface JwtPayload {
-  sub: string;
-}
-
-interface TypingDto {
-  receiverId: string;
-  isTyping: boolean;
-}
-
-interface ReceiveDto {
-  messageId: string;
-}
-
-interface ReadRoomDto {
-  roomId: string;
-}
-
-interface CallOfferDto {
-  receiverId: string;
-  offer: RTCSessionDescriptionInit;
-}
-
-interface CallAnswerDto {
-  receiverId: string;
-  answer: RTCSessionDescriptionInit;
-}
-
-interface CallIceDto {
-  receiverId: string;
-  candidate: RTCIceCandidateInit;
-}
-
-interface CallEndDto {
-  receiverId: string;
-  reason?: string;
-}
-
-interface GroupCallStartDto {
-  roomId: string;
-  callMode: 'voice' | 'video';
-}
-
-interface GroupCallSignalDto {
-  roomId: string;
-  receiverId: string;
-  callMode: 'voice' | 'video';
-  offer?: RTCSessionDescriptionInit;
-  answer?: RTCSessionDescriptionInit;
-  candidate?: RTCIceCandidateInit;
-}
-
-interface GroupCallEndDto {
-  roomId: string;
-  reason?: string;
-}
+import type {
+  CallAnswerDto,
+  CallEndDto,
+  CallIceDto,
+  CallOfferDto,
+} from './interfaces/chat-call.interface';
+import type {
+  GroupCallEndDto,
+  GroupCallSignalDto,
+  GroupCallStartDto,
+  IncomingCallPayload,
+  JwtPayload,
+  ReadRoomDto,
+  ReceiveDto,
+  TypingDto,
+} from './interfaces/chat-gateway.interface';
+import { ChatGatewayTransportService } from './services/chat-gateway-transport.service';
 
 @WebSocketGateway({
   namespace: '/chat',
@@ -92,41 +45,36 @@ interface GroupCallEndDto {
     origin: '*',
   },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer()
-  server!: Server;
-
+export class ChatGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(ChatGateway.name);
 
   constructor(
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
+    private readonly transportService: ChatGatewayTransportService,
   ) {}
+
+  afterInit(server: Server): void {
+    this.transportService.setServer(server);
+  }
 
   async handleConnection(client: Socket): Promise<void> {
     try {
       const token = this.extractToken(client);
       const payload = this.jwtService.verify<JwtPayload>(token);
-      client.data.userId = payload.sub;
+      await this.transportService.handleConnection(client, payload.sub);
 
-      const userRoom = `user:${payload.sub}`;
-      client.join(userRoom);
-
-      const groupRoomIds = await this.chatService.getGroupRoomIdsForUser(
-        payload.sub,
-      );
-      for (const roomId of groupRoomIds) {
-        client.join(this.toGroupRoomName(roomId));
-      }
-
-      const becameOnline = this.chatService.registerConnection(
+      const becameOnline = this.transportService.registerConnection(
         payload.sub,
         client.id,
       );
       if (becameOnline) {
-        this.server.emit(
+        this.transportService.emitToUsers(
+          [payload.sub],
           CHAT_EVENTS.PRESENCE,
-          this.chatService.getPresence(payload.sub),
+          this.transportService.getPresence(payload.sub),
         );
       }
     } catch (error) {
@@ -140,14 +88,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
 
-    const becameOffline = this.chatService.unregisterConnection(
+    const becameOffline = this.transportService.handleDisconnect(
       userId,
       client.id,
     );
     if (becameOffline) {
-      this.server.emit(
+      this.transportService.emitToUsers(
+        [userId],
         CHAT_EVENTS.PRESENCE,
-        this.chatService.getPresence(userId),
+        this.transportService.getPresence(userId),
       );
     }
   }
@@ -160,11 +109,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     const message = await this.chatService.sendMessage(userId, dto);
 
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.MESSAGE,
-      message,
-    );
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_SEND)
@@ -175,7 +120,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     const message = await this.chatService.sendGroupMessage(userId, dto);
 
-    this.emitToGroup(dto.roomId, CHAT_EVENTS.GROUP_MESSAGE, message);
+    this.transportService.emitToGroup(dto.roomId, CHAT_EVENTS.GROUP_MESSAGE, message);
   }
 
   @SubscribeMessage(CHAT_EVENTS.REPLY)
@@ -186,11 +131,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     const message = await this.chatService.replyMessage(userId, dto);
 
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.MESSAGE,
-      message,
-    );
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
   }
 
   @SubscribeMessage(CHAT_EVENTS.DELETE)
@@ -212,19 +153,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     if (message.roomType === 'GROUP') {
-      this.emitToGroup(
-        message.roomId ?? message.conversationId,
-        CHAT_EVENTS.DELETED,
-        payload,
-      );
+      this.transportService.emitToGroup(message.roomId ?? message.conversationId, CHAT_EVENTS.DELETED, payload);
       return;
     }
 
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.DELETED,
-      payload,
-    );
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.DELETED, payload);
   }
 
   @SubscribeMessage(CHAT_EVENTS.RECALL)
@@ -246,19 +179,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     if (message.roomType === 'GROUP') {
-      this.emitToGroup(
-        message.roomId ?? message.conversationId,
-        CHAT_EVENTS.RECALLED,
-        payload,
-      );
+      this.transportService.emitToGroup(message.roomId ?? message.conversationId, CHAT_EVENTS.RECALLED, payload);
       return;
     }
 
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.RECALLED,
-      payload,
-    );
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.RECALLED, payload);
   }
 
   @SubscribeMessage(CHAT_EVENTS.TYPING)
@@ -273,7 +198,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload.isTyping,
     );
 
-    this.emitToUser(receiverId, CHAT_EVENTS.TYPING, eventPayload);
+    this.transportService.emitToUser(receiverId, CHAT_EVENTS.TYPING, eventPayload);
   }
 
   @SubscribeMessage(CHAT_EVENTS.RECEIVE)
@@ -295,17 +220,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.RECEIVED,
-      {
-        messageId: message.messageId,
-        senderId: message.senderId,
-        receiverId: message.receiverId,
-        receivedAt: message.receivedAt,
-        updatedAt: message.updatedAt,
-      },
-    );
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.RECEIVED, {
+      messageId: message.messageId,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      receivedAt: message.receivedAt,
+      updatedAt: message.updatedAt,
+    });
   }
 
   @SubscribeMessage(CHAT_EVENTS.READ)
@@ -334,7 +255,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_TYPING, {
+    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_TYPING, {
       roomId: payload.roomId,
       senderId: userId,
       isTyping: payload.isTyping,
@@ -349,7 +270,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_STARTED, {
+    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_STARTED, {
       senderId: userId,
       roomId: payload.roomId,
       callMode: payload.callMode,
@@ -368,7 +289,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload.roomId,
     );
 
-    this.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_OFFER, {
+    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_OFFER, {
       senderId: userId,
       receiverId: payload.receiverId,
       roomId: payload.roomId,
@@ -389,7 +310,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload.roomId,
     );
 
-    this.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ANSWER, {
+    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ANSWER, {
       senderId: userId,
       receiverId: payload.receiverId,
       roomId: payload.roomId,
@@ -410,7 +331,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload.roomId,
     );
 
-    this.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ICE, {
+    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ICE, {
       senderId: userId,
       receiverId: payload.receiverId,
       roomId: payload.roomId,
@@ -427,7 +348,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_END, {
+    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_END, {
       senderId: userId,
       roomId: payload.roomId,
       reason: payload.reason,
@@ -443,7 +364,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { receiverId, eventPayload } =
       await this.chatService.validateCallOffer(userId, payload);
 
-    this.emitToUser(receiverId, CALL_EVENTS.OFFER, eventPayload);
+    this.transportService.emitToUser(receiverId, CALL_EVENTS.OFFER, eventPayload);
   }
 
   @SubscribeMessage(CALL_EVENTS.ANSWER)
@@ -455,7 +376,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { receiverId, eventPayload } =
       await this.chatService.validateCallAnswer(userId, payload);
 
-    this.emitToUser(receiverId, CALL_EVENTS.ANSWER, eventPayload);
+    this.transportService.emitToUser(receiverId, CALL_EVENTS.ANSWER, eventPayload);
   }
 
   @SubscribeMessage(CALL_EVENTS.ICE)
@@ -469,7 +390,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload,
     );
 
-    this.emitToUser(receiverId, CALL_EVENTS.ICE, eventPayload);
+    this.transportService.emitToUser(receiverId, CALL_EVENTS.ICE, eventPayload);
   }
 
   @SubscribeMessage(CALL_EVENTS.END)
@@ -483,33 +404,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       payload,
     );
 
-    this.emitToUser(receiverId, CALL_EVENTS.END, eventPayload);
-  }
-
-  private emitToUsers(
-    userIds: string[],
-    event: string,
-    payload: unknown,
-  ): void {
-    for (const userId of userIds) {
-      this.emitToUser(userId, event, payload);
-    }
+    this.transportService.emitToUser(receiverId, CALL_EVENTS.END, eventPayload);
   }
 
   broadcastChatMessage(message: {
     senderId: string;
     receiverId: string;
   }): void {
-    this.emitToUsers(
-      [message.senderId, message.receiverId],
-      CHAT_EVENTS.MESSAGE,
-      message,
-    );
-  }
-
-  private emitToUser(userId: string, event: string, payload: unknown): void {
-    const userRoom = `user:${userId}`;
-    this.server.to(userRoom).emit(event, payload);
+    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
   }
 
   private getUserId(client: Socket): string {
@@ -542,35 +444,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     receiverId: string,
     payload: IncomingCallPayload,
   ): void {
-    this.emitToUser(receiverId, CALL_EVENTS.INCOMING, payload);
+    this.transportService.broadcastIncomingCall(receiverId, payload);
   }
 
   subscribeUserToGroupRoom(userId: string, roomId: string): void {
-    const socketIds = this.chatService.getSocketIds(userId);
-    const roomName = this.toGroupRoomName(roomId);
-    for (const socketId of socketIds) {
-      this.server.to(socketId).socketsJoin(roomName);
-    }
+    this.transportService.subscribeUserToGroupRoom(userId, roomId);
   }
 
   unsubscribeUserFromGroupRoom(userId: string, roomId: string): void {
-    const socketIds = this.chatService.getSocketIds(userId);
-    const roomName = this.toGroupRoomName(roomId);
-    for (const socketId of socketIds) {
-      this.server.to(socketId).socketsLeave(roomName);
-    }
+    this.transportService.unsubscribeUserFromGroupRoom(userId, roomId);
   }
 
   broadcastGroupMessage(roomId: string, message: unknown): void {
-    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_MESSAGE, message);
+    this.transportService.broadcastGroupMessage(roomId, message);
   }
 
   broadcastGroupRoomUpdate(roomId: string, payload: unknown): void {
-    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_ROOM_UPDATED, payload);
+    this.transportService.broadcastGroupRoomUpdate(roomId, payload);
   }
 
   broadcastGroupRoomUpdateToUsers(userIds: string[], payload: unknown): void {
-    this.emitToUsers(userIds, CHAT_EVENTS.GROUP_ROOM_UPDATED, payload);
+    this.transportService.broadcastGroupRoomUpdateToUsers(userIds, payload);
   }
 
   broadcastGroupMemberLeft(
@@ -578,11 +472,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     userId: string,
     payload: unknown,
   ): void {
-    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_MEMBER_LEFT, {
-      roomId,
-      userId,
-      payload,
-    });
+    this.transportService.broadcastGroupMemberLeft(roomId, userId, payload);
   }
 
   broadcastGroupDissolved(
@@ -590,15 +480,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     memberUserIds: string[],
     payload: unknown,
   ): void {
-    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_DISSOLVED, payload);
-    this.emitToUsers(memberUserIds, CHAT_EVENTS.GROUP_DISSOLVED, payload);
-  }
-
-  private emitToGroup(roomId: string, event: string, payload: unknown): void {
-    this.server.to(this.toGroupRoomName(roomId)).emit(event, payload);
-  }
-
-  private toGroupRoomName(roomId: string): string {
-    return `group:${roomId}`;
+    this.transportService.broadcastGroupDissolved(roomId, memberUserIds, payload);
   }
 }

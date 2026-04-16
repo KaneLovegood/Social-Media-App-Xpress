@@ -304,7 +304,7 @@ export default function MessageInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="overflow-visible rounded-[14px] border border-[#d8dce2] bg-white"
+      className="overflow-visible border border-[#d8dce2] bg-white"
     >
       <input
         ref={fileInputRef}
