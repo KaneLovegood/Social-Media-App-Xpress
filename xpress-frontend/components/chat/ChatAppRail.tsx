@@ -10,6 +10,8 @@ interface ChatAppRailProps {
   fixed?: boolean;
   initials?: string;
   onLogout?: () => void;
+  mobileOpen?: boolean;
+  onRequestClose?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -38,12 +40,16 @@ export default function ChatAppRail({
   fixed = false,
   initials,
   onLogout,
+  mobileOpen = false,
+  onRequestClose,
 }: ChatAppRailProps) {
+  const railPositionClass = mobileOpen
+    ? "fixed left-0 top-0 z-50 flex md:hidden"
+    : `${fixed ? "fixed left-0 top-0" : ""} hidden md:flex`;
+
   return (
     <aside
-      className={`${
-        fixed ? "fixed left-0 top-0" : ""
-      } hidden h-full w-16 flex-col items-center bg-[#e7e8ea] py-4 md:flex`}
+      className={`${railPositionClass} h-full w-16 flex-col items-center bg-[#e7e8ea] py-4`}
     >
       {initials ? (
         <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-full bg-[#dae2ff] font-bold text-[#0040a2]">
@@ -61,6 +67,7 @@ export default function ChatAppRail({
             key={key}
             href={href}
             title={title}
+            onClick={onRequestClose}
             className={`${
               index !== 0 ? "mt-3" : ""
             } rounded-lg p-3 ${
@@ -77,7 +84,10 @@ export default function ChatAppRail({
       {onLogout && (
         <button
           type="button"
-          onClick={onLogout}
+          onClick={() => {
+            onLogout();
+            onRequestClose?.();
+          }}
           className="mt-auto rounded-lg p-3 text-zinc-500 hover:bg-[#e1e2e4]"
           title="Đăng xuất"
         >

@@ -73,25 +73,38 @@ export class UsersRepository {
     cursor?: string,
   ): Promise<PaginatedUsers> {
     const normalized = this.normalizeEmail(emailQuery);
+    const items: UserEntity[] = [];
+    let nextKey = this.decodeCursor(cursor);
 
-    const result = await this.ddbDocClient.send(
-      new ScanCommand({
-        TableName: this.tableName,
-        FilterExpression:
-          'entityType = :entityType AND userId <> :actorUserId AND contains(email, :emailQuery)',
-        ExpressionAttributeValues: {
-          ':entityType': 'USER',
-          ':actorUserId': actorUserId,
-          ':emailQuery': normalized,
-        },
-        Limit: limit,
-        ExclusiveStartKey: this.decodeCursor(cursor),
-      }),
-    );
+    do {
+      const remaining = Math.max(limit - items.length, 1);
+      const result = await this.ddbDocClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression:
+            'entityType = :entityType AND userId <> :actorUserId AND contains(email, :emailQuery)',
+          ExpressionAttributeValues: {
+            ':entityType': 'USER',
+            ':actorUserId': actorUserId,
+            ':emailQuery': normalized,
+          },
+          // Scan limit is applied before FilterExpression.
+          // Keep scanning page-by-page until enough filtered items are collected.
+          Limit: remaining,
+          ExclusiveStartKey: nextKey,
+        }),
+      );
+
+      if (result.Items?.length) {
+        items.push(...(result.Items as UserEntity[]));
+      }
+
+      nextKey = result.LastEvaluatedKey;
+    } while (items.length < limit && nextKey);
 
     return {
-      items: (result.Items as UserEntity[]) ?? [],
-      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+      items,
+      nextCursor: this.encodeCursor(nextKey),
     };
   }
 

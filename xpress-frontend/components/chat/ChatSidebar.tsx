@@ -1,4 +1,4 @@
-﻿import { UserPlus2, Users2 } from "lucide-react";
+﻿import { ChevronLeft, TextAlignCenter, UserPlus2, Users2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -19,6 +19,7 @@ interface ChatSidebarProps {
   currentUserName: string;
   onSelectRoom: (roomId: string) => void;
   onCreateGroup: () => void;
+  onOpenRail: () => void;
   onLogout: () => void;
 }
 
@@ -28,6 +29,7 @@ export default function ChatSidebar({
   currentUserName,
   onSelectRoom,
   onCreateGroup,
+  onOpenRail,
   onLogout,
 }: ChatSidebarProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,10 +48,20 @@ export default function ChatSidebar({
     <aside className="flex h-full w-full md:w-[24rem]">
       <div className="flex min-w-0 flex-1 flex-col bg-[#ffffff]">
         <header className="border-b border-slate-200 bg-white p-4 text-zinc-900 md:border-none md:bg-transparent md:text-inherit">
-          <div className="flex items-center justify-between">
-            <h1 className="truncate text-xl font-bold md:text-zinc-900">
-              {currentUserName}
-            </h1>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenRail}
+                className="rounded-full p-2 text-zinc-700 hover:bg-slate-100 md:hidden"
+                aria-label="Mở thanh điều hướng"
+              >
+                <TextAlignCenter className="h-4 w-4" />
+              </button>
+              <h1 className="truncate text-xl font-bold md:text-zinc-900">
+                {currentUserName}
+              </h1>
+            </div>
             <div className="flex gap-1 items-center">
               <button
                 type="button"

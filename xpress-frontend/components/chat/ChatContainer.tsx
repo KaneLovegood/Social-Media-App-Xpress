@@ -31,6 +31,7 @@ import ChatContent from "./ChatContent";
 import { SendMessageOptions } from "./MessageInput";
 import ChatNoRoomWelcome from "./ChatNoRoomWelcome";
 import ChatSidebar, { SidebarChatItem } from "./ChatSidebar";
+import ChatAppRail from "./ChatAppRail";
 import { useClearedHistory } from "@/hooks/useClearedHistory";
 import { useCallState } from "@/hooks/useCallState";
 import { useMessageActions } from "@/hooks/useMessageActions";
@@ -42,6 +43,19 @@ interface ChatContainerProps {
   initialRoomId?: string;
   initialPeerUserId?: string;
   onRoomResolved?: () => void;
+}
+
+function toInitials(name?: string): string {
+  if (!name) return "";
+
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
 export default function ChatContainer({
@@ -89,6 +103,7 @@ export default function ChatContainer({
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
+  const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
@@ -808,9 +823,28 @@ export default function ChatContainer({
             currentUserName={currentUserName}
             onSelectRoom={handleSelectRoom}
             onCreateGroup={handleCreateGroup}
+            onOpenRail={() => setIsMobileRailOpen(true)}
             onLogout={handleLogout}
           />
         </div>
+
+        {isMobileRailOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Đóng thanh điều hướng"
+              className="fixed inset-0 z-40 bg-slate-900/35 md:hidden"
+              onClick={() => setIsMobileRailOpen(false)}
+            />
+            <ChatAppRail
+              activeNav="chat"
+              initials={toInitials(currentUserName) || undefined}
+              onLogout={handleLogout}
+              mobileOpen
+              onRequestClose={() => setIsMobileRailOpen(false)}
+            />
+          </>
+        ) : null}
 
         <div
           className={`min-h-0 min-w-0 flex-1 flex-col bg-[#f8f9fb] ${

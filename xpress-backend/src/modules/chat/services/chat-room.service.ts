@@ -512,7 +512,6 @@ export class ChatRoomService {
         return {
           userId: user.userId,
           name: user.name,
-          phone: user.phone,
           role: member.role,
           ...(member.nickname ? { nickname: member.nickname } : {}),
           isOnline: this.presenceService.getPresence(user.userId).isOnline,
