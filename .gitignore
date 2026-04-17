@@ -10,6 +10,14 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
+xpress-frontend/android
+xpress-frontend/ios
+xpress-frontend/out
+
+
+build/
+dist/
+.env
 # testing
 coverage
 
