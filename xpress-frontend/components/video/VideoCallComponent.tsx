@@ -1,5 +1,5 @@
-import { Socket } from 'socket.io-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Socket } from 'socket.io-client';
 import { sendChatAction } from '@/lib/chat-actions';
 import { CALL_EVENTS } from '@/lib/realtime/events';
 import {
@@ -158,6 +158,10 @@ export default function VideoCallComponent({
   }, [stopAudioActivityMonitor]);
 
   const setupPeer = useCallback(async (withVideo: boolean) => {
+    if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Media devices not available. This feature requires a browser environment.');
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: true,
       video: withVideo,
@@ -376,6 +380,7 @@ export default function VideoCallComponent({
     if (!showOverlay || active || !incomingOffer) return;
     if (callDirection !== 'incoming') return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void acceptIncomingCall();
   }, [acceptIncomingCall, active, callDirection, incomingOffer, showOverlay]);
 
