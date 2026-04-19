@@ -17,22 +17,21 @@ import { CHAT_EVENTS, CALL_EVENTS } from "@/lib/realtime/events";
 import { createChatSocket } from "@/lib/realtime/socket-client";
 import { ChatMessage, ReplyPreview } from "@/lib/realtime/types";
 import {
-  toPrivateRoomId,
   toAgeLabel,
-  toMessagePreview,
   mergeMessages,
-  getClearHistoryStorageKey,
 } from "@/lib/chat-utils";
 import IncomingCallModal from "./modal/IncomingCallModal";
 import IncomingGroupCallModal from "./modal/IncomingGroupCallModal";
 import ChatInfoPanel from "./ChatInfoPanel";
 import CreateGroupModal from "./modal/CreateGroupModal";
+import ForwardMessageModal from "./modal/ForwardMessageModal";
 import VideoCallComponent from "../video/VideoCallComponent";
 import GroupCallComponent from "../video/GroupCallComponent";
 import ChatContent from "./ChatContent";
 import { SendMessageOptions } from "./MessageInput";
 import ChatNoRoomWelcome from "./ChatNoRoomWelcome";
 import ChatSidebar, { SidebarChatItem } from "./ChatSidebar";
+import ChatAppRail from "./ChatAppRail";
 import { useClearedHistory } from "@/hooks/useClearedHistory";
 import { useCallState } from "@/hooks/useCallState";
 import { useMessageActions } from "@/hooks/useMessageActions";
@@ -44,6 +43,19 @@ interface ChatContainerProps {
   initialRoomId?: string;
   initialPeerUserId?: string;
   onRoomResolved?: () => void;
+}
+
+function toInitials(name?: string): string {
+  if (!name) return "";
+
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
 export default function ChatContainer({
@@ -58,8 +70,6 @@ export default function ChatContainer({
   const {
     clearedRoomAtById,
     setClearedRoomAtById,
-    isClearHistoryHydrated,
-    markRoomCleared,
   } = useClearedHistory(currentUserId);
 
   // Manage call states
@@ -78,31 +88,22 @@ export default function ChatContainer({
     setGroupCallDirection,
     pendingGroupCall,
     setPendingGroupCall,
-    resetPrivateCall,
-    resetGroupCall,
   } = useCallState();
 
   // Room management state
   const [rooms, setRooms] = useState<ChatRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [activeRoomId, setActiveRoomId] = useState("");
-  const [messagesByRoom, setMessagesByRoom] = useState<
-    Record<string, ChatMessage[]>
-  >({});
-  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>(
-    {},
-  );
-  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<
-    Record<string, GroupRoomDetails>
-  >({});
-  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({});
+  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>({});
+  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<Record<string, GroupRoomDetails>>({});
+  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
   const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
   const [typingText, setTypingText] = useState("");
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
   const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
-
+  const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
 
@@ -426,6 +427,7 @@ export default function ChatContainer({
     setPendingGroupCall,
     setCallMode,
     setCallDirection,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 
   useEffect(() => {
@@ -473,6 +475,45 @@ export default function ChatContainer({
 
   const handleRecall = (messageId: string) => {
     socketRef.current?.emit(CHAT_EVENTS.RECALL, { messageId });
+  };
+
+  const handleOpenForwardMessage = (message: ChatMessage) => {
+    setForwardingMessage(message);
+  };
+
+  const handleForwardMessage = (roomIds: string[]) => {
+    if (!forwardingMessage || roomIds.length === 0) return;
+
+    const payload = {
+      content: forwardingMessage.content,
+      messageType: forwardingMessage.messageType,
+      fileUrl: forwardingMessage.fileUrl,
+      fileName: forwardingMessage.fileName,
+      fileSize: forwardingMessage.fileSize,
+      mimeType: forwardingMessage.mimeType,
+    };
+
+    roomIds.forEach((roomId) => {
+      const targetRoom = rooms.find((room) => room.id === roomId);
+      if (!targetRoom) return;
+
+      if (targetRoom.roomType === "GROUP") {
+        socketRef.current?.emit(CHAT_EVENTS.GROUP_SEND, {
+          roomId: targetRoom.id,
+          ...payload,
+        });
+        return;
+      }
+
+      if (!targetRoom.peerUserId) return;
+
+      socketRef.current?.emit(CHAT_EVENTS.SEND, {
+        receiverId: targetRoom.peerUserId,
+        ...payload,
+      });
+    });
+
+    setForwardingMessage(null);
   };
 
   // Message actions
@@ -783,9 +824,28 @@ export default function ChatContainer({
             currentUserName={currentUserName}
             onSelectRoom={handleSelectRoom}
             onCreateGroup={handleCreateGroup}
+            onOpenRail={() => setIsMobileRailOpen(true)}
             onLogout={handleLogout}
           />
         </div>
+
+        {isMobileRailOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Đóng thanh điều hướng"
+              className="fixed inset-0 z-40 bg-slate-900/35 md:hidden"
+              onClick={() => setIsMobileRailOpen(false)}
+            />
+            <ChatAppRail
+              activeNav="chat"
+              initials={toInitials(currentUserName) || undefined}
+              onLogout={handleLogout}
+              mobileOpen
+              onRequestClose={() => setIsMobileRailOpen(false)}
+            />
+          </>
+        ) : null}
 
         <div
           className={`min-h-0 min-w-0 flex-1 flex-col bg-[#f8f9fb] ${
@@ -816,6 +876,7 @@ export default function ChatContainer({
               onSend={handleSend}
               onTyping={handleTyping}
               onReply={setReplyTo}
+              onForward={handleOpenForwardMessage}
               onRecall={handleRecall}
               onDeleteForMe={handleDeleteForMeWithEvent}
               onCopy={handleCopyMessage}
@@ -877,6 +938,16 @@ export default function ChatContainer({
         onCreated={(roomId) => {
           void handleGroupCreated(roomId);
         }}
+      />
+
+      <ForwardMessageModal
+        key={forwardingMessage?.messageId ?? "closed"}
+        isOpen={forwardingMessage !== null}
+        message={forwardingMessage}
+        rooms={rooms}
+        currentRoomId={effectiveActiveRoomId}
+        onClose={() => setForwardingMessage(null)}
+        onForward={handleForwardMessage}
       />
 
       <IncomingCallModal

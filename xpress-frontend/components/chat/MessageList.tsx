@@ -10,6 +10,7 @@ interface MessageListProps {
   canReply?: boolean;
   listRef: RefObject<HTMLUListElement | null>;
   onReply: (preview: ReplyPreviewType) => void;
+  onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
   onDeleteForMe: (messageId: string) => void;
   onCopy: (message: ChatMessage) => void;
@@ -29,6 +30,7 @@ export default function MessageList({
   peerName,
   listRef,
   onReply,
+  onForward,
   onRecall,
   onDeleteForMe,
   onCopy,
@@ -71,6 +73,7 @@ export default function MessageList({
           currentUserName={currentUserName}
           peerName={peerName}
           onReply={onReply}
+          onForward={onForward}
           onRecall={onRecall}
           onDeleteForMe={onDeleteForMe}
           onCopy={onCopy}

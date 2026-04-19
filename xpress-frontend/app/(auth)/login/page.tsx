@@ -5,7 +5,7 @@ import { getGoogleClientId, login, loginWithGoogle } from "@/lib/auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 declare global {
   interface Window {
@@ -32,7 +32,7 @@ declare global {
   }
 }
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -179,5 +179,13 @@ export default function LoginPage() {
         </Link>
       </p>
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Đang tải...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

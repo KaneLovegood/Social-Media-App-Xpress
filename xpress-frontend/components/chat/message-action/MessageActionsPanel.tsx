@@ -1,4 +1,12 @@
-import { RotateCcw, Copy, Pin, Star, Info, ListCollapse, Trash2 } from 'lucide-react';
+import {
+  RotateCcw,
+  Copy,
+  Pin,
+  Star,
+  Info,
+  ListCollapse,
+  Trash2,
+} from 'lucide-react';
 
 interface MessageActionsPanelProps {
   isOwn: boolean;
@@ -19,22 +27,44 @@ interface MessageActionsPanelProps {
   panelRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export default function MessageActionsPanel({
-  isOwn,
-  canRecall,
-  onCopy,
-  onPin,
-  onMark,
-  onSelectMany,
-  onViewDetails,
-  onRecall,
-  onDeleteForMe,
-  onClose,
-  style,
-  panelRef,
-}: MessageActionsPanelProps) {
-  const handleAction = (callback: () => void) => {
-    callback();
+type ActionItem = {
+  icon: any;
+  label: string;
+  action: keyof MessageActionsPanelProps;
+  danger?: boolean;
+  show?: (props: MessageActionsPanelProps) => boolean;
+  disabled?: (props: MessageActionsPanelProps) => boolean;
+};
+
+const ACTIONS: ActionItem[] = [
+  { icon: Copy, label: 'Copy tin nhắn', action: 'onCopy' },
+  { icon: Pin, label: 'Ghim tin nhắn', action: 'onPin' },
+  { icon: Star, label: 'Đánh dấu tin nhắn', action: 'onMark' },
+  { icon: ListCollapse, label: 'Chọn nhiều tin nhắn', action: 'onSelectMany' },
+  { icon: Info, label: 'Xem chi tiết', action: 'onViewDetails' },
+
+  {
+    icon: RotateCcw,
+    label: 'Thu hồi',
+    action: 'onRecall',
+    danger: true,
+    show: (p) => p.isOwn,
+    disabled: (p) => !p.canRecall,
+  },
+
+  {
+    icon: Trash2,
+    label: 'Xóa chỉ ở phía tôi',
+    action: 'onDeleteForMe',
+    danger: true,
+  },
+];
+
+export default function MessageActionsPanel(props: MessageActionsPanelProps) {
+  const { onClose, style, panelRef } = props;
+
+  const handleAction = (callback?: () => void) => {
+    callback?.();
     onClose();
   };
 
@@ -50,65 +80,28 @@ export default function MessageActionsPanel({
         zIndex: 9999,
       }}
     >
-      <button
-        type="button"
-        className="w-full px-3 py-2 text-left flex gap-2 text-sm text-zinc-700 hover:bg-zinc-100"
-        onClick={() => handleAction(onCopy)}
-      >
-        <Copy className="h-4 w-4" />
-        Copy tin nhắn
-      </button>
-      <button
-        type="button"
-        className="w-full px-3 py-2 text-left flex gap-2 text-sm text-zinc-700 hover:bg-zinc-100"
-        onClick={() => handleAction(onPin)}
-      >
-        <Pin className="h-4 w-4 rotate-45" />
-        Ghim tin nhắn
-      </button>
-      <button
-        type="button"
-        className="w-full px-3 py-2 text-left text-sm flex gap-2 text-zinc-700 hover:bg-zinc-100"
-        onClick={() => handleAction(onMark)}
-      >
-        <Star className="h-4 w-4" />
-        Đánh dấu tin nhắn
-      </button>
-      <button
-        type="button"
-        className="w-full px-3 py-2 text-left text-sm flex gap-2 text-zinc-700 hover:bg-zinc-100"
-        onClick={() => handleAction(onSelectMany)}
-      >
-        <ListCollapse className="h-4 w-4" />
-        Chọn nhiều tin nhắn
-      </button>
-      <button
-        type="button"
-        className="w-full px-3 py-2 text-left text-sm flex gap-2 text-zinc-700 hover:bg-zinc-100"
-        onClick={() => handleAction(onViewDetails)}
-      >
-        <Info className="h-4 w-4" />
-        Xem chi tiết
-      </button>
-      {isOwn ? (
-        <button
-          type="button"
-          className="w-full px-3 py-2 text-left text-sm flex gap-2 text-red-600 hover:bg-red-50 disabled:text-red-300"
-          onClick={() => handleAction(onRecall)}
-          disabled={!canRecall}
-        >
-          <RotateCcw className="h-4 w-4" />
-          Thu hồi
-        </button>
-      ) : null}
-      <button
-        type="button"
-        className="w-full px-3 py-2 flex gap-2 text-sm text-red-600 hover:bg-zinc-100"
-        onClick={() => handleAction(onDeleteForMe)}
-      >
-        <Trash2 className="h-4 w-4" />
-        <span>Xóa chỉ ở phía tôi</span>
-      </button>
+      {ACTIONS.filter((a) => (a.show ? a.show(props) : true)).map((action) => {
+        const callback = props[action.action] as (() => void) | undefined;
+        const isDisabled = action.disabled?.(props);
+
+        return (
+          <button
+            key={action.label}
+            type="button"
+            disabled={isDisabled}
+            onClick={() => handleAction(callback)}
+            className={`w-full px-3 py-2 flex gap-2 text-left text-sm
+              ${
+                action.danger
+                  ? 'text-red-600 hover:bg-red-50 disabled:text-red-300'
+                  : 'text-zinc-700 hover:bg-zinc-100'
+              }`}
+          >
+            <action.icon className="h-4 w-4" />
+            {action.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

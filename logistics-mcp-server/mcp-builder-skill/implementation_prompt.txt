@@ -1,0 +1,17 @@
+Act as an expert TypeScript developer specializing in the Model Context Protocol (MCP). 
+
+Your task is to implement the Logistics MCP Server defined in `requirements.md` while strictly following the development patterns and behavioral guidelines in `SKILL.md`.
+
+### Step-by-Step Instructions:
+1. **Analyze Requirements:** Read `requirements.md` to understand the 5.1-5.4 tool definitions (Knowledge, Web, Logistics Intelligence, and Execution tools).
+2. **Review Skills:** Read `SKILL.md` to ensure your implementation supports the "RAG & Knowledge Workflow" and "Response Principles."
+3. **Initialize Project:** 
+   - Set up a Node.js/TypeScript project structure.
+   - Install `@modelcontextprotocol/sdk` and `zod`.
+4. **Implementation:**
+   - Create a central `McpServer` instance.
+   - Implement each tool using `server.tool()` with clear Zod schemas and descriptions.
+   - Mock the business logic for the "Logistics Logic Engine" and search services initially, ensuring types match the requirement specs.
+5. **Validation:** Ensure all tool names match the `logistics_*` prefix as specified.
+
+Please start by generating the `package.json` and the core `index.ts` server structure.

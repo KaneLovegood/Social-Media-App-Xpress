@@ -1,13 +1,20 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getValidAccessToken } from "@/lib/auth-client";
 
-export default async function Home() {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get("xpress_access_token")?.value;
+export default function Home() {
+  const router = useRouter();
 
-  if (!accessToken) {
-    redirect("/login");
-  }
+  useEffect(() => {
+    getValidAccessToken().then((token) => {
+      if (!token) {
+        router.replace("/login");
+      } else {
+        router.replace("/chat/me");
+      }
+    });
+  }, [router]);
 
-  redirect("/chat/me");
+  return <div className="min-h-screen flex items-center justify-center">Redirecting...</div>;
 }
