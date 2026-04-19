@@ -5,9 +5,10 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SocialModule } from './modules/social/social.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { McpModule } from './modules/mcp/mcp.module';
 
 @Module({
-  imports: [AuthModule, ChatModule, SocialModule, StorageModule],
+  imports: [AuthModule, ChatModule, SocialModule, StorageModule, McpModule],
   controllers: [AppController],
   providers: [AppService],
 })

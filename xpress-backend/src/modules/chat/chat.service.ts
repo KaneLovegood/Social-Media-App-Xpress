@@ -15,7 +15,13 @@ import { RecallMessageDto } from './dto/recall-message.dto';
 import { ReplyMessageDto } from './dto/reply-message.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
-import { ChatActionResponse, CallAnswerDto, CallEndDto, CallIceDto, CallOfferDto } from './interfaces/chat-call.interface';
+import {
+  ChatActionResponse,
+  CallAnswerDto,
+  CallEndDto,
+  CallIceDto,
+  CallOfferDto,
+} from './interfaces/chat-call.interface';
 import { ChatRoomSummary } from './interfaces/chat-room-summary.interface';
 import { MessageEntity } from './interfaces/message.interface';
 import { ChatCallService } from './services/chat-call.service';
@@ -135,24 +141,15 @@ export class ChatService {
     return item;
   }
 
-  async createGroupRoom(
-    actorUserId: string,
-    dto: CreateGroupDto,
-  ) {
+  async createGroupRoom(actorUserId: string, dto: CreateGroupDto) {
     return this.chatRoomService.createGroupRoom(actorUserId, dto);
   }
 
-  async dissolveGroup(
-    actorUserId: string,
-    roomId: string,
-  ) {
+  async dissolveGroup(actorUserId: string, roomId: string) {
     return this.chatRoomService.dissolveGroup(actorUserId, roomId);
   }
 
-  async getGroupRoomDetails(
-    actorUserId: string,
-    roomId: string,
-  ) {
+  async getGroupRoomDetails(actorUserId: string, roomId: string) {
     return this.chatRoomService.getGroupRoomDetails(actorUserId, roomId);
   }
 
@@ -169,13 +166,14 @@ export class ChatService {
     roomId: string,
     memberUserId: string,
   ) {
-    return this.chatRoomService.removeGroupMember(actorUserId, roomId, memberUserId);
+    return this.chatRoomService.removeGroupMember(
+      actorUserId,
+      roomId,
+      memberUserId,
+    );
   }
 
-  async leaveGroup(
-    actorUserId: string,
-    roomId: string,
-  ) {
+  async leaveGroup(actorUserId: string, roomId: string) {
     return this.chatRoomService.leaveGroup(actorUserId, roomId);
   }
 
@@ -184,20 +182,18 @@ export class ChatService {
     roomId: string,
     memberUserId: string,
   ) {
-    return this.chatRoomService.promoteGroupMember(actorUserId, roomId, memberUserId);
+    return this.chatRoomService.promoteGroupMember(
+      actorUserId,
+      roomId,
+      memberUserId,
+    );
   }
 
-  async createGroupInviteLink(
-    actorUserId: string,
-    roomId: string,
-  ) {
+  async createGroupInviteLink(actorUserId: string, roomId: string) {
     return this.chatRoomService.createGroupInviteLink(actorUserId, roomId);
   }
 
-  async joinGroupByInvite(
-    actorUserId: string,
-    inviteCode: string,
-  ) {
+  async joinGroupByInvite(actorUserId: string, inviteCode: string) {
     return this.chatRoomService.joinGroupByInvite(actorUserId, inviteCode);
   }
 

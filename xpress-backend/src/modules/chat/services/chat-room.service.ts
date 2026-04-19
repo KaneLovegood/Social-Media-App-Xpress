@@ -11,7 +11,10 @@ import { ChatFriendUser, SocialService } from '../../social/social.service';
 import { CreateGroupDto } from '../dto/create-group.dto';
 import { GroupMemberDto } from '../dto/group-member.dto';
 import { SendGroupMessageDto } from '../dto/send-group-message.dto';
-import { ChatGroupMemberEntity, ChatGroupRoomEntity } from '../interfaces/group-room.interface';
+import {
+  ChatGroupMemberEntity,
+  ChatGroupRoomEntity,
+} from '../interfaces/group-room.interface';
 import {
   ChatRoomSummary,
   GroupDissolveResult,
@@ -176,7 +179,8 @@ export class ChatRoomService {
     actorUserId: string,
     inviteCode: string,
   ): Promise<GroupRoomDetails> {
-    const room = await this.groupRoomsRepository.findRoomByInviteCode(inviteCode);
+    const room =
+      await this.groupRoomsRepository.findRoomByInviteCode(inviteCode);
     if (!room) {
       throw new NotFoundException('Ma moi khong hop le');
     }
@@ -261,7 +265,8 @@ export class ChatRoomService {
       const existed = rooms.get(roomId);
       const peerName = existed?.peerName ?? this.toPeerName(peerUserId);
       const isPeerOnline =
-        existed?.isPeerOnline ?? this.presenceService.getPresence(peerUserId).isOnline;
+        existed?.isPeerOnline ??
+        this.presenceService.getPresence(peerUserId).isOnline;
 
       const unreadDelta =
         message.receiverId === userId && !message.readAt && !message.isDeleted
@@ -309,7 +314,8 @@ export class ChatRoomService {
   ): Promise<{ success: boolean; deletedCount: number }> {
     await this.assertRoomMembership(userId, roomId);
 
-    const messages = await this.messagesRepository.findMessagesByConversationId(roomId);
+    const messages =
+      await this.messagesRepository.findMessagesByConversationId(roomId);
     const deletedCount = messages.length;
 
     for (const message of messages) {
@@ -349,7 +355,8 @@ export class ChatRoomService {
   }
 
   async getGroupRoomIdsForUser(userId: string): Promise<string[]> {
-    const memberships = await this.groupRoomsRepository.listRoomsForUser(userId);
+    const memberships =
+      await this.groupRoomsRepository.listRoomsForUser(userId);
     return memberships.map((item) => item.room.roomId);
   }
 
@@ -398,7 +405,9 @@ export class ChatRoomService {
     for (const membership of memberships) {
       const room = membership.room;
       const latestMessage = room.lastMessageAt
-        ? await this.messagesRepository.findLatestMessageByConversationId(room.roomId)
+        ? await this.messagesRepository.findLatestMessageByConversationId(
+            room.roomId,
+          )
         : null;
       const unreadCount = await this.getGroupUnreadCount(
         userId,
@@ -418,7 +427,9 @@ export class ChatRoomService {
         memberCount: room.memberCount,
         memberRole: membership.role,
         preview:
-          room.lastMessagePreview ?? latestMessage?.content ?? 'Bắt đầu cuộc trò chuyện',
+          room.lastMessagePreview ??
+          latestMessage?.content ??
+          'Bắt đầu cuộc trò chuyện',
         lastMessageAt: room.lastMessageAt ?? room.createdAt,
         unreadCount,
         isPeerOnline: false,
@@ -431,7 +442,8 @@ export class ChatRoomService {
     roomId: string,
     sinceIso: string,
   ): Promise<number> {
-    const messages = await this.messagesRepository.findMessagesByConversationId(roomId);
+    const messages =
+      await this.messagesRepository.findMessagesByConversationId(roomId);
     return messages.filter((message) => {
       if (message.senderId === userId || message.isDeleted) {
         return false;

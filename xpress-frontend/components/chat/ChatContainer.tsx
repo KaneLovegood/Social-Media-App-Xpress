@@ -32,6 +32,7 @@ import { SendMessageOptions } from "./MessageInput";
 import ChatNoRoomWelcome from "./ChatNoRoomWelcome";
 import ChatSidebar, { SidebarChatItem } from "./ChatSidebar";
 import ChatAppRail from "./ChatAppRail";
+import AiChatBox from "./AiChatBox";
 import { useClearedHistory } from "@/hooks/useClearedHistory";
 import { useCallState } from "@/hooks/useCallState";
 import { useMessageActions } from "@/hooks/useMessageActions";
@@ -160,7 +161,7 @@ export default function ChatContainer({
   }, [reloadRooms]);
 
   const effectiveActiveRoomId = useMemo(
-    () => (rooms.some((room) => room.id === activeRoomId) ? activeRoomId : ""),
+    () => (rooms.some((room) => room.id === activeRoomId) || activeRoomId === "AI_ASSISTANT" ? activeRoomId : ""),
     [activeRoomId, rooms],
   );
 
@@ -249,8 +250,8 @@ export default function ChatContainer({
   );
 
   const sidebarRooms = useMemo<SidebarChatItem[]>(
-    () =>
-      rooms.map((room) => {
+    () => {
+      const dbRooms = rooms.map((room) => {
         const clearedAt = clearedRoomAtById[room.id];
         const hasHiddenHistory =
           typeof clearedAt === "string" &&
@@ -268,7 +269,21 @@ export default function ChatContainer({
               ? false
               : (presenceByUser[room.peerUserId] ?? room.isPeerOnline),
         };
-      }),
+      });
+
+      return [
+        {
+          id: "AI_ASSISTANT",
+          roomType: "PRIVATE",
+          title: "Logistics AI Assistant",
+          preview: "Trợ lý ảo phân tích Logistics",
+          age: "",
+          unreadCount: 0,
+          isOnline: true,
+        },
+        ...dbRooms,
+      ];
+    },
     [clearedRoomAtById, presenceByUser, rooms],
   );
 
@@ -297,9 +312,14 @@ export default function ChatContainer({
   );
 
   useEffect(() => {
-    if (rooms.length === 0) return;
+    if (activeRoomId === "AI_ASSISTANT") return;
 
     if (activeRoomId && rooms.some((room) => room.id === activeRoomId)) {
+      return;
+    }
+
+    if (initialRoomId === "AI_ASSISTANT") {
+      setActiveRoomId("AI_ASSISTANT");
       return;
     }
 
@@ -854,6 +874,15 @@ export default function ChatContainer({
         >
           {shouldShowNoRoomWelcome ? (
             <ChatNoRoomWelcome />
+          ) : effectiveActiveRoomId === "AI_ASSISTANT" ? (
+            <AiChatBox
+               currentUserId={currentUserId}
+               currentUserName={currentUserName}
+               onBackToList={() => {
+                 setIsMobileInfoOpen(false);
+                 setActiveRoomId("");
+               }}
+            />
           ) : (
             <ChatContent
               peerName={peerName}
@@ -889,7 +918,7 @@ export default function ChatContainer({
           )}
         </div>
 
-        {effectiveActiveRoomId ? (
+        {effectiveActiveRoomId && effectiveActiveRoomId !== "AI_ASSISTANT" ? (
           <ChatInfoPanel
             room={activeRoom}
             groupDetails={activeGroupDetails}
@@ -905,7 +934,7 @@ export default function ChatContainer({
           />
         ) : null}
 
-        {effectiveActiveRoomId && isMobileInfoOpen ? (
+        {effectiveActiveRoomId && effectiveActiveRoomId !== "AI_ASSISTANT" && isMobileInfoOpen ? (
           <>
             <button
               type="button"
