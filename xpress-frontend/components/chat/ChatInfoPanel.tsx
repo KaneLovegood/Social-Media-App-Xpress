@@ -218,6 +218,14 @@ export default function ChatInfoPanel({
     setIsConversationPinned(false);
   }, [room?.id]);
 
+  
+  useEffect(() => {
+    if (room?.id) {
+      void loadMediaAndFiles();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id]);
+
   if (!room) {
     return (
       <aside className="hidden h-full w-96 border-l border-slate-200 bg-white/90 backdrop-blur lg:flex">
@@ -334,13 +342,6 @@ export default function ChatInfoPanel({
       setIsLoadingMedia(false);
     }
   };
-
-  useEffect(() => {
-    if (room?.id) {
-      void loadMediaAndFiles();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id]);
 
   const handleOpenMediaGallery = () => {
     if (images.length === 0) {
