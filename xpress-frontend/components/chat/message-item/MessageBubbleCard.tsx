@@ -145,6 +145,15 @@ export default function MessageBubbleCard({
             />
           )}
 
+          {message.messageType === 'VIDEO' && message.fileUrl && (
+            <video 
+              src={message.fileUrl} 
+              controls 
+              preload="metadata"
+              className="max-w-60 max-h-75 rounded-lg object-cover border border-white/20"
+            />
+          )}
+
           {message.messageType === 'FILE' && message.fileUrl && (
             <a 
               href={message.fileUrl} 

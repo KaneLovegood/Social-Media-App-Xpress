@@ -102,6 +102,11 @@ export default function MessageInput({
       'image/png',
       'image/gif',
       'image/webp',
+      'video/mp4',
+      'video/x-m4v',
+      'video/webm',
+      'video/ogg',
+      'video/quicktime',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -187,7 +192,12 @@ export default function MessageInput({
             );
           });
           
-          const messageType: MessageType = file.type.startsWith("image/") ? "IMAGE" : "FILE";
+          let messageType: MessageType = "FILE";
+          if (file.type.startsWith("image/")) {
+            messageType = "IMAGE";
+          } else if (file.type.startsWith("video/")) {
+            messageType = "VIDEO";
+          }
           // Attach text to only the first sent file
           const sentContent = i === 0 ? content.trim() : "";
           
@@ -253,6 +263,31 @@ export default function MessageInput({
     addFiles(pastedFiles);
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) {
+      addFiles(files);
+    }
+  };
+
   const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     addFiles(files);
@@ -273,11 +308,18 @@ export default function MessageInput({
     const imageCount = attachments.filter(
       (item) => item.kind === "image",
     ).length;
-    const fileCount = attachments.length - imageCount;
+    const videoCount = attachments.filter(
+      (item) => item.kind === "video",
+    ).length;
+    const fileCount = attachments.length - imageCount - videoCount;
     const parts: string[] = [];
 
     if (imageCount > 0) {
       parts.push(`${imageCount} ảnh`);
+    }
+
+    if (videoCount > 0) {
+      parts.push(`${videoCount} video`);
     }
 
     if (fileCount > 0) {
@@ -304,8 +346,33 @@ export default function MessageInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="overflow-visible border border-[#d8dce2] bg-white"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative overflow-visible border transition-colors ${
+        isDragging ? "border-blue-500 bg-blue-50/50" : "border-[#d8dce2] bg-white"
+      }`}
     >
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-blue-500/10 transition-all">
+          <div className="flex flex-col items-center gap-2 rounded-lg bg-white px-6 py-4 shadow-xl shadow-blue-500/20">
+            <svg
+              className="h-8 w-8 text-blue-500 animate-bounce"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+            <span className="text-[15px] font-medium text-blue-600">Thả tệp vào đây</span>
+          </div>
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -318,7 +385,7 @@ export default function MessageInput({
         ref={imageInputRef}
         type="file"
         multiple
-        accept="image/*"
+        accept="image/*,video/*"
         className="hidden"
         onChange={handleImageInputChange}
       />

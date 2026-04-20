@@ -59,5 +59,17 @@ export function toMessagePreview(message: ChatMessage): string {
     return message.callLog?.mode === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
   }
 
+  if (message.messageType === 'VIDEO') {
+    return 'Đã gửi một video';
+  }
+
+  if (message.messageType === 'IMAGE') {
+    return 'Đã gửi một ảnh';
+  }
+  
+  if (message.messageType === 'FILE') {
+    return 'Đã gửi một tệp';
+  }
+
   return message.content;
 }

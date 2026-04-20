@@ -30,7 +30,9 @@ export async function getPresignedUrl(
   });
 
   if (!response.ok) {
-    throw new Error('Failed to get presigned URL from server');
+    const errorText = await response.text();
+    console.error('Failed to get presigned URL from server:', errorText);
+    throw new Error(`Failed to get presigned URL from server: ${errorText}`);
   }
 
   return await response.json();
