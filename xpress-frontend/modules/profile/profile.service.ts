@@ -1,4 +1,4 @@
-import { clearSession, getStoredUser } from '@/lib/auth-client';
+import { getStoredUser, logoutSession } from '@/lib/auth-client';
 import type { StoredUser } from '@/lib/auth-client';
 import type { ProfileModel, ProfileStatus } from './types';
 
@@ -75,6 +75,6 @@ export function getProfileModel() {
   return toProfileModel(getStoredUser());
 }
 
-export function logoutProfile() {
-  clearSession();
+export async function logoutProfile() {
+  await logoutSession();
 }

@@ -18,7 +18,7 @@ const REFRESH_TOKEN_KEY = 'xpress_refresh_token';
 const USER_KEY = 'xpress_user';
 const TOKEN_COOKIE = 'xpress_access_token';
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3001';
 let refreshPromise: Promise<string> | null = null;
 
 function isBrowser() {
@@ -87,6 +87,38 @@ export function clearSession() {
   clearAccessCookie();
 }
 
+export async function logoutSession(): Promise<void> {
+  const refreshToken = getRefreshToken();
+  const accessToken = getAccessToken();
+
+  if (!refreshToken && !accessToken) {
+    clearSession();
+    return;
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+  });
+
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as {
+      message?: unknown;
+    };
+    throw new Error(getErrorMessage(data.message));
+  }
+
+  clearSession();
+}
+
 export async function refreshAccessToken(): Promise<string> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
@@ -145,4 +177,10 @@ export async function authFetch(
   }
 
   return response;
+}
+
+function getErrorMessage(message: unknown) {
+  if (Array.isArray(message)) return message.join(', ');
+  if (typeof message === 'string' && message.trim().length > 0) return message;
+  return 'Đăng xuất thất bại, vui lòng thử lại.';
 }
