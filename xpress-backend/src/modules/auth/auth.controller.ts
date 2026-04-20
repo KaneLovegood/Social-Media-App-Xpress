@@ -13,7 +13,9 @@ import { Public } from '../../middleware/public.decorator';
 import { AuthService } from './auth.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
@@ -71,6 +73,12 @@ export class AuthController {
   }
 
   @Public()
+  @Post('password/reset')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Public()
   @Post('refresh')
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
@@ -78,8 +86,13 @@ export class AuthController {
 
   @Public()
   @Post('logout')
-  logout(@Body() dto: RefreshTokenDto) {
-    return this.authService.logout(dto);
+  logout(@Body() dto: LogoutDto, @Req() req: Request) {
+    return this.authService.logout(dto, {
+      authorizationHeader:
+        typeof req.headers.authorization === 'string'
+          ? req.headers.authorization
+          : undefined,
+    });
   }
 
   @Get('sessions')

@@ -14,7 +14,9 @@ import { AuthSessionGateway } from './auth-session.gateway';
 import { EmailOtpService } from './email-otp.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
@@ -46,6 +48,10 @@ interface OtpTokenPayload {
 interface SessionClientContext {
   ipAddress?: string;
   userAgent?: string;
+}
+
+interface LogoutContext {
+  authorizationHeader?: string;
 }
 
 @Injectable()
@@ -116,6 +122,7 @@ export class AuthService {
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+    await this.assertLoginAllowedForDevice(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -137,7 +144,7 @@ export class AuthService {
       }
     }
 
-    if (purpose === 'LOGIN') {
+    if (purpose === 'LOGIN' || purpose === 'CHANGE_PASSWORD') {
       const existed = await this.usersRepository.findByEmail(normalizedEmail);
       if (!existed) {
         throw new BadRequestException('Email chưa được đăng ký');
@@ -229,6 +236,42 @@ export class AuthService {
     };
   }
 
+  async resetPassword(dto: ResetPasswordDto) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const user = await this.usersRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      throw new BadRequestException('Email chưa được đăng ký');
+    }
+
+    let payload: OtpTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<OtpTokenPayload>(
+        dto.otpToken,
+      );
+    } catch {
+      throw new BadRequestException('OTP token không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (
+      payload.type !== 'otp' ||
+      payload.email !== normalizedEmail ||
+      payload.purpose !== 'CHANGE_PASSWORD'
+    ) {
+      throw new BadRequestException('OTP token không hợp lệ');
+    }
+
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, rounds);
+
+    await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
+    await this.sessionRepository.deactivateAllSessions(user.userId);
+
+    return {
+      success: true,
+    };
+  }
+
   async loginWithGoogle(
     dto: GoogleAuthDto,
     context: SessionClientContext = {},
@@ -284,6 +327,7 @@ export class AuthService {
       await this.usersRepository.createUser(user);
       this.logger.log(`Created new user from Google auth: ${user.userId}`);
     }
+    await this.assertLoginAllowedForDevice(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -342,29 +386,25 @@ export class AuthService {
     return this.buildAuthResponseFromSession(user, session);
   }
 
-  async logout(dto: RefreshTokenDto) {
-    if (!this.refreshTokenSecret) {
-      throw new UnauthorizedException('Refresh token chưa được cấu hình');
+  async logout(dto: LogoutDto, context: LogoutContext = {}) {
+    const fromRefreshToken = await this.resolveLogoutSessionFromRefreshToken(
+      dto.refreshToken,
+    );
+    const fromAccessToken =
+      fromRefreshToken == null
+        ? await this.resolveLogoutSessionFromAccessToken(
+            context.authorizationHeader,
+          )
+        : null;
+
+    const session = fromRefreshToken ?? fromAccessToken;
+    if (!session) {
+      throw new UnauthorizedException('Token đăng xuất không hợp lệ');
     }
 
-    let payload: JwtPayload;
-    try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(
-        dto.refreshToken,
-        {
-          secret: this.refreshTokenSecret,
-        },
-      );
-    } catch {
-      throw new UnauthorizedException('Refresh token không hợp lệ');
-    }
-    if (!payload.sid) {
-      throw new UnauthorizedException('Token session không hợp lệ');
-    }
-
-    await this.sessionRepository.deactivateSession(payload.sub, payload.sid);
-    this.authSessionGateway.notifySessionRevoked(payload.sub, {
-      sessionId: payload.sid,
+    await this.sessionRepository.deactivateAllSessions(session.userId);
+    this.authSessionGateway.notifySessionRevoked(session.userId, {
+      sessionId: session.sessionId,
       revokedAt: new Date().toISOString(),
     });
 
@@ -555,6 +595,107 @@ export class AuthService {
       session.refreshTokenHash,
       session.refreshTokenExpiresAt,
     );
+  }
+
+  private async assertLoginAllowedForDevice(
+    userId: string,
+    deviceId: string,
+  ): Promise<void> {
+    const deviceFingerprintHash = this.hashDeviceFingerprint(deviceId);
+    const activeSessions =
+      await this.sessionRepository.findActiveSessions(userId);
+
+    if (activeSessions.length === 0) {
+      return;
+    }
+
+    const activeSessionOnCurrentDevice =
+      await this.sessionRepository.findActiveSessionByFingerprint(
+        userId,
+        deviceFingerprintHash,
+      );
+
+    if (!activeSessionOnCurrentDevice) {
+      throw new ForbiddenException(
+        'Tài khoản đang được đăng nhập ở nơi khác. Vui lòng đăng xuất trước khi đăng nhập lại.',
+      );
+    }
+
+    const staleSessions = activeSessions.filter(
+      (session) => session.sessionId !== activeSessionOnCurrentDevice.sessionId,
+    );
+    if (staleSessions.length > 0) {
+      await Promise.all(
+        staleSessions.map((session) =>
+          this.sessionRepository.deactivateSession(userId, session.sessionId),
+        ),
+      );
+    }
+  }
+
+  private async resolveLogoutSessionFromRefreshToken(
+    refreshToken?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    if (!refreshToken || !this.refreshTokenSecret) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(
+        refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
+
+      if (payload.type !== 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveLogoutSessionFromAccessToken(
+    authorizationHeader?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    const token = this.extractBearerToken(authorizationHeader);
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+      if (payload.type === 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private extractBearerToken(authorizationHeader?: string): string | null {
+    if (!authorizationHeader) {
+      return null;
+    }
+
+    const trimmed = authorizationHeader.trim();
+    if (!trimmed.toLowerCase().startsWith('bearer ')) {
+      return null;
+    }
+
+    const token = trimmed.slice(7).trim();
+    return token.length > 0 ? token : null;
   }
 
   private async assertVerifiedOtpToken(

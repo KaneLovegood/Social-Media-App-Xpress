@@ -49,9 +49,17 @@ export default function ChatLayout({ children }: ChatLayoutProps) {
   const activeNav = resolveActiveNav(pathname || '/chat/me');
   const initials = toInitials(currentUser?.name);
 
-  const handleLogout = () => {
-    logoutProfile();
-    router.replace('/login');
+  const handleLogout = async () => {
+    try {
+      await logoutProfile();
+      router.replace('/login');
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Đăng xuất thất bại, vui lòng thử lại.',
+      );
+    }
   };
 
   return (

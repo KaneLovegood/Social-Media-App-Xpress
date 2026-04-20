@@ -31,19 +31,25 @@ const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
 type SendOtpPayload = {
   email: string;
-  purpose?: 'REGISTER' | 'LOGIN';
+  purpose?: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 };
 
 type VerifyOtpPayload = {
   email: string;
   code: string;
-  purpose: 'REGISTER' | 'LOGIN';
+  purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 };
 
 type VerifyOtpResponse = {
   verified: boolean;
   otpToken: string;
-  purpose: 'REGISTER' | 'LOGIN';
+  purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
+};
+
+type ResetPasswordPayload = {
+  email: string;
+  otpToken: string;
+  newPassword: string;
 };
 
 type DevicePayload = {
@@ -66,7 +72,7 @@ export async function register(payload: RegisterPayload) {
 }
 
 export async function sendEmailOtp(payload: SendOtpPayload) {
-  return request<{ success: boolean; purpose: 'REGISTER' | 'LOGIN'; expiresAt: string }>(
+  return request<{ success: boolean; purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD'; expiresAt: string }>(
     '/auth/otp/send',
     payload,
   );
@@ -74,6 +80,10 @@ export async function sendEmailOtp(payload: SendOtpPayload) {
 
 export async function verifyEmailOtp(payload: VerifyOtpPayload) {
   return request<VerifyOtpResponse>('/auth/otp/verify', payload);
+}
+
+export async function resetPassword(payload: ResetPasswordPayload) {
+  return request<{ success: boolean }>('/auth/password/reset', payload);
 }
 
 export async function loginWithGoogle(idToken: string) {

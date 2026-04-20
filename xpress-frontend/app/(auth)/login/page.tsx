@@ -140,7 +140,12 @@ function LoginContent() {
         />
 
         <div className="text-right text-sm font-medium tracking-wide text-[#ae4700]">
-          Quên mật khẩu?
+          <Link
+            href={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ""}`}
+            className="hover:underline"
+          >
+            Quên mật khẩu?
+          </Link>
         </div>
         {error ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
