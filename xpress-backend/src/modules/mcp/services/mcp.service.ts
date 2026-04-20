@@ -1,30 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import OpenAI from 'openai';
-import {
-  ChatCompletionMessageParam,
-  ChatCompletionTool,
-} from 'openai/resources/chat/completions';
+import { ChatCompletionTool } from 'openai/resources/chat/completions';
 import { McpClientService } from './mcp-client.service';
 import { McpHistoryService } from './mcp-history.service';
+import { McpLlmService } from './mcp-llm.service';
+import { McpPromptService } from './mcp-prompt.service';
 
 @Injectable()
 export class McpService {
-  private openai: OpenAI;
   private readonly logger = new Logger(McpService.name);
-
   constructor(
     private readonly mcpClientService: McpClientService,
     private readonly mcpHistoryService: McpHistoryService,
-  ) {
-    this.openai = new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: process.env.OPENROUTER_API_KEY,
-      defaultHeaders: {
-        'HTTP-Referer': 'http://localhost:3000',
-        'X-Title': 'Xpress Backend MCP',
-      },
-    });
-  }
+    private readonly mcpLlmService: McpLlmService,
+    private readonly mcpPromptService: McpPromptService,
+  ) {}
 
   async getHistory(userId: string): Promise<
     Array<{
@@ -42,6 +31,7 @@ export class McpService {
     message: string,
     fileUrl?: string,
   ) {
+    // 1. Lưu tin nhắn vào DB
     if (userId) {
       this.logger.log(`Saving User Message to DB...`);
       await this.mcpHistoryService.saveMessage(
@@ -54,21 +44,16 @@ export class McpService {
     }
 
     try {
-      const messages: ChatCompletionMessageParam[] = [];
-      if (fileUrl) {
-        messages.push({
-          role: 'system',
-          content: `Người dùng vừa upload file tại URL: ${fileUrl}. Hãy xử lý file này bằng công cụ nếu cần.`,
-        });
-      }
+      // 2. Build Context Prompt với Memory Injection (Lịch sử + File)
+      const messages = await this.mcpPromptService.buildContextMessages(
+        userId,
+        message,
+        fileUrl,
+      );
 
-      // Đảm bảo message không bị rỗng
-      const userMessage = message?.trim() || 'Xin chào';
-      messages.push({ role: 'user', content: userMessage });
-
+      // 3. Lấy danh sách tools từ MCP Server
       const response = await this.mcpClientService.listTools();
-      const mcpTools = response.tools;
-      const openaiTools: ChatCompletionTool[] = mcpTools.map((tool) => ({
+      const openaiTools: ChatCompletionTool[] = response.tools.map((tool) => ({
         type: 'function',
         function: {
           name: tool.name,
@@ -77,20 +62,26 @@ export class McpService {
         },
       }));
 
-      this.logger.log(`Calling LLM API (OpenRouter) to decide actions...`);
-      // 1. Gọi LLM qua OpenRouter
-      const completion = await this.openai.chat.completions.create({
-        model: process.env.OPENROUTER_MODEL || 'openrouter/free',
-        messages: messages,
-        tools: openaiTools.length > 0 ? openaiTools : undefined,
-      });
+      // 4. Lần 1: Gọi LLM quyết định Tool
+      const llmResult = await this.mcpLlmService.decideActions(
+        messages,
+        openaiTools,
+      );
 
-      const responseMessage = completion.choices[0].message;
+      if (!llmResult.success) {
+        return { reply: llmResult.errorMessage };
+      }
+
+      const responseMessage = llmResult.message;
+      if (!responseMessage) {
+        return { reply: 'Không nhận được phản hồi từ AI.' };
+      }
+
       this.logger.log(
         `Received answer from LLM. Tool calls present: ${!!responseMessage.tool_calls}`,
       );
 
-      // 2. Chạy tool nếu có
+      // 5. Xử lý Tool nếu có
       if (responseMessage.tool_calls) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         messages.push(responseMessage as any);
@@ -99,9 +90,43 @@ export class McpService {
           if (toolCall.type !== 'function') continue;
 
           const functionName = toolCall.function.name;
-          const functionArgs = JSON.parse(
-            toolCall.function.arguments,
-          ) as Record<string, unknown>;
+          let functionArgs: Record<string, unknown>;
+
+          try {
+            let rawArgs = toolCall.function.arguments;
+            const cleanArgs = rawArgs
+              .replace(/,\s*([\]}])/g, '$1') // Remove trailing commas
+              .replace(/^```json\s*|\s*```$/g, ''); // Remove markdown blocks
+
+            try {
+              functionArgs = JSON.parse(cleanArgs) as Record<string, unknown>;
+            } catch (e1) {
+              // Nếu JSON gộp nối nhiều obj nhầm lẫn như: "{...{ ... }}"
+              const match = cleanArgs.match(/({[^{}]*"fileUrl"[^{}]*})/);
+              if (match) {
+                rawArgs = match[1];
+                functionArgs = JSON.parse(rawArgs) as Record<string, unknown>;
+              } else {
+                const fallbackMatch = cleanArgs.match(
+                  /({[^{}]*"queryText"[^{}]*})/,
+                );
+                if (fallbackMatch) {
+                  rawArgs = fallbackMatch[1];
+                  functionArgs = JSON.parse(rawArgs) as Record<string, unknown>;
+                } else {
+                  throw e1;
+                }
+              }
+            }
+          } catch {
+            this.logger.error(
+              `Failed to parse tool arguments for [${functionName}]. Raw: ${toolCall.function.arguments}`,
+            );
+            return {
+              reply:
+                'AI đã phản hồi một cấu trúc lệnh không hợp lệ. Vui lòng thử lại với câu hỏi đơn giản hơn!',
+            };
+          }
 
           this.logger.log(
             `Executing MCP Tool: [${functionName}] with args:`,
@@ -112,10 +137,7 @@ export class McpService {
             functionName,
             functionArgs,
           );
-
-          this.logger.log(
-            `MCP Tool execution finished. Calling LLM again with results...`,
-          );
+          this.logger.log(`MCP Tool execution finished.`);
 
           const mcpContent = mcpResult.content as any[];
           const mcpTextContext =
@@ -130,17 +152,10 @@ export class McpService {
           });
         }
 
-        // 3. Gửi kết quả lại cho LLM
-        const secondResponse = await this.openai.chat.completions.create({
-          model: process.env.OPENROUTER_MODEL || 'openrouter/free',
-          messages: messages,
-        });
+        // Lần 2: LLM Tổng hợp
+        const finalReply = await this.mcpLlmService.synthesizeResults(messages);
 
-        this.logger.log(
-          `Received final answer from LLM combined with Tool results.`,
-        );
-        const finalReply = secondResponse.choices[0].message.content || '';
-        if (userId) {
+        if (userId && finalReply) {
           await this.mcpHistoryService.saveMessage(
             'AI_ASSISTANT',
             userId,
@@ -151,6 +166,7 @@ export class McpService {
         return { reply: finalReply };
       }
 
+      // 6. Nếu Không cần gọi Tool (Trả lời luôn)
       this.logger.log(`Received answer from LLM with NO tool calls.`);
       const reply = responseMessage.content || '';
       if (userId) {

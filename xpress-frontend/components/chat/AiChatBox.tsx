@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import ChatContent from './ChatContent';
 import { useAiChat } from '@/hooks/useAiChat';
 import { SendMessageOptions } from './MessageInput';
@@ -15,6 +15,12 @@ interface AiChatBoxProps {
 export default function AiChatBox({ currentUserId, currentUserName, onBackToList }: AiChatBoxProps) {
   const { messages, isLoading, isInitialized, handleSend } = useAiChat(currentUserId);
   const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
 
   const handleMessageSend = (content: string, options?: SendMessageOptions) => {
     handleSend(

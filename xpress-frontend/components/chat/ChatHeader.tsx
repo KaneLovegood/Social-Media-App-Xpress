@@ -52,9 +52,17 @@ export default function ChatHeader({
             <p className="truncate text-[22px] font-bold leading-none text-zinc-900 md:text-base md:leading-tight lg:text-lg">
               {peerName}
             </p>
-            <p className="mt-1 truncate text-sm text-[#727687] md:mt-0.5 md:text-[11px]">
-              {subTitle}
-            </p>
+            <div className="flex items-center gap-2">
+              {isPeerOnline && (
+                <span
+                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-green-500"
+                  aria-hidden="true"
+                />
+              )}
+              <p className="mt-1 truncate text-sm text-[#727687] md:mt-0.5 md:text-[11px]">
+                {subTitle}
+              </p>
+            </div>
           </div>
         </div>
 
