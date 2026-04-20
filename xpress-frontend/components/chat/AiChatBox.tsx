@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect } from 'react';
+import { toast } from 'sonner';
 import ChatContent from './ChatContent';
 import { useAiChat } from '@/hooks/useAiChat';
 import { SendMessageOptions } from './MessageInput';
@@ -54,15 +55,15 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
       replyTo={undefined}
       onBackToList={onBackToList || (() => {})}
       onOpenInfo={() => {}}
-      onOpenVoiceCall={() => alert("AI Assistant hiện chưa hỗ trợ gọi thoại.")}
-      onOpenVideoCall={() => alert("AI Assistant hiện chưa hỗ trợ gọi video.")}
+      onOpenVoiceCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi thoại.")}
+      onOpenVideoCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi video.")}
       onClearReply={() => {}}
       onSend={handleMessageSend}
       onTyping={() => {}}
       onReply={() => {}}
-      onForward={() => alert("Tính năng chuyển tiếp hiện bị tắt trong chế độ AI.")}
-      onRecall={() => alert("Không thể thu hồi tin nhắn với AI.")}
-      onDeleteForMe={() => alert("Chưa hỗ trợ xóa cục bộ tin nhắn AI.")}
+      onForward={() => toast.info("Tính năng chuyển tiếp hiện bị tắt trong chế độ AI.")}
+      onRecall={() => toast.info("Không thể thu hồi tin nhắn với AI.")}
+      onDeleteForMe={() => toast.info("Chưa hỗ trợ xóa cục bộ tin nhắn AI.")}
       onCopy={(msg: ChatMessage) => navigator.clipboard.writeText(msg.content)}
       onPin={() => {}}
       onMark={() => {}}
