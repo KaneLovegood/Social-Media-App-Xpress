@@ -22,6 +22,52 @@ export class McpLlmService {
   }
 
   /**
+   * Helper nội bộ để thực hiện gọi LLM với cơ chế Fallback nếu model chính lỗi
+   */
+  private async executeWithFallback(
+    model: string,
+    messages: ChatCompletionMessageParam[],
+    options: {
+      tools?: ChatCompletionTool[];
+      temperature?: number;
+      top_p?: number;
+    } = {},
+  ) {
+    const fallbackModel = 'openrouter/free';
+    const primaryModel = model || fallbackModel;
+
+    try {
+      // Thử lần 1 với model chính
+      return await this.openai.chat.completions.create({
+        model: primaryModel,
+        messages,
+        tools: options.tools,
+        temperature: options.temperature,
+        top_p: options.top_p,
+      });
+    } catch (error: unknown) {
+      // Nếu đã là model dự phòng rồi mà vẫn lỗi thì throw luôn
+      if (primaryModel === fallbackModel) {
+        throw error;
+      }
+
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(
+        `Primary model (${primaryModel}) failed: ${errMsg}. Retrying with fallback model (${fallbackModel})...`,
+      );
+
+      // Thử lần 2 với fallback model
+      return await this.openai.chat.completions.create({
+        model: fallbackModel,
+        messages,
+        tools: options.tools,
+        temperature: options.temperature,
+        top_p: options.top_p,
+      });
+    }
+  }
+
+  /**
    * Cuộc gọi LLM đầu tiên để phân tích ngữ cảnh và chọn Tool
    */
   async decideActions(
@@ -30,23 +76,29 @@ export class McpLlmService {
   ) {
     this.logger.log(`Calling LLM API (OpenRouter) to decide actions...`);
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
-        messages: messages,
-        tools: tools.length > 0 ? tools : undefined,
-      });
+      const completion = await this.executeWithFallback(
+        process.env.OPENROUTER_MODEL || '',
+        messages,
+        {
+          tools: tools.length > 0 ? tools : undefined,
+          temperature: 0.1,
+          top_p: 0.9,
+        },
+      );
       return { success: true, message: completion.choices[0].message };
     } catch (llm1Err: unknown) {
       const errMsg =
         llm1Err instanceof Error ? llm1Err.message : 'Unknown error';
-      this.logger.error(`Initial LLM Call failed: ${errMsg}`);
+      this.logger.error(
+        `Initial LLM Call failed (including fallback): ${errMsg}`,
+      );
       const httpStatus = (llm1Err as { status?: number }).status;
 
       let errorMessage =
-        'Hệ thống AI đang quá tải (Rate Limited) hoặc gặp sự cố! Vui lòng thử lại sau giây lát.';
+        'Hệ thống AI đang quá tải hoặc gặp sự cố nghiêm trọng! Vui lòng thử lại sau giây lát.';
       if (httpStatus === 429) {
         errorMessage =
-          'Hệ thống AI hiện đang xử lý quá nhiều yêu cầu (Rate Limit vượt mức cho phép của gói miễn phí). Bạn vui lòng chờ ít phút hoặc thử lại sau nhé!';
+          'Hệ thống AI hiện đang xử lý quá nhiều yêu cầu. Bạn vui lòng chờ ít phút hoặc thử lại sau nhé!';
       }
       return { success: false, errorMessage };
     }
@@ -62,18 +114,20 @@ export class McpLlmService {
       `Received tool results. Calling LLM again to synthesize final answer...`,
     );
     try {
-      const secondResponse = await this.openai.chat.completions.create({
-        model: process.env.OPENROUTER_MODEL || 'openai/gpt-oss-120b',
-        messages: messages,
-        // Bỏ tools ở lượt tổng hợp để bắt buộc model trả lời bằng chữ, không gọi thêm tool nữa
-      });
+      const secondResponse = await this.executeWithFallback(
+        process.env.OPENROUTER_MODEL || '',
+        messages,
+        {
+          temperature: 0.3,
+          top_p: 0.9,
+        },
+      );
       this.logger.log(
         `Received final answer from LLM combined with Tool results.`,
       );
 
       const replyMessage = secondResponse.choices[0].message;
       if (replyMessage.tool_calls && !replyMessage.content) {
-        // Fallback nếu model vẫn kiên quyết gọi tool thì ta lấy báo lỗi, tránh lỗi missing function.name
         const too = replyMessage.tool_calls as any[];
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
         const names = too.map((t) => t.function?.name || t.type).join(', ');
@@ -84,7 +138,7 @@ export class McpLlmService {
       const errMsg =
         llm2Err instanceof Error ? llm2Err.message : 'Unknown error';
       this.logger.warn(
-        `LLM Provider (OpenRouter) failed on second turn: ${errMsg}. Fallback to Raw Tool Result.`,
+        `LLM Provider failed context synthesis (including fallback): ${errMsg}. Fallback to Raw Tool Result.`,
       );
       const rawToolOutput = messages
         .filter((m) => m.role === 'tool')
@@ -94,7 +148,7 @@ export class McpLlmService {
         })
         .join('\n');
 
-      return `Hệ thống AI (Provider) phản hồi lỗi ở bước tổng hợp, nhưng công cụ thiết yếu đã hoàn tất phân tích nội dung!\n\n**Kết quả từ công cụ (Raw Output):**\n${rawToolOutput}`;
+      return `Hệ thống AI gặp sự cố ở bước tổng hợp, nhưng công cụ thiết yếu đã hoàn tất phân tích nội dung!\n\n**Kết quả từ công cụ (Raw Output):**\n${rawToolOutput}`;
     }
   }
 }

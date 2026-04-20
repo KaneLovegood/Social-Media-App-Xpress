@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Socket } from 'socket.io-client';
+import { toast } from 'sonner';
 import { sendChatAction } from '@/lib/chat-actions';
 import { CALL_EVENTS } from '@/lib/realtime/events';
 import {
@@ -177,7 +178,7 @@ export default function VideoCallComponent({
     );
 
     if (!getUserMedia) {
-      alert('🔒 BẢO MẬT: Webview chặn Camera vì bạn đang test qua IP HTTP mạng LAN. Hãy comment { server: url } trong capacitor.config.ts đi, chạy lệnh npx cap sync lại, khi đó app sẽ chạy local và có Camera.');
+      toast.warning('🔒 BẢO MẬT: Webview chặn Camera vì bạn đang test qua IP HTTP mạng LAN. Hãy comment { server: url } trong capacitor.config.ts đi, chạy lệnh npx cap sync lại, khi đó app sẽ chạy local và có Camera.');
       throw new Error('Môi trường HTTP IP nội bộ bị chặn WebRTC.');
     }
 
