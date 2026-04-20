@@ -17,8 +17,8 @@ export class SendMessageDto {
   content?: string;
 
   @IsOptional()
-  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'CALL_LOG'])
-  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'CALL_LOG';
+  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'VIDEO', 'CALL_LOG'])
+  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO' | 'CALL_LOG';
 
   @IsOptional()
   @IsString()

@@ -5,7 +5,7 @@ import Icon from "@/components/common/Icon";
 interface MediaGalleryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  images: Array<{ url: string; timestamp: string }>;
+  images: Array<{ url: string; timestamp: string; type: string }>;
 }
 
 export default function MediaGalleryModal({
@@ -48,11 +48,23 @@ export default function MediaGalleryModal({
                   key={`${image.timestamp}-${image.url}`}
                   className="group relative aspect-square overflow-hidden rounded-lg bg-slate-100"
                 >
-                  <img
-                    src={image.url}
-                    alt={`Ảnh ${image.timestamp}`}
-                    className="h-full w-full object-cover transition group-hover:scale-110"
-                  />
+                  {image.type === "VIDEO" ? (
+                    <>
+                      <video
+                        src={image.url}
+                        className="h-full w-full object-cover transition group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Icon name="play" className="text-white opacity-80" />
+                      </div>
+                    </>
+                  ) : (
+                    <img
+                      src={image.url}
+                      alt={`Ảnh ${image.timestamp}`}
+                      className="h-full w-full object-cover transition group-hover:scale-110"
+                    />
+                  )}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/30">
                     <Icon
                       name="eye"
@@ -60,7 +72,7 @@ export default function MediaGalleryModal({
                       className="text-white opacity-0 transition group-hover:opacity-100"
                     />
                   </div>
-                  <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-1 text-xs text-white">
+                  <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-1 text-xs text-white z-10">
                     {image.timestamp}
                   </div>
                 </div>

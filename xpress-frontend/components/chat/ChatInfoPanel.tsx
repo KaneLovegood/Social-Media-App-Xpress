@@ -85,7 +85,7 @@ function SectionCard({
           <button
             type="button"
             onClick={action.onClick}
-            className="text-xs font-semibold text-sky-600 transition hover:text-sky-700"
+            className="cursor-pointer text-xs font-semibold text-sky-600 transition hover:text-sky-700"
           >
             {action.label}
           </button>
@@ -104,6 +104,7 @@ function MemberItem({
   onPromote,
   onRemove,
 }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   member: any;
   currentUserId: string;
   isAdmin: boolean;
@@ -205,12 +206,17 @@ export default function ChatInfoPanel({
   >(null);
   const [groupActionError, setGroupActionError] = useState("");
   const [images, setImages] = useState<
-    Array<{ url: string; timestamp: string }>
+    Array<{ url: string; timestamp: string; type: string }>
   >([]);
   const [files, setFiles] = useState<
-    Array<{ name: string; size: string; timestamp: string; type: string }>
+    Array<{ name: string; size: string; timestamp: string; url: string }>
   >([]);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
+
+  
+  useEffect(() => {
+    setIsConversationPinned(false);
+  }, [room?.id]);
 
   if (!room) {
     return (
@@ -242,13 +248,7 @@ export default function ChatInfoPanel({
       ? "Đang hoạt động"
       : "Ngoại tuyến";
 
-  useEffect(() => {
-    setIsConversationPinned(false);
-  }, [room.id]);
-
   const loadMediaAndFiles = async () => {
-    if (!isGroup) return;
-
     setIsLoadingMedia(true);
     try {
       const [imagesData, filesData] = await Promise.all([
@@ -258,49 +258,63 @@ export default function ChatInfoPanel({
 
       const nextImages = imagesData
         .map((message) => {
-          const value = message.content.trim();
-          if (!value) return null;
+          let type = message.messageType;
+          let url = message.fileUrl;
 
-          const isLikelyImage =
-            /\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/i.test(value) ||
-            value.startsWith("http");
-          if (!isLikelyImage) return null;
+          if (!type && message.content) {
+            const value = message.content.trim();
+            if (/\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/i.test(value) || value.startsWith("http")) {
+              type = "IMAGE";
+              url = value;
+            } else if (/\.(mp4|mov|webm)$/i.test(value)) {
+              type = "VIDEO";
+              url = value;
+            }
+          }
+
+          if (type !== "IMAGE" && type !== "VIDEO") return null;
+          if (!url) return null;
 
           return {
-            url: value,
+            url,
             timestamp: new Date(message.createdAt).toLocaleDateString("vi-VN"),
+            type,
           };
         })
         .filter(
-          (item): item is { url: string; timestamp: string } => item !== null,
+          (item): item is { url: string; timestamp: string; type: string } => item !== null,
         );
 
       const nextFiles = filesData
         .map((message) => {
-          const value = message.content.trim();
-          if (!value) return null;
+          let type = message.messageType;
+          let url = message.fileUrl;
+          let sizeInKb = message.fileSize ? Math.round(message.fileSize / 1024) : 0;
+          let fileName = message.fileName;
 
-          const fileName = value.split(/[\\/]/).pop() ?? value;
-          const extension = fileName.includes(".")
-            ? (fileName.split(".").pop()?.toLowerCase() ?? "file")
-            : "file";
-          const isImageFile = [
-            "jpg",
-            "jpeg",
-            "png",
-            "gif",
-            "webp",
-            "avif",
-            "bmp",
-            "svg",
-          ].includes(extension);
-          if (isImageFile) return null;
+          if (!type && message.content) {
+            const value = message.content.trim();
+            const extractedName = value.split(/[\\/]/).pop() ?? value;
+            const ext = extractedName.includes(".") ? (extractedName.split(".").pop()?.toLowerCase() ?? "") : "";
+            const isImageOrVideo = ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg", "mp4", "mov", "webm"].includes(ext);
+            
+            if (!isImageOrVideo && (value.startsWith("http") || ext)) {
+               type = "FILE";
+               url = value;
+               fileName = extractedName;
+               sizeInKb = 0;
+            }
+          }
+
+          if (type !== "FILE" || !url) return null;
+
+          const formattedSize = sizeInKb > 1024 ? `${(sizeInKb / 1024).toFixed(2)} MB` : sizeInKb > 0 ? `${sizeInKb} KB` : "Không rõ";
 
           return {
-            name: fileName,
-            size: "Không rõ",
+            name: fileName || "Tệp không tên",
+            size: formattedSize,
             timestamp: new Date(message.createdAt).toLocaleDateString("vi-VN"),
-            type: extension || "file",
+            url,
           };
         })
         .filter(
@@ -310,7 +324,7 @@ export default function ChatInfoPanel({
             name: string;
             size: string;
             timestamp: string;
-            type: string;
+            url: string;
           } => item !== null,
         );
 
@@ -320,6 +334,13 @@ export default function ChatInfoPanel({
       setIsLoadingMedia(false);
     }
   };
+
+  useEffect(() => {
+    if (room?.id) {
+      void loadMediaAndFiles();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id]);
 
   const handleOpenMediaGallery = () => {
     if (images.length === 0) {
@@ -619,14 +640,26 @@ export default function ChatInfoPanel({
                       <button
                         type="button"
                         key={`${image.timestamp}-${image.url}`}
-                        className="aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
+                        className="relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
                         onClick={handleOpenMediaGallery}
                       >
-                        <img
-                          src={image.url}
-                          alt={image.timestamp}
-                          className="h-full w-full object-cover"
-                        />
+                        {image.type === "VIDEO" ? (
+                          <>
+                            <video
+                              src={image.url}
+                              className="h-full w-full object-cover"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <Icon name="play" className="text-white" />
+                            </div>
+                          </>
+                        ) : (
+                          <img
+                            src={image.url}
+                            alt={image.timestamp}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -652,9 +685,9 @@ export default function ChatInfoPanel({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {files.slice(0, 3).map((file) => (
+                    {files.slice(0, 3).map((file, index) => (
                       <div
-                        key={`${file.name}-${file.timestamp}`}
+                        key={`${index}_${file.name}-${file.timestamp}`}
                         className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
                       >
                         <Icon

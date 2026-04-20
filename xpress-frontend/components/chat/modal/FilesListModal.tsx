@@ -5,11 +5,15 @@ import Icon from "@/components/common/Icon";
 interface FilesListModalProps {
   isOpen: boolean;
   onClose: () => void;
-  files: Array<{ name: string; size: string; timestamp: string; type: string }>;
+  files: Array<{ name: string; size: string; timestamp: string; url: string }>;
 }
 
-function getFileIcon(type: string) {
-  switch (type.toLowerCase()) {
+function getFileIcon(fileName: string) {
+  const extension = fileName.includes(".")
+    ? (fileName.split(".").pop()?.toLowerCase() ?? "")
+    : "";
+
+  switch (extension) {
     case "pdf":
       return "file-pdf";
     case "doc":
@@ -23,8 +27,12 @@ function getFileIcon(type: string) {
   }
 }
 
-function getFileColor(type: string) {
-  switch (type.toLowerCase()) {
+function getFileColor(fileName: string) {
+  const extension = fileName.includes(".")
+    ? (fileName.split(".").pop()?.toLowerCase() ?? "")
+    : "";
+
+  switch (extension) {
     case "pdf":
       return "text-red-600";
     case "doc":
@@ -79,9 +87,9 @@ export default function FilesListModal({
                   className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 transition hover:border-slate-300 hover:bg-white"
                 >
                   <Icon
-                    name={getFileIcon(file.type)}
+                    name={getFileIcon(file.name)}
                     size="lg"
-                    className={getFileColor(file.type)}
+                    className={getFileColor(file.name)}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-900">
@@ -91,13 +99,16 @@ export default function FilesListModal({
                       {file.size} • {file.timestamp}
                     </p>
                   </div>
-                  <button
-                    type="button"
+                  <a
+                    href={file.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    download={file.name}
                     className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
                     aria-label={`Tải xuống ${file.name}`}
                   >
                     <Icon name="download" size="sm" />
-                  </button>
+                  </a>
                 </div>
               ))}
             </div>
