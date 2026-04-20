@@ -7,9 +7,7 @@ import {
   Post,
   Req,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { PresenceService } from '../../common/presence/presence.service';
 import { UsersRepository } from '../auth/repositories/users.repository';
@@ -40,7 +38,6 @@ export class ChatController {
     private readonly storageService: StorageService,
   ) {}
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('rooms')
   async getRooms(@Req() request: AuthenticatedRequest): Promise<unknown> {
     const actorUserId = request.user?.userId;
@@ -51,7 +48,6 @@ export class ChatController {
     return await this.chatService.getChatRoomsForUser(actorUserId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups')
   async createGroup(
     @Req() request: AuthenticatedRequest,
@@ -75,7 +71,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('groups/:roomId')
   async getGroupDetails(
     @Req() request: AuthenticatedRequest,
@@ -89,7 +84,6 @@ export class ChatController {
     return await this.chatService.getGroupRoomDetails(actorUserId, roomId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups/:roomId/messages')
   async sendGroupMessage(
     @Req() request: AuthenticatedRequest,
@@ -109,7 +103,6 @@ export class ChatController {
     return message;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups/:roomId/members')
   async addGroupMember(
     @Req() request: AuthenticatedRequest,
@@ -131,7 +124,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Delete('groups/:roomId/members/:memberUserId')
   async removeGroupMember(
     @Req() request: AuthenticatedRequest,
@@ -153,7 +145,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups/:roomId/leave')
   async leaveGroup(
     @Req() request: AuthenticatedRequest,
@@ -170,7 +161,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Delete('groups/:roomId')
   async dissolveGroup(
     @Req() request: AuthenticatedRequest,
@@ -190,7 +180,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups/:roomId/members/:memberUserId/promote')
   async promoteGroupMember(
     @Req() request: AuthenticatedRequest,
@@ -211,7 +200,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('groups/:roomId/invite-link')
   async createInviteLink(
     @Req() request: AuthenticatedRequest,
@@ -225,7 +213,6 @@ export class ChatController {
     return await this.chatService.createGroupInviteLink(actorUserId, roomId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('group-invites/:inviteCode/join')
   async joinByInvite(
     @Req() request: AuthenticatedRequest,
@@ -245,7 +232,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Delete('rooms/:roomId/messages')
   async deleteChatHistory(
     @Req() request: AuthenticatedRequest,
@@ -259,7 +245,6 @@ export class ChatController {
     return await this.chatService.deleteChatHistory(actorUserId, roomId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('rooms/:roomId/messages')
   async getRoomMessages(
     @Req() request: AuthenticatedRequest,
@@ -273,7 +258,6 @@ export class ChatController {
     return await this.chatService.getMessagesForRoom(actorUserId, roomId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('presigned-url')
   async getPresignedUrl(
     @Req() request: AuthenticatedRequest,
@@ -290,7 +274,6 @@ export class ChatController {
     );
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Post('actions')
   async postAction(
     @Req() request: AuthenticatedRequest,
@@ -331,7 +314,6 @@ export class ChatController {
     return result;
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('rooms/:roomId/images')
   async getRoomImages(
     @Req() request: AuthenticatedRequest,
@@ -345,7 +327,6 @@ export class ChatController {
     return await this.chatService.getRoomImages(actorUserId, roomId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('rooms/:roomId/files')
   async getRoomFiles(
     @Req() request: AuthenticatedRequest,

@@ -8,9 +8,7 @@ import {
   Query,
   Req,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
 import { BlockUserDto } from './dto/block-user.dto';
 import { ListFriendsDto } from './dto/list-friends.dto';
@@ -26,7 +24,8 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-@UseGuards(AuthGuard('jwt'))
+// Auth được handle bởi global JwtGuard (xem app.module.ts).
+// Mỗi route chỉ public khi đánh dấu @Public() — mặc định: cần JWT.
 @Controller('social')
 export class SocialController {
   constructor(private readonly socialService: SocialService) {}

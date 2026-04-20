@@ -57,3 +57,5 @@ dist
 .vscode
 
 .env*
+
+.claude

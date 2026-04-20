@@ -11,8 +11,14 @@ class SocketIoCorsAdapter extends IoAdapter {
     return super.createIOServer(port, {
       ...options,
       cors: {
-        origin: '*',
+        origin: [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:5173',
+          /\.devtunnels\.ms$/,
+        ],
         methods: ['GET', 'POST'],
+        credentials: true,
         ...(options?.cors ?? {}),
       },
     });
@@ -22,11 +28,16 @@ class SocketIoCorsAdapter extends IoAdapter {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Configure CORS for HTTP
   app.enableCors({
-    origin: '*',
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5173',
+      /\.devtunnels\.ms$/,
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
+    allowedHeaders: 'Content-Type, Authorization',
   });
 
   // Configure Socket.IO adapter with CORS
