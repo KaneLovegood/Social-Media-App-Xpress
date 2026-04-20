@@ -158,13 +158,32 @@ export default function VideoCallComponent({
   }, [stopAudioActivityMonitor]);
 
   const setupPeer = useCallback(async (withVideo: boolean) => {
-    if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Media devices not available. This feature requires a browser environment.');
+    if (typeof window === 'undefined') {
+      throw new Error('This feature requires a browser environment.');
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
+    // Fallback cho getUserMedia trên các trình duyệt/webview cũ hoặc môi trường dev (HTTP)
+    const nav = navigator as unknown as {
+      getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+      webkitGetUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+      mozGetUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
+    };
+
+    const getUserMedia = (
+      navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices) ||
+      nav.getUserMedia?.bind(navigator) ||
+      nav.webkitGetUserMedia?.bind(navigator) ||
+      nav.mozGetUserMedia?.bind(navigator)
+    );
+
+    if (!getUserMedia) {
+      alert('🔒 BẢO MẬT: Webview chặn Camera vì bạn đang test qua IP HTTP mạng LAN. Hãy comment { server: url } trong capacitor.config.ts đi, chạy lệnh npx cap sync lại, khi đó app sẽ chạy local và có Camera.');
+      throw new Error('Môi trường HTTP IP nội bộ bị chặn WebRTC.');
+    }
+
+    const stream = await getUserMedia({
       audio: true,
-      video: withVideo,
+      video: withVideo ? { facingMode: 'user' } : false,
     });
     localStreamRef.current = stream;
 

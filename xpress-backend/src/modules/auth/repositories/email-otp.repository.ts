@@ -7,7 +7,10 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
-import { EmailOtpEntity, EmailOtpPurpose } from '../interfaces/email-otp.interface';
+import {
+  EmailOtpEntity,
+  EmailOtpPurpose,
+} from '../interfaces/email-otp.interface';
 
 @Injectable()
 export class EmailOtpRepository {
@@ -56,7 +59,8 @@ export class EmailOtpRepository {
           SK: `OTP#${purpose}`,
         },
         ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: 'SET attempts = if_not_exists(attempts, :zero) + :one',
+        UpdateExpression:
+          'SET attempts = if_not_exists(attempts, :zero) + :one',
         ExpressionAttributeValues: {
           ':zero': 0,
           ':one': 1,

@@ -31,5 +31,6 @@ import { MessagesRepository } from './repositories/messages.repository';
     MessagesRepository,
     GroupRoomsRepository,
   ],
+  exports: [MessagesRepository, ChatService],
 })
 export class ChatModule {}

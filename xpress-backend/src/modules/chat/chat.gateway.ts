@@ -109,7 +109,11 @@ export class ChatGateway
     const userId = this.getUserId(client);
     const message = await this.chatService.sendMessage(userId, dto);
 
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.MESSAGE,
+      message,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_SEND)
@@ -120,7 +124,11 @@ export class ChatGateway
     const userId = this.getUserId(client);
     const message = await this.chatService.sendGroupMessage(userId, dto);
 
-    this.transportService.emitToGroup(dto.roomId, CHAT_EVENTS.GROUP_MESSAGE, message);
+    this.transportService.emitToGroup(
+      dto.roomId,
+      CHAT_EVENTS.GROUP_MESSAGE,
+      message,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.REPLY)
@@ -131,7 +139,11 @@ export class ChatGateway
     const userId = this.getUserId(client);
     const message = await this.chatService.replyMessage(userId, dto);
 
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.MESSAGE,
+      message,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.DELETE)
@@ -153,11 +165,19 @@ export class ChatGateway
     };
 
     if (message.roomType === 'GROUP') {
-      this.transportService.emitToGroup(message.roomId ?? message.conversationId, CHAT_EVENTS.DELETED, payload);
+      this.transportService.emitToGroup(
+        message.roomId ?? message.conversationId,
+        CHAT_EVENTS.DELETED,
+        payload,
+      );
       return;
     }
 
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.DELETED, payload);
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.DELETED,
+      payload,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.RECALL)
@@ -179,11 +199,19 @@ export class ChatGateway
     };
 
     if (message.roomType === 'GROUP') {
-      this.transportService.emitToGroup(message.roomId ?? message.conversationId, CHAT_EVENTS.RECALLED, payload);
+      this.transportService.emitToGroup(
+        message.roomId ?? message.conversationId,
+        CHAT_EVENTS.RECALLED,
+        payload,
+      );
       return;
     }
 
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.RECALLED, payload);
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.RECALLED,
+      payload,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.TYPING)
@@ -198,7 +226,11 @@ export class ChatGateway
       payload.isTyping,
     );
 
-    this.transportService.emitToUser(receiverId, CHAT_EVENTS.TYPING, eventPayload);
+    this.transportService.emitToUser(
+      receiverId,
+      CHAT_EVENTS.TYPING,
+      eventPayload,
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.RECEIVE)
@@ -220,13 +252,17 @@ export class ChatGateway
       return;
     }
 
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.RECEIVED, {
-      messageId: message.messageId,
-      senderId: message.senderId,
-      receiverId: message.receiverId,
-      receivedAt: message.receivedAt,
-      updatedAt: message.updatedAt,
-    });
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.RECEIVED,
+      {
+        messageId: message.messageId,
+        senderId: message.senderId,
+        receiverId: message.receiverId,
+        receivedAt: message.receivedAt,
+        updatedAt: message.updatedAt,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.READ)
@@ -255,11 +291,15 @@ export class ChatGateway
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_TYPING, {
-      roomId: payload.roomId,
-      senderId: userId,
-      isTyping: payload.isTyping,
-    });
+    this.transportService.emitToGroup(
+      payload.roomId,
+      CHAT_EVENTS.GROUP_TYPING,
+      {
+        roomId: payload.roomId,
+        senderId: userId,
+        isTyping: payload.isTyping,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_CALL_START)
@@ -270,11 +310,15 @@ export class ChatGateway
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_STARTED, {
-      senderId: userId,
-      roomId: payload.roomId,
-      callMode: payload.callMode,
-    });
+    this.transportService.emitToGroup(
+      payload.roomId,
+      CHAT_EVENTS.GROUP_CALL_STARTED,
+      {
+        senderId: userId,
+        roomId: payload.roomId,
+        callMode: payload.callMode,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_CALL_OFFER)
@@ -289,13 +333,17 @@ export class ChatGateway
       payload.roomId,
     );
 
-    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_OFFER, {
-      senderId: userId,
-      receiverId: payload.receiverId,
-      roomId: payload.roomId,
-      callMode: payload.callMode,
-      offer: payload.offer,
-    });
+    this.transportService.emitToUser(
+      payload.receiverId,
+      CHAT_EVENTS.GROUP_CALL_OFFER,
+      {
+        senderId: userId,
+        receiverId: payload.receiverId,
+        roomId: payload.roomId,
+        callMode: payload.callMode,
+        offer: payload.offer,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_CALL_ANSWER)
@@ -310,13 +358,17 @@ export class ChatGateway
       payload.roomId,
     );
 
-    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ANSWER, {
-      senderId: userId,
-      receiverId: payload.receiverId,
-      roomId: payload.roomId,
-      callMode: payload.callMode,
-      answer: payload.answer,
-    });
+    this.transportService.emitToUser(
+      payload.receiverId,
+      CHAT_EVENTS.GROUP_CALL_ANSWER,
+      {
+        senderId: userId,
+        receiverId: payload.receiverId,
+        roomId: payload.roomId,
+        callMode: payload.callMode,
+        answer: payload.answer,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_CALL_ICE)
@@ -331,13 +383,17 @@ export class ChatGateway
       payload.roomId,
     );
 
-    this.transportService.emitToUser(payload.receiverId, CHAT_EVENTS.GROUP_CALL_ICE, {
-      senderId: userId,
-      receiverId: payload.receiverId,
-      roomId: payload.roomId,
-      callMode: payload.callMode,
-      candidate: payload.candidate,
-    });
+    this.transportService.emitToUser(
+      payload.receiverId,
+      CHAT_EVENTS.GROUP_CALL_ICE,
+      {
+        senderId: userId,
+        receiverId: payload.receiverId,
+        roomId: payload.roomId,
+        callMode: payload.callMode,
+        candidate: payload.candidate,
+      },
+    );
   }
 
   @SubscribeMessage(CHAT_EVENTS.GROUP_CALL_END)
@@ -348,11 +404,15 @@ export class ChatGateway
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
-    this.transportService.emitToGroup(payload.roomId, CHAT_EVENTS.GROUP_CALL_END, {
-      senderId: userId,
-      roomId: payload.roomId,
-      reason: payload.reason,
-    });
+    this.transportService.emitToGroup(
+      payload.roomId,
+      CHAT_EVENTS.GROUP_CALL_END,
+      {
+        senderId: userId,
+        roomId: payload.roomId,
+        reason: payload.reason,
+      },
+    );
   }
 
   @SubscribeMessage(CALL_EVENTS.OFFER)
@@ -364,7 +424,11 @@ export class ChatGateway
     const { receiverId, eventPayload } =
       await this.chatService.validateCallOffer(userId, payload);
 
-    this.transportService.emitToUser(receiverId, CALL_EVENTS.OFFER, eventPayload);
+    this.transportService.emitToUser(
+      receiverId,
+      CALL_EVENTS.OFFER,
+      eventPayload,
+    );
   }
 
   @SubscribeMessage(CALL_EVENTS.ANSWER)
@@ -376,7 +440,11 @@ export class ChatGateway
     const { receiverId, eventPayload } =
       await this.chatService.validateCallAnswer(userId, payload);
 
-    this.transportService.emitToUser(receiverId, CALL_EVENTS.ANSWER, eventPayload);
+    this.transportService.emitToUser(
+      receiverId,
+      CALL_EVENTS.ANSWER,
+      eventPayload,
+    );
   }
 
   @SubscribeMessage(CALL_EVENTS.ICE)
@@ -411,7 +479,11 @@ export class ChatGateway
     senderId: string;
     receiverId: string;
   }): void {
-    this.transportService.emitToUsers([message.senderId, message.receiverId], CHAT_EVENTS.MESSAGE, message);
+    this.transportService.emitToUsers(
+      [message.senderId, message.receiverId],
+      CHAT_EVENTS.MESSAGE,
+      message,
+    );
   }
 
   private getUserId(client: Socket): string {
@@ -480,6 +552,10 @@ export class ChatGateway
     memberUserIds: string[],
     payload: unknown,
   ): void {
-    this.transportService.broadcastGroupDissolved(roomId, memberUserIds, payload);
+    this.transportService.broadcastGroupDissolved(
+      roomId,
+      memberUserIds,
+      payload,
+    );
   }
 }

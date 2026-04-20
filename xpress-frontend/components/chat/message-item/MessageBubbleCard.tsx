@@ -1,5 +1,7 @@
 import { ChatMessage } from '@/lib/realtime/types';
 import { PhoneCall, PhoneMissed, PhoneOutgoing, Video, VideoOff, FileText, Download } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import ReplyPreview from './ReplyPreview';
 
 interface MessageBubbleCardProps {
@@ -166,7 +168,15 @@ export default function MessageBubbleCard({
           )}
 
           {message.content && (
-            <p className="wrap-break-word whitespace-pre-wrap">{message.content}</p>
+            <div className={`wrap-break-word ${message.senderId === 'AI_ASSISTANT' || message.senderId === 'SYSTEM' ? 'prose prose-sm prose-slate max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0' : 'whitespace-pre-wrap'}`}>
+              {message.senderId === 'AI_ASSISTANT' || message.senderId === 'SYSTEM' ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              ) : (
+                <p>{message.content}</p>
+              )}
+            </div>
           )}
         </div>
       )}

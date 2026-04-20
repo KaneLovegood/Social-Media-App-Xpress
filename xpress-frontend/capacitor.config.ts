@@ -4,12 +4,16 @@ const config: CapacitorConfig = {
   appId: 'com.xpress.app',
   appName: 'Xpress',
   webDir: 'out',
+  // LƯU Ý WEB-RTC (CAMERA/MIC): Khi dùng url trỏ tới 1 IP qua HTTP, cơ chế bảo mật của Android/iOS Webview 
+  // sẽ chặn hoàn toàn navigator.mediaDevices.getUserMedia
+  // => Để test được video call, bạn hãy comment block `server` này lại (để app tự buil local dạng http://localhost) 
+  // HOẶC dùng ngrok để cấp proxy HTTPS cho port 3001.
+  /*
   server: {
-    // TODO: Thay địa chỉ IPv4 máy tính của bạn vào đây (dùng lệnh ipconfig trên Windows để xem IPv4 Address)
-    // url: 'http://172.20.10.3:3001',
-    url: 'http://192.168.1.241:3001',
-    cleartext: true // Cho phép Android kết nối HTTP nội bộ thay vì bắt buộc HTTPS
+    url: 'http://192.168.0.124:3001',
+    cleartext: true
   },
+  */
   plugins: {
     Media: {
       androidGalleryMode: true

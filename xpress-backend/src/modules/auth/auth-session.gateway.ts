@@ -50,7 +50,9 @@ export class AuthSessionGateway implements OnGatewayConnection {
       loggedInAt: string;
     },
   ): void {
-    this.server.to(this.toUserRoom(userId)).emit('auth.session.new-login', payload);
+    this.server
+      .to(this.toUserRoom(userId))
+      .emit('auth.session.new-login', payload);
   }
 
   notifySessionRevoked(
