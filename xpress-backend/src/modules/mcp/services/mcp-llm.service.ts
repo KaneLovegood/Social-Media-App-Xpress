@@ -33,7 +33,7 @@ export class McpLlmService {
       top_p?: number;
     } = {},
   ) {
-    const fallbackModel = 'openrouter/free';
+    const fallbackModel = 'google/gemini-2.0-flash-001';
     const primaryModel = model || fallbackModel;
 
     try {
