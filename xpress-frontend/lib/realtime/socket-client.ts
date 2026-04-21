@@ -27,3 +27,27 @@ export function createChatSocket(token: string): Socket {
 
   return socket;
 }
+
+export function createFeedSocket(token: string): Socket {
+  const socket = io(`${WS_BASE_URL}/feed`, {
+    auth: {
+      token,
+    },
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: 5,
+    forceNew: false,
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('[Feed Socket] Connection error:', error);
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('[Feed Socket] Disconnected:', reason);
+  });
+
+  return socket;
+}

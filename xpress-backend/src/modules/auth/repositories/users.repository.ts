@@ -169,6 +169,24 @@ export class UsersRepository {
     );
   }
 
+  async updateAvatarUrl(userId: string, avatarUrl: string): Promise<void> {
+    await this.ddbDocClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `USER#${userId}`,
+          SK: `PROFILE#${userId}`,
+        },
+        ConditionExpression: 'attribute_exists(PK)',
+        UpdateExpression: 'SET avatarUrl = :avatarUrl, updatedAt = :updatedAt',
+        ExpressionAttributeValues: {
+          ':avatarUrl': avatarUrl,
+          ':updatedAt': new Date().toISOString(),
+        },
+      }),
+    );
+  }
+
   normalizeEmail(email: string): string {
     return email.replace(/\s+/g, '').trim().toLowerCase();
   }

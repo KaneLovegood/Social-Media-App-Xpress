@@ -37,7 +37,7 @@ async function bootstrap() {
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: 'Content-Type, Authorization',
+    allowedHeaders: 'Content-Type, Authorization, Idempotency-Key',
   });
 
   // Configure Socket.IO adapter with CORS

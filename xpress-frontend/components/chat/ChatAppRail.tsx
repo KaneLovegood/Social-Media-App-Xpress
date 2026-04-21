@@ -1,20 +1,27 @@
 "use client";
 
-import { LogOut, MessageCircleMore, Settings, Users } from "lucide-react";
+import { LogOut, MessageCircleMore, Newspaper, Settings, Users } from "lucide-react";
 import Link from "next/link";
 
-type ActiveNav = "chat" | "contacts" | "profile";
+type ActiveNav = "newsfeed" | "chat" | "contacts" | "profile";
 
 interface ChatAppRailProps {
   activeNav: ActiveNav;
   fixed?: boolean;
   initials?: string;
+  avatarUrl?: string;
   onLogout?: () => void;
   mobileOpen?: boolean;
   onRequestClose?: () => void;
 }
 
 const NAV_ITEMS = [
+  {
+    key: "newsfeed" as ActiveNav,
+    href: "/chat/news-feed",
+    icon: Newspaper,
+    title: "Bản tin",
+  },
   {
     key: "chat" as ActiveNav,
     href: "/chat/me",
@@ -39,6 +46,7 @@ export default function ChatAppRail({
   activeNav,
   fixed = false,
   initials,
+  avatarUrl,
   onLogout,
   mobileOpen = false,
   onRequestClose,
@@ -51,7 +59,13 @@ export default function ChatAppRail({
     <aside
       className={`${railPositionClass} h-full w-16 flex-col items-center bg-[#e7e8ea] py-4`}
     >
-      {initials ? (
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt="User avatar"
+          className="mb-8 h-10 w-10 rounded-full object-cover"
+        />
+      ) : initials ? (
         <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-full bg-[#dae2ff] font-bold text-[#0040a2]">
           {initials}
         </div>
