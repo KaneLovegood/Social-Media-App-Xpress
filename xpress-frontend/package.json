@@ -9,10 +9,12 @@
     "lint": "eslint",
     "prepare": "husky",
     "cap:sync": "cap sync",
-    "build:mobile": "next build && cap sync"
+    "fix:rsc": "node scripts/fix-rsc-paths.mjs",
+    "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
+    "@capgo/capacitor-social-login": "^8.3.17",
     "@fortawesome/fontawesome-free": "^7.2.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",

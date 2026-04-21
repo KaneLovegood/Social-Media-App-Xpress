@@ -67,6 +67,8 @@ export class AuthService {
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
   private readonly googleClient = new OAuth2Client();
+  private readonly googleAllowedAudiences: string[] =
+    AuthService.resolveGoogleAudiences();
 
   constructor(
     private readonly usersRepository: UsersRepository,
@@ -290,8 +292,7 @@ export class AuthService {
     dto: GoogleAuthDto,
     context: SessionClientContext = {},
   ) {
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
+    if (this.googleAllowedAudiences.length === 0) {
       throw new UnauthorizedException('Google auth chưa được cấu hình');
     }
 
@@ -299,9 +300,17 @@ export class AuthService {
     try {
       ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
-        audience: googleClientId,
+        // google-auth-library accepts a string[] and matches the token `aud`
+        // against any entry. That lets a single backend accept tokens issued
+        // for Web, Android, and iOS OAuth client IDs.
+        audience: this.googleAllowedAudiences,
       });
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `Google token verification failed (platform=${dto.platform ?? 'unknown'}): ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
       throw new UnauthorizedException('Google token không hợp lệ');
     }
 
@@ -778,5 +787,34 @@ export class AuthService {
 
   private hashDeviceFingerprint(deviceId: string): string {
     return createHash('sha256').update(deviceId.trim()).digest('hex');
+  }
+
+  /**
+   * Collect every allowed Google OAuth `aud` value.
+   *
+   * Supports three env shapes so teams can pick what they prefer:
+   *  - GOOGLE_CLIENT_ID               Web OAuth Client ID (legacy, still supported)
+   *  - GOOGLE_CLIENT_ID_WEB           Web OAuth Client ID
+   *  - GOOGLE_CLIENT_ID_ANDROID       Android OAuth Client ID
+   *  - GOOGLE_CLIENT_ID_IOS           iOS OAuth Client ID
+   *  - GOOGLE_CLIENT_IDS              Comma-separated list (wins over the above if set)
+   *
+   * Duplicates are removed so `verifyIdToken` gets a clean list.
+   */
+  private static resolveGoogleAudiences(): string[] {
+    const fromList = (process.env.GOOGLE_CLIENT_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    const individualIds = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_ID_WEB,
+      process.env.GOOGLE_CLIENT_ID_ANDROID,
+      process.env.GOOGLE_CLIENT_ID_IOS,
+    ].filter((value): value is string => !!value && value.trim().length > 0);
+
+    const combined = [...fromList, ...individualIds.map((v) => v.trim())];
+    return Array.from(new Set(combined));
   }
 }
