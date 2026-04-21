@@ -121,5 +121,7 @@ export interface GroupCallIcePayload {
 export interface GroupCallEndPayload {
   senderId: string;
   roomId: string;
+  callMode?: "voice" | "video";
   reason?: string;
+  endForAll?: boolean;
 }

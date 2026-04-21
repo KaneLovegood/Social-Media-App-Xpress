@@ -233,8 +233,9 @@ export default function ChatInfoPanel({
   const currentMemberRole = groupDetails?.members.find(
     (member) => member.userId === currentUserId,
   )?.role;
-  const isGroupAdmin =
-    currentMemberRole === "ADMIN" || groupDetails?.currentUserRole === "ADMIN";
+  const isGroupAdmin = currentMemberRole
+    ? currentMemberRole === "ADMIN"
+    : groupDetails?.currentUserRole === "ADMIN";
   const avatarLabel = room.emoji ?? initials(room.title);
   const subtitle = isGroup
     ? `${groupDetails?.memberCount ?? room.memberCount ?? 0} thành viên`
