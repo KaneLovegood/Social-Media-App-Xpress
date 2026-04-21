@@ -7,10 +7,18 @@ import { ChatModule } from './modules/chat/chat.module';
 import { SocialModule } from './modules/social/social.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { McpModule } from './modules/mcp/mcp.module';
+import { NewsFeedModule } from './modules/news-feed/news-feed.module';
 import { JwtGuard } from './middleware/jwt.guard';
 
 @Module({
-  imports: [AuthModule, ChatModule, SocialModule, StorageModule, McpModule],
+  imports: [
+    AuthModule,
+    ChatModule,
+    SocialModule,
+    StorageModule,
+    McpModule,
+    NewsFeedModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

@@ -1,9 +1,9 @@
 "use client";
 
-import { LogOut, MessageCircleMore, Settings, Users } from "lucide-react";
+import { LogOut, MessageCircleMore, Newspaper, Settings, Users } from "lucide-react";
 import Link from "next/link";
 
-type ActiveNav = "chat" | "contacts" | "profile";
+type ActiveNav = "newsfeed" | "chat" | "contacts" | "profile";
 
 interface ChatAppRailProps {
   activeNav: ActiveNav;
@@ -16,6 +16,12 @@ interface ChatAppRailProps {
 }
 
 const NAV_ITEMS = [
+  {
+    key: "newsfeed" as ActiveNav,
+    href: "/chat/news-feed",
+    icon: Newspaper,
+    title: "Bản tin",
+  },
   {
     key: "chat" as ActiveNav,
     href: "/chat/me",

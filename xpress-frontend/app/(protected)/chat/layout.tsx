@@ -13,9 +13,13 @@ interface ChatLayoutProps {
 
 const noopSubscribe = () => () => {};
 
-type ActiveNav = 'chat' | 'contacts' | 'profile';
+type ActiveNav = 'newsfeed' | 'chat' | 'contacts' | 'profile';
 
 function resolveActiveNav(pathname: string): ActiveNav {
+  if (pathname.startsWith('/chat/news-feed')) {
+    return 'newsfeed';
+  }
+
   if (pathname.startsWith('/chat/contacts')) {
     return 'contacts';
   }
