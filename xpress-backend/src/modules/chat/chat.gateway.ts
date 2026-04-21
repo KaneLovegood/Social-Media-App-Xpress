@@ -404,14 +404,48 @@ export class ChatGateway
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
+    const callMode = payload.callMode ?? 'voice';
+    const endForAll = payload.endForAll ?? false;
+
+    if (!endForAll) {
+      this.transportService.emitToGroup(
+        payload.roomId,
+        CHAT_EVENTS.GROUP_CALL_END,
+        {
+          senderId: userId,
+          roomId: payload.roomId,
+          callMode,
+          reason: payload.reason,
+          endForAll: false,
+        },
+      );
+      return;
+    }
+
+    const outcome =
+      payload.reason === 'cancelled' ? 'self_cancelled' : 'connected_ended';
+    const callLogMessage = await this.chatService.createGroupCallLogMessage(
+      userId,
+      payload.roomId,
+      { mode: callMode, outcome },
+    );
+
     this.transportService.emitToGroup(
       payload.roomId,
       CHAT_EVENTS.GROUP_CALL_END,
       {
         senderId: userId,
         roomId: payload.roomId,
+        callMode,
         reason: payload.reason,
+        endForAll: true,
       },
+    );
+
+    this.transportService.emitToGroup(
+      payload.roomId,
+      CHAT_EVENTS.GROUP_MESSAGE,
+      callLogMessage,
     );
   }
 

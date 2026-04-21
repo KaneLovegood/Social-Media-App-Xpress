@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UnauthorizedException,
@@ -18,6 +19,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 
 interface AuthenticatedRequest extends Request {
@@ -118,6 +120,16 @@ export class AuthController {
     }
 
     return this.authService.revokeSession(userId, sessionId, currentSessionId);
+  }
+
+  @Patch('avatar')
+  updateAvatar(@Req() req: AuthenticatedRequest, @Body() dto: UpdateAvatarDto) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.updateAvatar(userId, dto);
   }
 
   private resolveIp(req: Request): string {

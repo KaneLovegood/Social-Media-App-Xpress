@@ -76,6 +76,7 @@ interface SocketHandlerProps {
   setGroupCallRoomId: (roomId: string) => void;
   setGroupCallMode: (mode: CallMode) => void;
   setGroupCallDirection: (dir: CallDirection) => void;
+  setGroupCallHostUserId: (userId: string) => void;
   setPendingGroupCall: (call: PendingGroupCallState | null) => void;
   setCallMode: (mode: CallMode) => void;
   setCallDirection: (dir: CallDirection) => void;
@@ -100,6 +101,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
     setGroupCallRoomId,
     setGroupCallMode,
     setGroupCallDirection,
+    setGroupCallHostUserId,
     setPendingGroupCall,
     setCallMode,
     setCallDirection,
@@ -366,33 +368,42 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
   // Group room updated handler
   const onGroupRoomUpdated = useCallback(
     (payload: GroupRoomDetails) => {
+      const currentMemberRole = payload.members.find(
+        (member) => member.userId === currentUserId,
+      )?.role;
+      const normalizedPayload = currentMemberRole
+        ? { ...payload, currentUserRole: currentMemberRole }
+        : payload;
+
       setGroupDetails((prev) => ({
         ...prev,
-        [payload.roomId]: payload,
+        [payload.roomId]: normalizedPayload,
       }));
 
       setRooms((prev) => {
-        const existed = prev.find((room) => room.id === payload.roomId);
+        const existed = prev.find(
+          (room) => room.id === normalizedPayload.roomId,
+        );
         const nextItem: ChatRoomSummary = {
-          id: payload.roomId,
+          id: normalizedPayload.roomId,
           roomType: "GROUP",
-          title: payload.title,
-          peerUserId: payload.roomId,
-          peerName: payload.title,
-          avatarUrl: payload.avatarUrl,
-          description: payload.description,
-          emoji: payload.emoji,
-          memberCount: payload.memberCount,
+          title: normalizedPayload.title,
+          peerUserId: normalizedPayload.roomId,
+          peerName: normalizedPayload.title,
+          avatarUrl: normalizedPayload.avatarUrl,
+          description: normalizedPayload.description,
+          emoji: normalizedPayload.emoji,
+          memberCount: normalizedPayload.memberCount,
           preview:
-            payload.lastMessagePreview ??
+            normalizedPayload.lastMessagePreview ??
             existed?.preview ??
             "Bắt đầu trò chuyện trong nhóm",
           lastMessageAt:
-            payload.lastMessageAt ??
+            normalizedPayload.lastMessageAt ??
             existed?.lastMessageAt ??
             new Date().toISOString(),
-          age: payload.lastMessageAt
-            ? toAgeLabel(payload.lastMessageAt)
+          age: normalizedPayload.lastMessageAt
+            ? toAgeLabel(normalizedPayload.lastMessageAt)
             : (existed?.age ?? "Now"),
           unreadCount: existed?.unreadCount ?? 0,
           isPeerOnline: false,
@@ -403,11 +414,13 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         }
 
         return prev.map((room) =>
-          room.id === payload.roomId ? { ...room, ...nextItem } : room,
+          room.id === normalizedPayload.roomId
+            ? { ...room, ...nextItem }
+            : room,
         );
       });
     },
-    [setGroupDetails, setRooms],
+    [currentUserId, setGroupDetails, setRooms],
   );
 
   // Group member left handler
@@ -435,6 +448,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
           setGroupCallRoomId("");
           setGroupCallMode(null);
           setGroupCallDirection(null);
+          setGroupCallHostUserId("");
           setPendingGroupCall(null);
         }
 
@@ -471,6 +485,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       setGroupCallRoomId,
       setGroupCallMode,
       setGroupCallDirection,
+      setGroupCallHostUserId,
       setPendingGroupCall,
     ],
   );
@@ -478,10 +493,17 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
   // Group call started handler
   const onGroupCallStarted = useCallback(
     async (payload: GroupCallStartedPayload) => {
+      // Skip if already in this call
       if (
         payload.roomId === props.groupCallRoomId &&
         props.groupCallMode === payload.callMode
       ) {
+        return;
+      }
+
+      // Skip if already have a pending call for this room (prevent spam from
+      // repeated GROUP_CALL_START emissions during startConference of participants)
+      if (props.pendingGroupCall?.roomId === payload.roomId) {
         return;
       }
 
@@ -500,12 +522,14 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         setGroupCallRoomId(payload.roomId);
         setGroupCallMode(payload.callMode);
         setGroupCallDirection("outgoing");
+        setGroupCallHostUserId(currentUserId);
         return;
       }
 
       setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
+      setGroupCallHostUserId("");
       setPendingGroupCall({
         roomId: payload.roomId,
         callMode: payload.callMode,
@@ -522,31 +546,44 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       setGroupCallRoomId,
       setGroupCallMode,
       setGroupCallDirection,
+      setGroupCallHostUserId,
       props.groupCallRoomId,
       props.groupCallMode,
+      props.pendingGroupCall,
     ],
   );
 
   // Group call ended handler
   const onGroupCallEnded = useCallback(
     (payload: GroupCallEndPayload) => {
-      if (payload.roomId !== props.groupCallRoomId) {
-        if (props.pendingGroupCall?.roomId !== payload.roomId) {
-          return;
-        }
+      const isPendingRoom = props.pendingGroupCall?.roomId === payload.roomId;
+      const isActiveRoom = payload.roomId === props.groupCallRoomId;
+      if (!isPendingRoom && !isActiveRoom) {
+        return;
+      }
+
+      if (
+        isActiveRoom &&
+        !payload.endForAll &&
+        payload.senderId !== currentUserId
+      ) {
+        return;
       }
 
       setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
+      setGroupCallHostUserId("");
       setPendingGroupCall(null);
     },
     [
+      currentUserId,
       props.groupCallRoomId,
       props.pendingGroupCall,
       setGroupCallRoomId,
       setGroupCallMode,
       setGroupCallDirection,
+      setGroupCallHostUserId,
       setPendingGroupCall,
     ],
   );
@@ -571,6 +608,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         setGroupCallRoomId("");
         setGroupCallMode(null);
         setGroupCallDirection(null);
+        setGroupCallHostUserId("");
         setPendingGroupCall(null);
       }
     },
@@ -581,6 +619,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       setGroupCallRoomId,
       setGroupCallMode,
       setGroupCallDirection,
+      setGroupCallHostUserId,
       setPendingGroupCall,
     ],
   );
