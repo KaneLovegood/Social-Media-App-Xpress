@@ -12,11 +12,11 @@ const config: CapacitorConfig = {
     url: 'http://192.168.0.124:3001',
     cleartext: true
   },
-  plugins: {
-    Media: {
-      androidGalleryMode: true
-    }
-  }
+  // plugins: {
+  //   Media: {
+  //     androidGalleryMode: true
+  //   }
+  // }
 };
 
 export default config;
