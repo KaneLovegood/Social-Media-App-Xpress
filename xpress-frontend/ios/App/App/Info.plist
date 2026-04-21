@@ -47,13 +47,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Xpress cần truy cập camera để quét QR và chụp ảnh.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Xpress cần truy cập microphone cho tính năng gọi điện thoại và video.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Xpress cần truy cập thư viện ảnh để tải ảnh lên.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Xpress cần quyền lưu ảnh vào thư viện của bạn.</string>
 </dict>
 </plist>
