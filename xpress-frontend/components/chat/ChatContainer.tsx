@@ -9,7 +9,7 @@ import {
   fetchGroupRoomDetails,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
-import { clearSession, getValidAccessToken } from "@/lib/auth-client";
+import { clearSession, getValidAccessToken, logoutSession } from "@/lib/auth-client";
 import { sendChatAction } from "@/lib/chat-actions";
 import { fetchChatRoomMessages } from "@/lib/chat-messages";
 import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
@@ -710,10 +710,22 @@ export default function ChatContainer({
     setIsCreateGroupOpen(true);
   };
 
-  const handleLogout = useCallback(() => {
-    clearSession();
-    router.replace("/login");
-    router.refresh();
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutSession();
+    } catch (error) {
+      clearSession();
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Đăng xuất thất bại, vui lòng thử lại.";
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
   }, [router]);
 
   const handleGroupCreated = async (roomId: string) => {
