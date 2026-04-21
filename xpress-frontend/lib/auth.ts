@@ -116,24 +116,52 @@ async function request<TResponse>(path: string, payload: Record<string, unknown>
   return data as TResponse;
 }
 
+const DEVICE_ID_KEY = 'xpress_device_id';
+
 function getDevicePayload(): DevicePayload {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  const userAgent =
-    typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown-user-agent';
   return {
-    deviceId: `web-${hashString(userAgent)}`,
+    deviceId: getOrCreateDeviceId(),
     deviceName: 'Web Browser',
     timezone,
   };
 }
 
-function hashString(value: string): string {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
+function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') {
+    return `server-${generateUuid()}`;
   }
-  return Math.abs(hash).toString(16);
+
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_KEY);
+    if (existing && existing.length > 0) {
+      return existing;
+    }
+
+    const fresh = `web-${generateUuid()}`;
+    window.localStorage.setItem(DEVICE_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    return `web-${generateUuid()}`;
+  }
+}
+
+function generateUuid(): string {
+  const cryptoRef =
+    typeof globalThis !== 'undefined'
+      ? (globalThis as { crypto?: Crypto }).crypto
+      : undefined;
+
+  if (cryptoRef?.randomUUID) {
+    return cryptoRef.randomUUID();
+  }
+
+  const randomSegment = () =>
+    Math.floor((1 + Math.random()) * 0x10000)
+      .toString(16)
+      .slice(1);
+
+  return `${randomSegment()}${randomSegment()}-${randomSegment()}-${randomSegment()}-${randomSegment()}-${randomSegment()}${randomSegment()}${randomSegment()}`;
 }
 
 function getErrorMessage(message: unknown) {
