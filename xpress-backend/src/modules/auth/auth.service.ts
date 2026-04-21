@@ -19,6 +19,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import {
   EmailOtpEntity,
@@ -320,6 +321,7 @@ export class AuthService {
         passwordHash,
         role: 'CUSTOMER',
         status: 'ACTIVE',
+        avatarUrl: payload.picture,
         createdAt: now,
         updatedAt: now,
       };
@@ -336,6 +338,28 @@ export class AuthService {
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
+  }
+
+  async updateAvatar(userId: string, dto: UpdateAvatarDto) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    const avatarUrl = dto.avatarUrl.trim();
+    await this.usersRepository.updateAvatarUrl(userId, avatarUrl);
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl,
+      },
+    };
   }
 
   async refresh(dto: RefreshTokenDto) {
@@ -575,6 +599,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
       },
     };
   }

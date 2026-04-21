@@ -67,6 +67,7 @@ export default function ChatLayout({ children }: ChatLayoutProps) {
       <ChatAppRail
         activeNav={activeNav}
         fixed
+        avatarUrl={currentUser?.avatarUrl || undefined}
         initials={initials || undefined}
         onLogout={handleLogout}
       />
