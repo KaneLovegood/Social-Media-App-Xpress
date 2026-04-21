@@ -16,6 +16,8 @@ interface SessionPayload {
 const ACCESS_TOKEN_KEY = 'xpress_access_token';
 const REFRESH_TOKEN_KEY = 'xpress_refresh_token';
 const USER_KEY = 'xpress_user';
+const AUTH_NOTICE_KEY = 'xpress_auth_notice';
+const AUTH_LOCKED_KEY = 'xpress_auth_locked';
 const TOKEN_COOKIE = 'xpress_access_token';
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3001';
@@ -75,6 +77,8 @@ export function persistSession(session: SessionPayload) {
   window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
   window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
   window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
+  window.sessionStorage.removeItem(AUTH_LOCKED_KEY);
+  window.sessionStorage.removeItem(AUTH_NOTICE_KEY);
   writeAccessCookie(session.accessToken);
 }
 
@@ -85,6 +89,40 @@ export function clearSession() {
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
   clearAccessCookie();
+}
+
+function setAuthNotice(message: string) {
+  if (!isBrowser()) return;
+  window.sessionStorage.setItem(AUTH_NOTICE_KEY, message);
+}
+
+function setAuthLocked() {
+  if (!isBrowser()) return;
+  window.sessionStorage.setItem(AUTH_LOCKED_KEY, '1');
+}
+
+function isAuthLocked(): boolean {
+  if (!isBrowser()) return false;
+  return window.sessionStorage.getItem(AUTH_LOCKED_KEY) === '1';
+}
+
+function forceReLogin(message: string): never {
+  clearSession();
+  setAuthLocked();
+  setAuthNotice(message);
+  if (isBrowser() && window.location.pathname !== '/login') {
+    window.location.replace('/login');
+  }
+  throw new Error(message);
+}
+
+export function consumeAuthNotice(): string {
+  if (!isBrowser()) return '';
+  const message = window.sessionStorage.getItem(AUTH_NOTICE_KEY) ?? '';
+  if (message) {
+    window.sessionStorage.removeItem(AUTH_NOTICE_KEY);
+  }
+  return message;
 }
 
 export async function logoutSession(): Promise<void> {
@@ -120,10 +158,13 @@ export async function logoutSession(): Promise<void> {
 }
 
 export async function refreshAccessToken(): Promise<string> {
+  if (isAuthLocked()) {
+    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+  }
+
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
-    clearSession();
-    return '';
+    return forceReLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
   }
 
   if (!refreshPromise) {
@@ -135,8 +176,7 @@ export async function refreshAccessToken(): Promise<string> {
       });
 
       if (!response.ok) {
-        clearSession();
-        throw new Error('Phiên đăng nhập đã hết hạn');
+        return forceReLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
       }
 
       const session = (await response.json()) as SessionPayload;
@@ -151,6 +191,10 @@ export async function refreshAccessToken(): Promise<string> {
 }
 
 export async function getValidAccessToken(): Promise<string> {
+  if (isAuthLocked()) {
+    return '';
+  }
+
   const accessToken = getAccessToken();
   if (accessToken) return accessToken;
   return refreshAccessToken().catch(() => '');
@@ -161,6 +205,10 @@ export async function authFetch(
   init: RequestInit = {},
   retryOnUnauthorized = true,
 ): Promise<Response> {
+  if (isAuthLocked()) {
+    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+  }
+
   const accessToken = getAccessToken();
   let response = await fetchWithToken(input, init, accessToken);
 
@@ -170,10 +218,12 @@ export async function authFetch(
 
   try {
     const refreshedAccessToken = await refreshAccessToken();
-    if (!refreshedAccessToken) return response;
+    if (!refreshedAccessToken) {
+      throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    }
     response = await fetchWithToken(input, init, refreshedAccessToken);
   } catch {
-    return response;
+    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
   }
 
   return response;

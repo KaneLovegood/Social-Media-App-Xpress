@@ -107,10 +107,23 @@ export class AuthService {
 
     await this.usersRepository.createUser(user);
 
+    const deviceId =
+      dto.deviceId && dto.deviceId.trim().length > 0
+        ? dto.deviceId.trim()
+        : `register-${randomUUID()}`;
+    const deviceName =
+      dto.deviceName && dto.deviceName.trim().length > 0
+        ? dto.deviceName.trim()
+        : 'Thiết bị đăng ký';
+    const timezone =
+      dto.timezone && dto.timezone.trim().length > 0
+        ? dto.timezone.trim()
+        : 'UTC';
+
     return this.buildAuthResponse(user, {
-      deviceId: `register-${randomUUID()}`,
-      deviceName: 'Thiết bị đăng ký',
-      timezone: 'UTC',
+      deviceId,
+      deviceName,
+      timezone,
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
@@ -616,6 +629,19 @@ export class AuthService {
       );
 
     if (!activeSessionOnCurrentDevice) {
+      const allRegisterPlaceholders = activeSessions.every(
+        (session) => session.deviceName === 'Thiết bị đăng ký',
+      );
+
+      if (allRegisterPlaceholders) {
+        await Promise.all(
+          activeSessions.map((session) =>
+            this.sessionRepository.deactivateSession(userId, session.sessionId),
+          ),
+        );
+        return;
+      }
+
       throw new ForbiddenException(
         'Tài khoản đang được đăng nhập ở nơi khác. Vui lòng đăng xuất trước khi đăng nhập lại.',
       );
