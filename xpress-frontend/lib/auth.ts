@@ -89,9 +89,13 @@ export async function resetPassword(payload: ResetPasswordPayload) {
   return request<{ success: boolean }>('/auth/password/reset', payload);
 }
 
-export async function loginWithGoogle(idToken: string) {
+export async function loginWithGoogle(
+  idToken: string,
+  options: { platform?: 'web' | 'android' | 'ios' } = {},
+) {
   const result = await request<AuthResponse>('/auth/google', {
     idToken,
+    platform: options.platform ?? 'web',
     ...getDevicePayload(),
   });
   persistSession(result);
@@ -125,9 +129,27 @@ function getDevicePayload(): DevicePayload {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   return {
     deviceId: getOrCreateDeviceId(),
-    deviceName: 'Web Browser',
+    deviceName: resolveDeviceName(),
     timezone,
   };
+}
+
+function resolveDeviceName(): string {
+  if (typeof window === 'undefined') return 'Web Browser';
+  const capacitor = (
+    window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+    }
+  ).Capacitor;
+  if (capacitor?.isNativePlatform?.()) {
+    const platform = capacitor.getPlatform?.() ?? 'native';
+    return platform === 'android'
+      ? 'Android App'
+      : platform === 'ios'
+        ? 'iOS App'
+        : 'Capacitor App';
+  }
+  return 'Web Browser';
 }
 
 function getOrCreateDeviceId(): string {
