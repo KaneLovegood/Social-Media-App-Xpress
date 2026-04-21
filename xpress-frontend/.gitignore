@@ -49,3 +49,5 @@ dist
 .vscode
 
 .env*
+
+.env.local
