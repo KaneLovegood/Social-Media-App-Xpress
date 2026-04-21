@@ -2,10 +2,12 @@
 
 import InstagramLoginInputs from "@/components/instagram-login-inputs";
 import { getGoogleClientId, login, loginWithGoogle } from "@/lib/auth";
+import { consumeAuthNotice } from "@/lib/auth-client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 declare global {
   interface Window {
@@ -50,6 +52,13 @@ function LoginContent() {
       setEmail(prefetchedEmail);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const authNotice = consumeAuthNotice();
+    if (authNotice) {
+      toast.error(authNotice);
+    }
+  }, []);
 
   useEffect(() => {
     if (!googleClientId) return;

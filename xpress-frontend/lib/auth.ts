@@ -68,7 +68,10 @@ export async function login(payload: AuthPayload) {
 }
 
 export async function register(payload: RegisterPayload) {
-  return request<AuthResponse>("/auth/register", payload);
+  return request<AuthResponse>("/auth/register", {
+    ...payload,
+    ...getDevicePayload(),
+  });
 }
 
 export async function sendEmailOtp(payload: SendOtpPayload) {
