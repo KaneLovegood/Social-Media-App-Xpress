@@ -55,7 +55,7 @@ jobs:
             if pm2 describe xpress-backend > /dev/null; then
               pm2 reload xpress-backend
             else
-              pm2 start dist/main.js --name xpress-backend
+              pm2 start dist/src/main.js --name xpress-backend
             fi
 
             pm2 save
