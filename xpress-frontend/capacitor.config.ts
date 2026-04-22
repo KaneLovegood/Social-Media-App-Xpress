@@ -18,7 +18,7 @@ const config: CapacitorConfig = {
   // Backend phải truy cập qua HTTPS (dev tunnel Public hoặc ngrok),
   // nếu không sẽ bị Mixed Content chặn.
   server: {
-    androidScheme: 'https',
+    androidScheme: 'http',
   },
   plugins: {
     Media: {
