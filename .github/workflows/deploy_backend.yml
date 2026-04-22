@@ -12,54 +12,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
+      # 1. Checkout source
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. SSH setup
+      # 2. Setup SSH key
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.BACKEND_EC2_SSH_KEY }}
-
-      # 3. FIX: Add EC2 to known hosts (QUAN TRỌNG)
-      - name: Add EC2 to known hosts
         run: |
           mkdir -p ~/.ssh
+          echo "${{ secrets.BACKEND_EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 4. Sync ONLY backend folder lên EC2
-      - name: Sync backend to EC2
-        run: |
-          rsync -avz --delete \
-            xpress-backend/ \
-            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/${{ secrets.BACKEND_EC2_USER }}/xpress-backend
-
-      # 5. SSH vào EC2 để build + run PM2
-      - name: Build & Run on EC2
+      # 3. Deploy to EC2
+      - name: Deploy backend
         run: |
           ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
 
-            echo "🚀 Deploy backend..."
+            set -e
 
-            cd ~/xpress-backend
+            echo "📦 Move to project directory"
+            cd /home/ubuntu/xpress-backend
 
-            echo "📥 Install dependencies"
-            npm install
+            echo "⬇️ Pull latest code"
+            git pull origin dev
 
-            echo "🔨 Build project"
-            npm run build
+            echo "📥 Install dependencies (pnpm)"
+            corepack enable || true
+            pnpm install
 
-            echo "⚙️ Restart PM2"
+            echo "🏗️ Build project"
+            pnpm build
 
-            if pm2 describe xpress-backend > /dev/null; then
-              pm2 reload xpress-backend
-            else
-              pm2 start dist/src/main.js --name xpress-backend
-            fi
+            echo "♻️ Restart PM2"
+            pm2 restart xpress-backend || pm2 start dist/src/main.js --name xpress-backend
 
+            echo "💾 Save PM2 state"
             pm2 save
 
-            echo "✅ Deploy done!"
+            echo "✅ Deploy done"
 
           EOF
