@@ -16,7 +16,7 @@ const toolbarItems = [
   "camera",
   "image",
   "attach",
-  "camera",
+  "takePhoto",
   "card",
   "crop",
   "format",
@@ -26,7 +26,7 @@ const toolbarItems = [
 ] as const;
 
 function ToolbarIcon({ item }: { item: (typeof toolbarItems)[number] }) {
-  if (item === "camera") {
+  if (item === "takePhoto") {
     return (
       <svg
         viewBox="0 0 24 24"
@@ -218,7 +218,7 @@ export default function ComposerToolbar({
                   onOpenImagePicker();
                 } else if (item === "attach") {
                   onOpenFilePicker();
-                } else if (item === "camera") {
+                } else if (item === "takePhoto") {
                   onTakePhoto();
                 }
               }}
