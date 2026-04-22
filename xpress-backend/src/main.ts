@@ -44,6 +44,7 @@ async function bootstrap() {
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:5173',
+      'http://deploy-frontend-01.s3-website-us-east-1.amazonaws.com',
       'https://localhost',
       'capacitor://localhost',
       /\.devtunnels\.ms$/,
