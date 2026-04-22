@@ -1,0 +1,305 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PresenceService } from '../../common/presence/presence.service';
+import { UserEntity } from '../auth/interfaces/user.interface';
+import { UsersRepository } from '../auth/repositories/users.repository';
+import { BlockUserDto } from './dto/block-user.dto';
+import { ListFriendsDto } from './dto/list-friends.dto';
+import { SearchUserByPhoneDto } from './dto/search-user-by-phone.dto';
+import { SendFriendRequestDto } from './dto/send-friend-request.dto';
+import { SocialRepository } from './repositories/social.repository';
+
+export interface ChatFriendUser {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  connectedAt: string;
+}
+
+@Injectable()
+export class SocialService {
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly socialRepository: SocialRepository,
+    private readonly presenceService: PresenceService,
+  ) {}
+
+  async searchUsersByEmail(actorUserId: string, dto: SearchUserByPhoneDto) {
+    const query = this.usersRepository.normalizeEmail(dto.email);
+    if (!query) {
+      return { items: [], nextCursor: null };
+    }
+
+    const result = await this.usersRepository.searchByEmail(
+      actorUserId,
+      query,
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const items = await Promise.all(
+      result.items.map(async (user) => {
+        const relation = await this.socialRepository.getFriend(
+          actorUserId,
+          user.userId,
+        );
+        const blockedByMe = await this.socialRepository.isBlocked(
+          actorUserId,
+          user.userId,
+        );
+        const blockedMe = await this.socialRepository.isBlocked(
+          user.userId,
+          actorUserId,
+        );
+        const presence = this.presenceService.getPresence(user.userId);
+
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          friendStatus: relation?.status ?? 'NONE',
+          isOnline: presence.isOnline,
+          lastSeenAt: presence.lastSeenAt,
+          blockedByMe,
+          blockedMe,
+        };
+      }),
+    );
+
+    return {
+      items,
+      nextCursor: result.nextCursor,
+    };
+  }
+
+  async sendFriendRequest(actorUserId: string, dto: SendFriendRequestDto) {
+    if (actorUserId === dto.targetUserId) {
+      throw new ConflictException('Khong the ket ban voi chinh minh');
+    }
+
+    await this.ensureUserExists(dto.targetUserId);
+
+    const blocked = await this.socialRepository.isEitherBlocked(
+      actorUserId,
+      dto.targetUserId,
+    );
+    if (blocked) {
+      throw new ForbiddenException('Khong the gui loi moi ket ban do bi chan');
+    }
+
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      dto.targetUserId,
+    );
+    if (relation?.status === 'FRIEND') {
+      throw new ConflictException('Hai nguoi da la ban');
+    }
+    if (relation?.status === 'PENDING_SENT') {
+      throw new ConflictException('Da gui loi moi ket ban');
+    }
+    if (relation?.status === 'PENDING_RECEIVED') {
+      throw new ConflictException('Ban dang co loi moi ket ban tu nguoi nay');
+    }
+
+    await this.socialRepository.saveFriendPair(
+      actorUserId,
+      dto.targetUserId,
+      'PENDING_SENT',
+      'PENDING_RECEIVED',
+    );
+
+    return { success: true };
+  }
+
+  async acceptFriendRequest(actorUserId: string, requesterUserId: string) {
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      requesterUserId,
+    );
+    if (relation?.status !== 'PENDING_RECEIVED') {
+      throw new NotFoundException('Khong tim thay loi moi');
+    }
+
+    await this.socialRepository.saveFriendPair(
+      actorUserId,
+      requesterUserId,
+      'FRIEND',
+      'FRIEND',
+    );
+
+    return { success: true };
+  }
+
+  async rejectFriendRequest(actorUserId: string, requesterUserId: string) {
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      requesterUserId,
+    );
+    if (relation?.status !== 'PENDING_RECEIVED') {
+      throw new NotFoundException('Khong tim thay loi moi');
+    }
+
+    await this.socialRepository.removeFriendPair(actorUserId, requesterUserId);
+    return { success: true };
+  }
+
+  async unfriend(actorUserId: string, friendUserId: string) {
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      friendUserId,
+    );
+    if (relation?.status !== 'FRIEND') {
+      throw new NotFoundException('Khong tim thay ban be');
+    }
+
+    await this.socialRepository.removeFriendPair(actorUserId, friendUserId);
+    return { success: true };
+  }
+
+  async listFriends(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listFriendsByStatus(
+      actorUserId,
+      'FRIEND',
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        const presence = this.presenceService.getPresence(user.userId);
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          isOnline: presence.isOnline,
+          lastSeenAt: presence.lastSeenAt,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async listIncomingRequests(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listFriendsByStatus(
+      actorUserId,
+      'PENDING_RECEIVED',
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        const presence = this.presenceService.getPresence(user.userId);
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          isOnline: presence.isOnline,
+          lastSeenAt: presence.lastSeenAt,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async listAllFriendUsers(actorUserId: string): Promise<ChatFriendUser[]> {
+    const relationItems = [] as Array<{
+      targetUserId: string;
+      updatedAt: string;
+    }>;
+    let cursor: string | undefined;
+
+    do {
+      const page = await this.socialRepository.listFriendsByStatus(
+        actorUserId,
+        'FRIEND',
+        100,
+        cursor,
+      );
+
+      relationItems.push(
+        ...page.items.map((item) => ({
+          targetUserId: item.targetUserId,
+          updatedAt: item.updatedAt,
+        })),
+      );
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+
+    if (relationItems.length === 0) {
+      return [];
+    }
+
+    const users = await this.loadUsers(
+      Array.from(new Set(relationItems.map((item) => item.targetUserId))),
+    );
+    const userMap = new Map(users.map((user) => [user.userId, user]));
+
+    return relationItems
+      .map((item) => {
+        const user = userMap.get(item.targetUserId);
+        if (!user) return null;
+
+        return {
+          userId: user.userId,
+          name: user.name,
+          ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
+          connectedAt: item.updatedAt,
+        };
+      })
+      .filter((item): item is ChatFriendUser => item != null);
+  }
+
+  async blockUser(actorUserId: string, dto: BlockUserDto) {
+    if (actorUserId === dto.targetUserId) {
+      throw new ConflictException('Khong the chan chinh minh');
+    }
+
+    await this.ensureUserExists(dto.targetUserId);
+    await this.socialRepository.setBlocked(actorUserId, dto.targetUserId);
+    await this.socialRepository.removeFriendPair(actorUserId, dto.targetUserId);
+
+    return { success: true };
+  }
+
+  async unblockUser(actorUserId: string, targetUserId: string) {
+    await this.socialRepository.unblock(actorUserId, targetUserId);
+    return { success: true };
+  }
+
+  async assertNotBlocked(userAId: string, userBId: string): Promise<void> {
+    const blocked = await this.socialRepository.isEitherBlocked(
+      userAId,
+      userBId,
+    );
+    if (blocked) {
+      throw new ForbiddenException('Khong the thao tac vi co quan he chan');
+    }
+  }
+
+  private async ensureUserExists(userId: string): Promise<void> {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new NotFoundException('Nguoi dung khong ton tai');
+    }
+  }
+
+  private async loadUsers(userIds: string[]): Promise<UserEntity[]> {
+    const loaded = await Promise.all(
+      userIds.map((userId) => this.usersRepository.findByUserId(userId)),
+    );
+    return loaded.filter((item): item is UserEntity => item != null);
+  }
+}

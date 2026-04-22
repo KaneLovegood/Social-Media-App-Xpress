@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Xpress</string>
+    <string name="title_activity_main">Xpress</string>
+    <string name="package_name">com.xpress.app</string>
+    <string name="custom_url_scheme">com.xpress.app</string>
+</resources>
