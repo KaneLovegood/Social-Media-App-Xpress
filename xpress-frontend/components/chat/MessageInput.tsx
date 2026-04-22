@@ -64,7 +64,8 @@ export default function MessageInput({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const { startCamera, stopCamera, takePhoto, stream } = useCameraScan();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const { startCamera, stopCamera, stream } = useCameraScan();
   const [isCameraActive, setIsCameraActive] = useState(false);
 
   const canSend = useMemo(
@@ -163,12 +164,25 @@ export default function MessageInput({
   };
 
   const handleCapture = async () => {
-    const file = await takePhoto();
-    if (file) {
-      addFiles([file]);
-      stopCamera();
-      setIsCameraActive(false);
-    }
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `photo-${Date.now()}.png`, { type: "image/png" });
+        addFiles([file]);
+        stopCamera();
+        setIsCameraActive(false);
+      }
+    }, "image/png");
   };
 
   const cancelCamera = () => {
@@ -436,6 +450,7 @@ export default function MessageInput({
           <div className="relative aspect-video w-full max-w-2xl overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl">
             <video
               ref={(el) => {
+                videoRef.current = el;
                 if (el) el.srcObject = stream;
               }}
               autoPlay
