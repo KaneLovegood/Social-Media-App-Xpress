@@ -17,6 +17,7 @@ import {
 } from '@/lib/news-feed';
 import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
 import { getPresignedUrl, uploadFileToS3 } from '@/lib/chat-upload';
+import NewsFeedLocationPicker from '@/components/chat/NewsFeedLocationPicker';
 import { createFeedSocket } from '@/lib/realtime/socket-client';
 import { FEED_EVENTS } from '@/lib/realtime/events';
 import {
@@ -149,6 +150,7 @@ export default function NewsFeedPage() {
   const [loi, setLoi] = useState('');
 
   const [noiDung, setNoiDung] = useState('');
+  const [viTri, setViTri] = useState('');
   const [cheDoRiengTu, setCheDoRiengTu] = useState<CheDoRiengTu>('friends');
   const [anhDaChon, setAnhDaChon] = useState<File[]>([]);
   const [videoDaChon, setVideoDaChon] = useState<File[]>([]);
@@ -333,16 +335,6 @@ export default function NewsFeedPage() {
     };
   }, []);
 
-  const onChonAnh = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    setAnhDaChon(files);
-  };
-
-  const onChonVideo = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    setVideoDaChon(files);
-  };
-
   const uploadDanhSachFile = async (files: File[]) => {
     const urls: string[] = [];
 
@@ -359,13 +351,15 @@ export default function NewsFeedPage() {
     event.preventDefault();
 
     const noiDungDangBai = taoNoiDungKemCamXuc(noiDung, nhanCamXucDaChon);
+    const viTriDangBai = viTri.trim();
 
-    if (!noiDungDangBai && anhDaChon.length === 0 && videoDaChon.length === 0) {
-      setLoi('Vui lòng nhập nội dung hoặc chọn ảnh/video để đăng bài');
+    if (!noiDungDangBai && !viTriDangBai && anhDaChon.length === 0 && videoDaChon.length === 0) {
+      setLoi('Vui lòng nhập nội dung, vị trí hoặc chọn ảnh/video để đăng bài');
       return;
     }
 
     const noiDungCu = noiDung;
+    const viTriCu = viTri;
     const anhDaChonCu = [...anhDaChon];
     const videoDaChonCu = [...videoDaChon];
     const cheDoRiengTuCu = cheDoRiengTu;
@@ -390,6 +384,7 @@ export default function NewsFeedPage() {
         maBaiViet: maTam,
         maNguoiDung: currentUserId,
         noiDung: noiDungDangBai,
+        viTri: viTriDangBai,
         danhSachAnh,
         danhSachVideo,
         cheDoRiengTu,
@@ -413,6 +408,7 @@ export default function NewsFeedPage() {
       setDanhSachBaiViet((prev) => [baiVietTam, ...prev]);
       daThemBaiTam = true;
       setNoiDung('');
+      setViTri('');
       setAnhDaChon([]);
       setVideoDaChon([]);
       setCheDoRiengTu('friends');
@@ -421,6 +417,7 @@ export default function NewsFeedPage() {
 
       const baiMoi = await taoBaiViet({
         noiDung: noiDungDangBai,
+        viTri: viTriDangBai,
         danhSachAnh,
         danhSachVideo,
         cheDoRiengTu,
@@ -438,6 +435,7 @@ export default function NewsFeedPage() {
       if (daThemBaiTam && maTam) {
         setDanhSachBaiViet((prev) => prev.filter((item) => item.maBaiViet !== maTam));
         setNoiDung(noiDungCu);
+        setViTri(viTriCu);
         setAnhDaChon(anhDaChonCu);
         setVideoDaChon(videoDaChonCu);
         setCheDoRiengTu(cheDoRiengTuCu);
@@ -729,6 +727,7 @@ export default function NewsFeedPage() {
       maBaiViet: maTam,
       maNguoiDung: currentUserId,
       noiDung: ghiChu,
+        viTri: undefined,
       danhSachAnh: [],
       danhSachVideo: [],
       cheDoRiengTu,
@@ -960,13 +959,8 @@ export default function NewsFeedPage() {
                     ) : null}
                   </div>
 
-                  <button
-                    type="button"
-                    className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[#4f5870] transition-colors hover:bg-[#eef2fa] sm:flex"
-                  >
-                    <MapPin size={16} className="text-[#425c9f]" />
-                    Vị trí
-                  </button>
+                  <NewsFeedLocationPicker value={viTri} onChange={setViTri} />
+
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1093,6 +1087,15 @@ export default function NewsFeedPage() {
                   <p className="px-4 pb-3 whitespace-pre-wrap text-sm leading-relaxed text-[#1b2336]">
                     {baiViet.noiDung}
                   </p>
+                ) : null}
+
+                {baiViet.viTri ? (
+                  <div className="px-4 pb-3">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4ff] px-3 py-1 text-xs font-semibold text-[#3158b9]">
+                      <MapPin size={14} />
+                      <span>{baiViet.viTri}</span>
+                    </div>
+                  </div>
                 ) : null}
 
                 {baiViet.danhSachAnh.length > 0 ? (

@@ -9,6 +9,7 @@ export interface PostEntity {
   postId: string;
   userId: string;
   content: string;
+  location?: string;
   imageUrls: string[];
   videoUrls: string[];
   visibility: PostVisibility;
@@ -74,6 +75,7 @@ export interface FeedPostView {
   postId: string;
   userId: string;
   content: string;
+  location?: string;
   imageUrls: string[];
   videoUrls: string[];
   visibility: PostVisibility;
@@ -110,6 +112,7 @@ export interface BaiVietView {
   maBaiViet: string;
   maNguoiDung: string;
   noiDung: string;
+  viTri?: string;
   danhSachAnh: string[];
   danhSachVideo: string[];
   cheDoRiengTu: PostVisibility;

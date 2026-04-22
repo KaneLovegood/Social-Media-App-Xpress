@@ -26,6 +26,7 @@ export interface BaiVietBanTin {
   maBaiViet: string;
   maNguoiDung: string;
   noiDung: string;
+  viTri?: string;
   danhSachAnh: string[];
   danhSachVideo: string[];
   cheDoRiengTu: CheDoRiengTu;
@@ -82,6 +83,7 @@ export async function layDanhSachBanTin(cursor?: string, limit = 10) {
 
 export async function taoBaiViet(payload: {
   noiDung?: string;
+  viTri?: string;
   danhSachAnh?: string[];
   danhSachVideo?: string[];
   cheDoRiengTu?: CheDoRiengTu;
@@ -100,6 +102,7 @@ export async function capNhatBaiViet(
   postId: string,
   payload: {
     noiDung?: string;
+    viTri?: string;
     danhSachAnh?: string[];
     danhSachVideo?: string[];
     cheDoRiengTu?: CheDoRiengTu;

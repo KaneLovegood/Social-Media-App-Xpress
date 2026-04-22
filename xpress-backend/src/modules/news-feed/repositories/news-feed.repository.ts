@@ -78,6 +78,7 @@ export class NewsFeedRepository {
     postId: string,
     data: {
       content?: string;
+      location?: string;
       imageUrls?: string[];
       videoUrls?: string[];
       visibility?: 'public' | 'friends' | 'private';
@@ -92,6 +93,11 @@ export class NewsFeedRepository {
     if (data.content !== undefined) {
       expressions.push('content = :content');
       values[':content'] = data.content;
+    }
+
+    if (data.location !== undefined) {
+      expressions.push('location = :location');
+      values[':location'] = data.location;
     }
 
     if (data.imageUrls !== undefined) {
