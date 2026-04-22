@@ -21,7 +21,7 @@ import {
   GroupRoomDetails,
   GroupRoomMemberSummary,
 } from '../interfaces/chat-room-summary.interface';
-import { MessageEntity } from '../interfaces/message.interface';
+import { CallLogOutcome, MessageEntity } from '../interfaces/message.interface';
 import { GroupRoomsRepository } from '../repositories/group-rooms.repository';
 import { MessagesRepository } from '../repositories/messages.repository';
 
@@ -236,6 +236,57 @@ export class ChatRoomService {
     await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
       lastMessageAt: now,
       lastMessagePreview: dto.content,
+    });
+
+    return item;
+  }
+
+  async createGroupCallLogMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+      outcome: CallLogOutcome;
+    },
+  ): Promise<MessageEntity> {
+    await this.assertGroupMembership(senderId, roomId);
+
+    const room = await this.getGroupRoom(roomId);
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+    const content = this.toGroupCallLogContent(payload.mode, payload.outcome);
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${room.roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: room.roomId,
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: room.roomId,
+      content,
+      messageType: 'CALL_LOG',
+      callLog: {
+        mode: payload.mode,
+        outcome: payload.outcome,
+        durationSeconds: 0,
+        actorUserId: senderId,
+        initiatorUserId: senderId,
+      },
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: content,
     });
 
     return item;
@@ -587,6 +638,19 @@ export class ChatRoomService {
     }
 
     return 'Bạn đã hủy';
+  }
+
+  private toGroupCallLogContent(
+    mode: 'voice' | 'video',
+    outcome: CallLogOutcome,
+  ): string {
+    const modeText = mode === 'video' ? 'video' : 'thoai';
+
+    if (outcome === 'connected_ended') {
+      return `Cuoc goi nhom ${modeText} ket thuc`;
+    }
+
+    return `Cuoc goi nhom ${modeText} bi huy`;
   }
 
   private toPeerName(peerUserId: string): string {

@@ -1,6 +1,15 @@
-import { getStoredUser, logoutSession } from '@/lib/auth-client';
+import {
+  authFetch,
+  getStoredUser,
+  logoutSession,
+  updateStoredUser,
+} from '@/lib/auth-client';
 import type { StoredUser } from '@/lib/auth-client';
+import { getPresignedUrl, uploadFileToS3 } from '@/lib/chat-upload';
 import type { ProfileModel, ProfileStatus } from './types';
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3001';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Quản trị viên',
@@ -46,6 +55,7 @@ function toProfileModel(user: StoredUser | null): ProfileModel {
       userId: '',
       displayName: 'Chưa có dữ liệu người dùng',
       email: '---',
+      avatarUrl: '',
       roleLabel: '---',
       statusLabel: 'Chưa đăng nhập',
       status: 'unknown',
@@ -63,6 +73,7 @@ function toProfileModel(user: StoredUser | null): ProfileModel {
     userId: user.userId,
     displayName: user.name,
     email: user.email,
+    avatarUrl: user.avatarUrl?.trim() || '',
     roleLabel: mapRole(user.role),
     statusLabel: mapStatusLabel(user.status),
     status: mapStatus(user.status),
@@ -77,4 +88,49 @@ export function getProfileModel() {
 
 export async function logoutProfile() {
   await logoutSession();
+}
+
+function getErrorMessage(message: unknown) {
+  if (Array.isArray(message)) return message.join(', ');
+  if (typeof message === 'string' && message.trim().length > 0) return message;
+  return 'Cập nhật avatar thất bại, vui lòng thử lại.';
+}
+
+export async function updateProfileAvatar(file: File): Promise<ProfileModel> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Vui lòng chọn file ảnh hợp lệ.');
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('Kích thước ảnh tối đa là 5MB.');
+  }
+
+  const { uploadUrl, publicUrl } = await getPresignedUrl(
+    file.name,
+    file.type,
+    file.size,
+  );
+
+  await uploadFileToS3(uploadUrl, file);
+
+  const response = await authFetch(`${API_BASE_URL}/auth/avatar`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ avatarUrl: publicUrl }),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as {
+    message?: unknown;
+    success?: boolean;
+    user?: StoredUser;
+  };
+
+  if (!response.ok || !data.success || !data.user) {
+    throw new Error(getErrorMessage(data.message));
+  }
+
+  updateStoredUser(data.user);
+  return toProfileModel(data.user);
 }

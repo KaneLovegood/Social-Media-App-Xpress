@@ -93,11 +93,14 @@ export class ChatGatewayTransportService {
     userId: string,
     payload: unknown,
   ): void {
-    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_MEMBER_LEFT, {
+    const eventPayload = {
       roomId,
       userId,
       payload,
-    });
+    };
+
+    this.emitToGroup(roomId, CHAT_EVENTS.GROUP_MEMBER_LEFT, eventPayload);
+    this.emitToUser(userId, CHAT_EVENTS.GROUP_MEMBER_LEFT, eventPayload);
   }
 
   broadcastGroupDissolved(

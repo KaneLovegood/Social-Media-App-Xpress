@@ -16,6 +16,7 @@ import ComposerInputRow from "./message-input/ComposerInputRow";
 import ComposerToolbar from "./message-input/ComposerToolbar";
 import { PendingAttachment } from "./message-input/types";
 import CameraCapture from "./message-input/CameraCapture";
+import { useCameraScan } from "@/hooks/use-camera-scan";
 
 export interface SendMessageOptions {
   messageType?: MessageType;
@@ -63,6 +64,8 @@ export default function MessageInput({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { startCamera, stopCamera, takePhoto, stream } = useCameraScan();
+  const [isCameraActive, setIsCameraActive] = useState(false);
 
   const canSend = useMemo(
     () => content.trim().length > 0 || attachments.length > 0,
@@ -150,6 +153,27 @@ export default function MessageInput({
 
   const openImagePicker = () => {
     imageInputRef.current?.click();
+  };
+
+  const handleTakePhotoClick = async () => {
+    const s = await startCamera();
+    if (s) {
+      setIsCameraActive(true);
+    }
+  };
+
+  const handleCapture = async () => {
+    const file = await takePhoto();
+    if (file) {
+      addFiles([file]);
+      stopCamera();
+      setIsCameraActive(false);
+    }
+  };
+
+  const cancelCamera = () => {
+    stopCamera();
+    setIsCameraActive(false);
   };
 
   const removeAttachment = (id: string) => {
@@ -397,6 +421,7 @@ export default function MessageInput({
         onOpenCamera={() => setIsCameraOpen(true)}
         onOpenImagePicker={openImagePicker}
         onOpenFilePicker={openFilePicker}
+        onTakePhoto={handleTakePhotoClick}
         onEmojiSelect={handleEmojiSelect}
       />
       {isCameraOpen && (
@@ -404,6 +429,40 @@ export default function MessageInput({
           onCapture={(file) => addFiles([file])}
           onClose={() => setIsCameraOpen(false)}
         />
+      )}
+
+      {isCameraActive && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/80 p-4">
+          <div className="relative aspect-video w-full max-w-2xl overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl">
+            <video
+              ref={(el) => {
+                if (el) el.srcObject = stream;
+              }}
+              autoPlay
+              playsInline
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-x-0 bottom-6 flex justify-center gap-6">
+              <button
+                type="button"
+                onClick={handleCapture}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-lg transition active:scale-90"
+              >
+                <div className="h-10 w-10 rounded-full border-2 border-black" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelCamera}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition active:scale-90"
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <p className="mt-4 text-sm font-medium text-white/60">Đang sử dụng camera...</p>
+        </div>
       )}
 
       <AttachmentPreviewTray

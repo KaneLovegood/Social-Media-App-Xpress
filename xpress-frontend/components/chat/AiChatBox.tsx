@@ -44,6 +44,11 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
 
   return (
     <ChatContent
+      isGroup={false}
+      senderNameById={{
+        [currentUserId]: currentUserName,
+        "ai-assistant": "Logistics AI Assistant"
+      }}
       peerName="Logistics AI Assistant"
       orderTitle="Hỗ trợ thông minh Logistics"
       typingText={isLoading ? "AI Assistant đang gõ máy..." : ""}
@@ -53,23 +58,23 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
       currentUserName={currentUserName}
       listRef={listRef}
       replyTo={undefined}
-      onBackToList={onBackToList || (() => {})}
-      onOpenInfo={() => {}}
+      onBackToList={onBackToList || (() => { })}
+      onOpenInfo={() => { }}
       onOpenVoiceCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi thoại.")}
       onOpenVideoCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi video.")}
-      onClearReply={() => {}}
+      onClearReply={() => { }}
       onSend={handleMessageSend}
-      onTyping={() => {}}
-      onReply={() => {}}
+      onTyping={() => { }}
+      onReply={() => { }}
       onForward={() => toast.info("Tính năng chuyển tiếp hiện bị tắt trong chế độ AI.")}
       onRecall={() => toast.info("Không thể thu hồi tin nhắn với AI.")}
       onDeleteForMe={() => toast.info("Chưa hỗ trợ xóa cục bộ tin nhắn AI.")}
       onCopy={(msg: ChatMessage) => navigator.clipboard.writeText(msg.content)}
-      onPin={() => {}}
-      onMark={() => {}}
-      onSelectMany={() => {}}
-      onViewDetails={() => {}}
-      onRedial={() => {}}
+      onPin={() => { }}
+      onMark={() => { }}
+      onSelectMany={() => { }}
+      onViewDetails={() => { }}
+      onRedial={() => { }}
     />
   );
 }

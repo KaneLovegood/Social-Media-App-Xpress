@@ -13,6 +13,13 @@ const config: CapacitorConfig = {
     // url: 'http://192.168.0.124:3001',
   //   cleartext: true
   // },
+  // Giữ https://localhost để WebView được coi là "secure context",
+  // bắt buộc cho navigator.mediaDevices.getUserMedia (camera / mic / video call).
+  // Backend phải truy cập qua HTTPS (dev tunnel Public hoặc ngrok),
+  // nếu không sẽ bị Mixed Content chặn.
+  server: {
+    androidScheme: 'https',
+  },
   plugins: {
     Media: {
       androidGalleryMode: true

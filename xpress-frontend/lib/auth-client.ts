@@ -4,6 +4,7 @@ export interface StoredUser {
   email: string;
   role: string;
   status: string;
+  avatarUrl?: string;
 }
 
 interface SessionPayload {
@@ -69,6 +70,11 @@ export function getStoredUser(): StoredUser | null {
   } catch {
     return null;
   }
+}
+
+export function updateStoredUser(user: StoredUser): void {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function persistSession(session: SessionPayload) {

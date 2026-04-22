@@ -204,6 +204,20 @@ export class ChatService {
     return this.chatRoomService.sendGroupMessage(senderId, dto);
   }
 
+  async createGroupCallLogMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+      outcome: 'self_cancelled' | 'connected_ended';
+    },
+  ): Promise<MessageEntity> {
+    return this.chatRoomService.createGroupCallLogMessage(senderId, roomId, {
+      mode: payload.mode,
+      outcome: payload.outcome,
+    });
+  }
+
   async deleteMessage(
     senderId: string,
     dto: DeleteMessageDto,
