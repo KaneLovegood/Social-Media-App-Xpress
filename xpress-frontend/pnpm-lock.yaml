@@ -11,6 +11,9 @@ importers:
       '@capacitor/core':
         specifier: ^8.3.0
         version: 8.3.0
+      '@capgo/capacitor-social-login':
+        specifier: ^8.3.17
+        version: 8.3.17(@capacitor/core@8.3.0)
       '@fortawesome/fontawesome-free':
         specifier: ^7.2.0
         version: 7.2.0
@@ -184,6 +187,11 @@ packages:
     resolution: {integrity: sha512-5Rtwv8SITKlYTt8lAZG+khnVIdzPtqbocH3eP+JkEmX1vpSMwx4TOKtT8OBz8gpQ+pUJDRp7DBYOv3U6l/obCw==}
     peerDependencies:
       '@capacitor/core': ^8.3.0
+
+  '@capgo/capacitor-social-login@8.3.17':
+    resolution: {integrity: sha512-eN+WGgQY0br3xzKdqucBxXnQDflVvODdEcXXm5x/fGYQk6G4ppGRe3mK/JEqoSF7A8KYLEG6+jeDr/VGlLRf6A==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@commitlint/cli@20.5.0':
     resolution: {integrity: sha512-yNkyN/tuKTJS3wdVfsZ2tXDM4G4Gi7z+jW54Cki8N8tZqwKBltbIvUUrSbT4hz1bhW/h0CdR+5sCSpXD+wMKaQ==}
@@ -3154,6 +3162,11 @@ snapshots:
   '@capacitor/ios@8.3.0(@capacitor/core@8.3.0)':
     dependencies:
       '@capacitor/core': 8.3.0
+
+  '@capgo/capacitor-social-login@8.3.17(@capacitor/core@8.3.0)':
+    dependencies:
+      '@capacitor/core': 8.3.0
+      tslib: 2.8.1
 
   '@commitlint/cli@20.5.0(@types/node@20.19.39)(conventional-commits-parser@6.4.0)(typescript@5.9.3)':
     dependencies:

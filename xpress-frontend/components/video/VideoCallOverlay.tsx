@@ -94,7 +94,9 @@ export default function VideoCallOverlay({
                     ref={remoteVideoRef}
                     autoPlay
                     playsInline
-                    className="absolute inset-0 z-0 h-full w-full object-cover scale-110"
+                    disablePictureInPicture
+                    controls={false}
+                    className="absolute inset-0 z-0 h-full w-full object-cover scale-110 pointer-events-none"
                 />
 
                 <div className="relative z-20 flex items-center gap-3">
