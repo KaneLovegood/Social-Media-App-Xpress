@@ -19,6 +19,8 @@ import { PresignedUrlDto } from './dto/presigned-url.dto';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { StorageService } from '../storage/storage.service';
+import { AgoraService } from './services/agora.service';
+import { Query } from '@nestjs/common';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -36,6 +38,7 @@ export class ChatController {
     private readonly usersRepository: UsersRepository,
     private readonly presenceService: PresenceService,
     private readonly storageService: StorageService,
+    private readonly agoraService: AgoraService,
   ) {}
 
   @Get('rooms')
@@ -367,5 +370,22 @@ export class ChatController {
     }
 
     return await this.chatService.getRoomFiles(actorUserId, roomId);
+  }
+
+  @Get('agora-token')
+  async getAgoraToken(
+    @Req() request: AuthenticatedRequest,
+    @Query('channelName') channelName: string,
+  ): Promise<unknown> {
+    const actorUserId = request.user?.userId;
+    if (!actorUserId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (!channelName) {
+      throw new UnauthorizedException('Channel name is required');
+    }
+
+    return this.agoraService.generateRtcToken(channelName, actorUserId);
   }
 }
