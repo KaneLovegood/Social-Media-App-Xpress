@@ -1,0 +1,67 @@
+name: Deploy Backend to EC2 (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout source code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Setup SSH key
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.BACKEND_EC2_SSH_KEY }}
+
+      # 3. Add EC2 to known hosts
+      - name: Add EC2 to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
+
+      # 4. Deploy to EC2
+      - name: Deploy Backend via SSH
+        run: |
+          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
+
+            echo "🚀 Start deploying backend..."
+
+            # Move to home or project folder
+            cd ~ || exit
+
+            # If folder exists, remove old version
+            rm -rf xpress-backend
+
+            echo "📦 Cloning project..."
+            git clone ${{ secrets.REPO_URL }} xpress-backend
+
+            cd xpress-backend
+
+            echo "📥 Installing dependencies..."
+            npm install
+
+            echo "🔨 Build project..."
+            npm run build
+
+            echo "⚙️ Restart PM2 process..."
+
+            # If PM2 app exists then reload, else start
+            pm2 describe xpress-backend > /dev/null
+            if [ $? -eq 0 ]; then
+              pm2 reload xpress-backend
+            else
+              pm2 start dist/main.js --name xpress-backend
+            fi
+
+            pm2 save
+
+            echo "✅ Deploy done!"
+
+          EOF
