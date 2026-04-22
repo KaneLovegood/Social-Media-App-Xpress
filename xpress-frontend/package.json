@@ -13,7 +13,10 @@
     "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.3.0",
+    "@capacitor/device": "^8.0.2",
+    "@capacitor/preferences": "^8.0.1",
     "@capgo/capacitor-social-login": "^8.3.17",
     "@fortawesome/fontawesome-free": "^7.2.0",
     "@tailwindcss/typography": "^0.5.19",

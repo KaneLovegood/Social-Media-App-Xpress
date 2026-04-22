@@ -131,6 +131,6 @@ export async function updateProfileAvatar(file: File): Promise<ProfileModel> {
     throw new Error(getErrorMessage(data.message));
   }
 
-  updateStoredUser(data.user);
+  await updateStoredUser(data.user);
   return toProfileModel(data.user);
 }

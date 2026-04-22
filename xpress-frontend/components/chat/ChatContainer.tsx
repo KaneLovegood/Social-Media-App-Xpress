@@ -820,7 +820,7 @@ export default function ChatContainer({
     try {
       await logoutSession();
     } catch (error) {
-      clearSession();
+      await clearSession();
       const message =
         error instanceof Error
           ? error.message
