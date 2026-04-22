@@ -9,7 +9,8 @@ const config: CapacitorConfig = {
   // => Để test được video call, bạn hãy comment block `server` này lại (để app tự buil local dạng http://localhost) 
   // HOẶC dùng ngrok để cấp proxy HTTPS cho port 3001.
   // server: {
-  //   url: 'http://192.168.0.124:3001',
+  //   url: 'http://192.168.2.222:3001',
+    // url: 'http://192.168.0.124:3001',
   //   cleartext: true
   // },
   plugins: {

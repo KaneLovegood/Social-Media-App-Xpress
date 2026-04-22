@@ -4,6 +4,7 @@ import { useState } from "react";
 import EmojiPickerPopover from "./EmojiPickerPopover";
 
 interface ComposerToolbarProps {
+  onOpenCamera: () => void;
   onOpenImagePicker: () => void;
   onOpenFilePicker: () => void;
   onEmojiSelect: (emoji: string) => void;
@@ -11,6 +12,7 @@ interface ComposerToolbarProps {
 
 const toolbarItems = [
   "emoji",
+  "camera",
   "image",
   "attach",
   "card",
@@ -22,6 +24,21 @@ const toolbarItems = [
 ] as const;
 
 function ToolbarIcon({ item }: { item: (typeof toolbarItems)[number] }) {
+  if (item === "camera") {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4.5 w-4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+        <circle cx="12" cy="13" r="3" />
+      </svg>
+    );
+  }
+
   if (item === "emoji") {
     return (
       <svg
@@ -155,6 +172,7 @@ function ToolbarIcon({ item }: { item: (typeof toolbarItems)[number] }) {
 }
 
 export default function ComposerToolbar({
+  onOpenCamera,
   onOpenImagePicker,
   onOpenFilePicker,
   onEmojiSelect,
@@ -176,6 +194,8 @@ export default function ComposerToolbar({
               onClick={() => {
                 if (item === "emoji") {
                   setIsEmojiPickerOpen(!isEmojiPickerOpen);
+                } else if (item === "camera") {
+                  onOpenCamera();
                 } else if (item === "image") {
                   onOpenImagePicker();
                 } else if (item === "attach") {

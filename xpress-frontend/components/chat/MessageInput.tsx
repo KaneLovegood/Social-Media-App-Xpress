@@ -15,6 +15,7 @@ import AttachmentPreviewTray from "./message-input/AttachmentPreviewTray";
 import ComposerInputRow from "./message-input/ComposerInputRow";
 import ComposerToolbar from "./message-input/ComposerToolbar";
 import { PendingAttachment } from "./message-input/types";
+import CameraCapture from "./message-input/CameraCapture";
 
 export interface SendMessageOptions {
   messageType?: MessageType;
@@ -58,6 +59,7 @@ export default function MessageInput({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -392,10 +394,17 @@ export default function MessageInput({
 
       <ReplyPreview reply={replyTo} onClear={onClearReply} mode="composer" />
       <ComposerToolbar
+        onOpenCamera={() => setIsCameraOpen(true)}
         onOpenImagePicker={openImagePicker}
         onOpenFilePicker={openFilePicker}
         onEmojiSelect={handleEmojiSelect}
       />
+      {isCameraOpen && (
+        <CameraCapture
+          onCapture={(file) => addFiles([file])}
+          onClose={() => setIsCameraOpen(false)}
+        />
+      )}
 
       <AttachmentPreviewTray
         attachments={attachments}
