@@ -11,6 +11,7 @@ interface MessageListProps {
   currentUserName: string;
   peerName: string;
   senderNameById: Record<string, string>;
+  senderAvatarById: Record<string, string>;
   canReply?: boolean;
   listRef: RefObject<HTMLUListElement | null>;
   onReply: (preview: ReplyPreviewType) => void;
@@ -33,6 +34,7 @@ export default function MessageList({
   currentUserName,
   peerName,
   senderNameById,
+  senderAvatarById,
   listRef,
   onReply,
   onForward,
@@ -78,6 +80,7 @@ export default function MessageList({
           currentUserName={currentUserName}
           peerName={peerName}
           senderNameById={senderNameById}
+          senderAvatarById={senderAvatarById}
           onReply={onReply}
           onForward={onForward}
           onRecall={onRecall}

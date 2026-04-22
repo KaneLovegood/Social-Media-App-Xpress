@@ -11,6 +11,7 @@ interface MessageItemRowProps {
   currentUserName: string;
   peerName: string;
   senderNameById: Record<string, string>;
+  senderAvatarById: Record<string, string>;
   onReply: (preview: ReplyPreviewType) => void;
   onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
@@ -34,6 +35,7 @@ export default function MessageItemRow({
   currentUserName,
   peerName,
   senderNameById,
+  senderAvatarById,
   onReply,
   onForward,
   onRecall,
@@ -47,10 +49,12 @@ export default function MessageItemRow({
   onImageClick,
 }: MessageItemRowProps) {
   const isOwn = message.senderId === currentUserId;
+  const isSystemMessage = message.messageType === "SYSTEM";
   const canRecall = isOwn;
   const isConversationGenerated = message.messageType === "CALL_LOG";
   const senderName =
     senderNameById[message.senderId] ?? (isOwn ? currentUserName : peerName);
+  const senderAvatarUrl = senderAvatarById[message.senderId] ?? "";
   const resolveSenderName = (senderId: string) => {
     if (senderId === currentUserId) {
       return currentUserName;
@@ -66,14 +70,45 @@ export default function MessageItemRow({
       : "Đã gửi"
     : "";
 
+  if (isSystemMessage) {
+    return (
+      <li className="flex justify-center">
+        <div className="flex max-w-[88%] items-center gap-2 rounded-full bg-[#e8ebef] px-3 py-2 text-sm font-medium text-[#5f6b7f]">
+          {senderAvatarUrl ? (
+            <img
+              src={senderAvatarUrl}
+              alt={senderName}
+              className="h-6 w-6 rounded-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#cfd6e2] text-[11px] font-semibold text-[#364765]">
+              {getInitial(senderName)}
+            </div>
+          )}
+          <span>{message.content}</span>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li className={`group flex ${isOwn ? "justify-end" : "justify-start"}`}>
       <article
         className={`flex max-w-[92%] items-start gap-2 ${isOwn ? "flex-row-reverse" : "flex-row"}`}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
-          {getInitial(senderName)}
-        </div>
+        {senderAvatarUrl ? (
+          <img
+            src={senderAvatarUrl}
+            alt={senderName}
+            className="h-9 w-9 shrink-0 rounded-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
+            {getInitial(senderName)}
+          </div>
+        )}
 
         <div
           className={`flex min-w-0 flex-col ${isOwn ? "items-end" : "items-start"}`}
@@ -100,7 +135,11 @@ export default function MessageItemRow({
             >
               <MessageActionsMenu
                 isOwn={isOwn}
-                disabled={message.isRecalled || isConversationGenerated}
+                disabled={
+                  message.isRecalled ||
+                  isConversationGenerated ||
+                  isSystemMessage
+                }
                 canRecall={canRecall && !message.isRecalled}
                 onReply={() =>
                   onReply({

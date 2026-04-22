@@ -17,6 +17,7 @@ interface ChatContentProps {
   currentUserId: string;
   currentUserName: string;
   senderNameById: Record<string, string>;
+  senderAvatarById: Record<string, string>;
   listRef: React.RefObject<HTMLUListElement | null>;
   replyTo: ReplyPreview | undefined;
   onBackToList: () => void;
@@ -48,6 +49,7 @@ export default function ChatContent({
   currentUserId,
   currentUserName,
   senderNameById,
+  senderAvatarById,
   listRef,
   replyTo,
   onBackToList,
@@ -95,6 +97,7 @@ export default function ChatContent({
           currentUserName={currentUserName}
           peerName={peerName}
           senderNameById={senderNameById}
+          senderAvatarById={senderAvatarById}
           listRef={listRef}
           onReply={onReply}
           onForward={onForward}

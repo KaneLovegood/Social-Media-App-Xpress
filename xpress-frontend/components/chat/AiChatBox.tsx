@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import React, { useRef, useEffect } from 'react';
-import { toast } from 'sonner';
-import ChatContent from './ChatContent';
-import { useAiChat } from '@/hooks/useAiChat';
-import { SendMessageOptions } from './MessageInput';
-import { ChatMessage } from '@/lib/realtime/types';
+import React, { useRef, useEffect } from "react";
+import { toast } from "sonner";
+import ChatContent from "./ChatContent";
+import { useAiChat } from "@/hooks/useAiChat";
+import { SendMessageOptions } from "./MessageInput";
+import { ChatMessage } from "@/lib/realtime/types";
 
 interface AiChatBoxProps {
   currentUserId: string;
@@ -13,8 +13,13 @@ interface AiChatBoxProps {
   onBackToList?: () => void;
 }
 
-export default function AiChatBox({ currentUserId, currentUserName, onBackToList }: AiChatBoxProps) {
-  const { messages, isLoading, isInitialized, handleSend } = useAiChat(currentUserId);
+export default function AiChatBox({
+  currentUserId,
+  currentUserName,
+  onBackToList,
+}: AiChatBoxProps) {
+  const { messages, isLoading, isInitialized, handleSend } =
+    useAiChat(currentUserId);
   const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
@@ -30,7 +35,7 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
       options?.messageType,
       options?.fileName,
       options?.fileSize,
-      options?.mimeType
+      options?.mimeType,
     );
   };
 
@@ -47,8 +52,9 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
       isGroup={false}
       senderNameById={{
         [currentUserId]: currentUserName,
-        "ai-assistant": "Logistics AI Assistant"
+        "ai-assistant": "Logistics AI Assistant",
       }}
+      senderAvatarById={{}}
       peerName="Logistics AI Assistant"
       orderTitle="Hỗ trợ thông minh Logistics"
       typingText={isLoading ? "AI Assistant đang gõ máy..." : ""}
@@ -58,23 +64,29 @@ export default function AiChatBox({ currentUserId, currentUserName, onBackToList
       currentUserName={currentUserName}
       listRef={listRef}
       replyTo={undefined}
-      onBackToList={onBackToList || (() => { })}
-      onOpenInfo={() => { }}
-      onOpenVoiceCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi thoại.")}
-      onOpenVideoCall={() => toast.info("AI Assistant hiện chưa hỗ trợ gọi video.")}
-      onClearReply={() => { }}
+      onBackToList={onBackToList || (() => {})}
+      onOpenInfo={() => {}}
+      onOpenVoiceCall={() =>
+        toast.info("AI Assistant hiện chưa hỗ trợ gọi thoại.")
+      }
+      onOpenVideoCall={() =>
+        toast.info("AI Assistant hiện chưa hỗ trợ gọi video.")
+      }
+      onClearReply={() => {}}
       onSend={handleMessageSend}
-      onTyping={() => { }}
-      onReply={() => { }}
-      onForward={() => toast.info("Tính năng chuyển tiếp hiện bị tắt trong chế độ AI.")}
+      onTyping={() => {}}
+      onReply={() => {}}
+      onForward={() =>
+        toast.info("Tính năng chuyển tiếp hiện bị tắt trong chế độ AI.")
+      }
       onRecall={() => toast.info("Không thể thu hồi tin nhắn với AI.")}
       onDeleteForMe={() => toast.info("Chưa hỗ trợ xóa cục bộ tin nhắn AI.")}
       onCopy={(msg: ChatMessage) => navigator.clipboard.writeText(msg.content)}
-      onPin={() => { }}
-      onMark={() => { }}
-      onSelectMany={() => { }}
-      onViewDetails={() => { }}
-      onRedial={() => { }}
+      onPin={() => {}}
+      onMark={() => {}}
+      onSelectMany={() => {}}
+      onViewDetails={() => {}}
+      onRedial={() => {}}
     />
   );
 }

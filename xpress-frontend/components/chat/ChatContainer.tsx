@@ -9,7 +9,13 @@ import {
   fetchGroupRoomDetails,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
-import { clearSession, getValidAccessToken, logoutSession } from "@/lib/auth-client";
+import {
+  clearSession,
+  getStoredUser,
+  getValidAccessToken,
+  logoutSession,
+  USER_UPDATED_EVENT,
+} from "@/lib/auth-client";
 import { sendChatAction } from "@/lib/chat-actions";
 import { fetchChatRoomMessages } from "@/lib/chat-messages";
 import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
@@ -111,8 +117,35 @@ export default function ChatContainer({
     useState<ChatMessage | null>(null);
   const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState(
+    () => getStoredUser()?.avatarUrl?.trim() ?? "",
+  );
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncUserAvatar = () => {
+      setCurrentUserAvatarUrl(getStoredUser()?.avatarUrl?.trim() ?? "");
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== "xpress_user") {
+        return;
+      }
+
+      syncUserAvatar();
+    };
+
+    window.addEventListener(USER_UPDATED_EVENT, syncUserAvatar);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(USER_UPDATED_EVENT, syncUserAvatar);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // Load rooms
   const reloadRooms = useCallback(async () => {
@@ -225,6 +258,35 @@ export default function ChatContainer({
     currentUserId,
     currentUserName,
     peerName,
+    peerUserId,
+  ]);
+  const senderAvatarById = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+
+    if (currentUserAvatarUrl) {
+      map[currentUserId] = currentUserAvatarUrl;
+    }
+
+    if (activeRoom?.roomType === "GROUP") {
+      for (const member of activeGroupDetails?.members ?? []) {
+        if (member.avatarUrl) {
+          map[member.userId] = member.avatarUrl;
+        }
+      }
+      return map;
+    }
+
+    if (peerUserId && activeRoom?.avatarUrl) {
+      map[peerUserId] = activeRoom.avatarUrl;
+    }
+
+    return map;
+  }, [
+    activeGroupDetails?.members,
+    activeRoom?.avatarUrl,
+    activeRoom?.roomType,
+    currentUserAvatarUrl,
+    currentUserId,
     peerUserId,
   ]);
   const activeMessages = useMemo(() => {
@@ -951,6 +1013,7 @@ export default function ChatContainer({
               currentUserId={currentUserId}
               currentUserName={currentUserName}
               senderNameById={senderNameById}
+              senderAvatarById={senderAvatarById}
               listRef={listRef}
               replyTo={replyTo}
               onBackToList={() => {

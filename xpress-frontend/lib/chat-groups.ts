@@ -8,6 +8,7 @@ export interface GroupMemberSummary {
   userId: string;
   name: string;
   email: string;
+  avatarUrl?: string;
   role: "ADMIN" | "MEMBER";
   nickname?: string;
   isOnline: boolean;

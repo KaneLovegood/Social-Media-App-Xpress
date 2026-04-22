@@ -20,6 +20,7 @@ export interface ChatRoomSummary {
 export interface GroupRoomMemberSummary {
   userId: string;
   name: string;
+  avatarUrl?: string;
   role: 'ADMIN' | 'MEMBER';
   nickname?: string;
   isOnline: boolean;
