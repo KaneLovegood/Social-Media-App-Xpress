@@ -16,6 +16,7 @@ import { SocialRepository } from './repositories/social.repository';
 export interface ChatFriendUser {
   userId: string;
   name: string;
+  avatarUrl?: string;
   connectedAt: string;
 }
 
@@ -254,6 +255,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
+          ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
           connectedAt: item.updatedAt,
         };
       })

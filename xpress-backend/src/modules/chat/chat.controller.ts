@@ -120,8 +120,11 @@ export class ChatController {
       dto,
     );
     this.chatGateway.subscribeUserToGroupRoom(dto.userId, roomId);
-    this.chatGateway.broadcastGroupRoomUpdate(roomId, result);
-    return result;
+    if (result.systemMessage) {
+      this.chatGateway.broadcastGroupMessage(roomId, result.systemMessage);
+    }
+    this.chatGateway.broadcastGroupRoomUpdate(roomId, result.roomDetails);
+    return result.roomDetails;
   }
 
   @Delete('groups/:roomId/members/:memberUserId')
@@ -141,8 +144,15 @@ export class ChatController {
       memberUserId,
     );
     this.chatGateway.unsubscribeUserFromGroupRoom(memberUserId, roomId);
-    this.chatGateway.broadcastGroupMemberLeft(roomId, memberUserId, result);
-    return result;
+    if (result.systemMessage) {
+      this.chatGateway.broadcastGroupMessage(roomId, result.systemMessage);
+    }
+    this.chatGateway.broadcastGroupMemberLeft(
+      roomId,
+      memberUserId,
+      result.roomDetails,
+    );
+    return result.roomDetails;
   }
 
   @Post('groups/:roomId/leave')
@@ -157,8 +167,15 @@ export class ChatController {
 
     const result = await this.chatService.leaveGroup(actorUserId, roomId);
     this.chatGateway.unsubscribeUserFromGroupRoom(actorUserId, roomId);
-    this.chatGateway.broadcastGroupMemberLeft(roomId, actorUserId, result);
-    return result;
+    if (result.systemMessage) {
+      this.chatGateway.broadcastGroupMessage(roomId, result.systemMessage);
+    }
+    this.chatGateway.broadcastGroupMemberLeft(
+      roomId,
+      actorUserId,
+      result.roomDetails,
+    );
+    return result.roomDetails;
   }
 
   @Delete('groups/:roomId')
@@ -227,9 +244,21 @@ export class ChatController {
       actorUserId,
       inviteCode,
     );
-    this.chatGateway.subscribeUserToGroupRoom(actorUserId, result.roomId);
-    this.chatGateway.broadcastGroupRoomUpdate(result.roomId, result);
-    return result;
+    this.chatGateway.subscribeUserToGroupRoom(
+      actorUserId,
+      result.roomDetails.roomId,
+    );
+    if (result.systemMessage) {
+      this.chatGateway.broadcastGroupMessage(
+        result.roomDetails.roomId,
+        result.systemMessage,
+      );
+    }
+    this.chatGateway.broadcastGroupRoomUpdate(
+      result.roomDetails.roomId,
+      result.roomDetails,
+    );
+    return result.roomDetails;
   }
 
   @Delete('rooms/:roomId/messages')

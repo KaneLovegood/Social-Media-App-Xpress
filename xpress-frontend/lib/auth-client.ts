@@ -21,19 +21,25 @@ interface SessionPayload {
   user: StoredUser;
 }
 
-const ACCESS_TOKEN_KEY = 'xpress_access_token';
-const REFRESH_TOKEN_KEY = 'xpress_refresh_token';
-const USER_KEY = 'xpress_user';
-const AUTH_NOTICE_KEY = 'xpress_auth_notice';
-const AUTH_LOCKED_KEY = 'xpress_auth_locked';
-const TOKEN_COOKIE = 'xpress_access_token';
+const ACCESS_TOKEN_KEY = "xpress_access_token";
+const REFRESH_TOKEN_KEY = "xpress_refresh_token";
+const USER_KEY = "xpress_user";
+const AUTH_NOTICE_KEY = "xpress_auth_notice";
+const AUTH_LOCKED_KEY = "xpress_auth_locked";
+const TOKEN_COOKIE = "xpress_access_token";
+export const USER_UPDATED_EVENT = "xpress:user-updated";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
   'http://localhost:3001';
 let refreshPromise: Promise<string> | null = null;
 
 function isBrowser() {
-  return typeof window !== 'undefined';
+  return typeof window !== "undefined";
+}
+
+function emitUserUpdated() {
+  if (!isBrowser()) return;
+  window.dispatchEvent(new Event(USER_UPDATED_EVENT));
 }
 
 function writeAccessCookie(token: string) {
@@ -53,7 +59,7 @@ async function fetchWithToken(
 ): Promise<Response> {
   const headers = new Headers(init.headers ?? {});
   if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
+    headers.set("Authorization", `Bearer ${accessToken}`);
   }
   return fetch(input, { ...init, headers });
 }
@@ -117,20 +123,20 @@ function setAuthNotice(message: string) {
 
 function setAuthLocked() {
   if (!isBrowser()) return;
-  window.sessionStorage.setItem(AUTH_LOCKED_KEY, '1');
+  window.sessionStorage.setItem(AUTH_LOCKED_KEY, "1");
 }
 
 function isAuthLocked(): boolean {
   if (!isBrowser()) return false;
-  return window.sessionStorage.getItem(AUTH_LOCKED_KEY) === '1';
+  return window.sessionStorage.getItem(AUTH_LOCKED_KEY) === "1";
 }
 
 export async function forceLogout(message: string): Promise<void> {
   await clearSession();
   setAuthLocked();
   setAuthNotice(message);
-  if (isBrowser() && window.location.pathname !== '/login') {
-    window.location.replace('/login');
+  if (isBrowser() && window.location.pathname !== "/login") {
+    window.location.replace("/login");
   }
 }
 
@@ -140,8 +146,8 @@ function forceReLogin(message: string): never {
 }
 
 export function consumeAuthNotice(): string {
-  if (!isBrowser()) return '';
-  const message = window.sessionStorage.getItem(AUTH_NOTICE_KEY) ?? '';
+  if (!isBrowser()) return "";
+  const message = window.sessionStorage.getItem(AUTH_NOTICE_KEY) ?? "";
   if (message) {
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY);
   }
@@ -158,14 +164,14 @@ export async function logoutSession(): Promise<void> {
   }
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
   const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify(refreshToken ? { refreshToken } : {}),
   });
@@ -182,24 +188,26 @@ export async function logoutSession(): Promise<void> {
 
 export async function refreshAccessToken(): Promise<string> {
   if (isAuthLocked()) {
-    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
-    return forceReLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    return forceReLogin("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
       });
 
       if (!response.ok) {
-        return forceReLogin('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+        return forceReLogin(
+          "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại",
+        );
       }
 
       const session = (await response.json()) as SessionPayload;
@@ -216,12 +224,12 @@ export async function refreshAccessToken(): Promise<string> {
 export async function getValidAccessToken(): Promise<string> {
   await hydrateSecureStorage();
   if (isAuthLocked()) {
-    return '';
+    return "";
   }
 
   const accessToken = getAccessToken();
   if (accessToken) return accessToken;
-  return refreshAccessToken().catch(() => '');
+  return refreshAccessToken().catch(() => "");
 }
 
 export async function authFetch(
@@ -231,7 +239,7 @@ export async function authFetch(
 ): Promise<Response> {
   await hydrateSecureStorage();
   if (isAuthLocked()) {
-    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
   const accessToken = getAccessToken();
@@ -244,11 +252,11 @@ export async function authFetch(
   try {
     const refreshedAccessToken = await refreshAccessToken();
     if (!refreshedAccessToken) {
-      throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+      throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
     }
     response = await fetchWithToken(input, init, refreshedAccessToken);
   } catch {
-    throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
+    throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
   return response;
@@ -277,7 +285,7 @@ export async function validateSession(): Promise<boolean> {
 }
 
 function getErrorMessage(message: unknown) {
-  if (Array.isArray(message)) return message.join(', ');
-  if (typeof message === 'string' && message.trim().length > 0) return message;
-  return 'Đăng xuất thất bại, vui lòng thử lại.';
+  if (Array.isArray(message)) return message.join(", ");
+  if (typeof message === "string" && message.trim().length > 0) return message;
+  return "Đăng xuất thất bại, vui lòng thử lại.";
 }

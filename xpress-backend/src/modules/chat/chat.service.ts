@@ -26,7 +26,10 @@ import { ChatRoomSummary } from './interfaces/chat-room-summary.interface';
 import { MessageEntity } from './interfaces/message.interface';
 import { ChatCallService } from './services/chat-call.service';
 import { MessagesRepository } from './repositories/messages.repository';
-import { ChatRoomService } from './services/chat-room.service';
+import {
+  ChatRoomService,
+  GroupRoomMutationResult,
+} from './services/chat-room.service';
 
 @Injectable()
 export class ChatService {
@@ -157,7 +160,7 @@ export class ChatService {
     actorUserId: string,
     roomId: string,
     dto: GroupMemberDto,
-  ) {
+  ): Promise<GroupRoomMutationResult> {
     return this.chatRoomService.addGroupMember(actorUserId, roomId, dto);
   }
 
@@ -165,7 +168,7 @@ export class ChatService {
     actorUserId: string,
     roomId: string,
     memberUserId: string,
-  ) {
+  ): Promise<GroupRoomMutationResult> {
     return this.chatRoomService.removeGroupMember(
       actorUserId,
       roomId,
@@ -173,7 +176,10 @@ export class ChatService {
     );
   }
 
-  async leaveGroup(actorUserId: string, roomId: string) {
+  async leaveGroup(
+    actorUserId: string,
+    roomId: string,
+  ): Promise<GroupRoomMutationResult> {
     return this.chatRoomService.leaveGroup(actorUserId, roomId);
   }
 
@@ -193,7 +199,10 @@ export class ChatService {
     return this.chatRoomService.createGroupInviteLink(actorUserId, roomId);
   }
 
-  async joinGroupByInvite(actorUserId: string, inviteCode: string) {
+  async joinGroupByInvite(
+    actorUserId: string,
+    inviteCode: string,
+  ): Promise<GroupRoomMutationResult> {
     return this.chatRoomService.joinGroupByInvite(actorUserId, inviteCode);
   }
 
