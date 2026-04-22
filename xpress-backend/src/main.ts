@@ -18,7 +18,7 @@ class SocketIoCorsAdapter extends IoAdapter {
           'http://localhost:3000',
           'http://localhost:3001',
           'http://localhost:5173',
-          'https://localhost',
+          'http://deploy-frontend-01.s3-website-us-east-1.amazonaws.com',
           'capacitor://localhost',
           /\.devtunnels\.ms$/,
           /^http:\/\/10\.0\.2\.2(:\d+)?$/,
