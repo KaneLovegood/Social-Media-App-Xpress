@@ -11,11 +11,11 @@ let package = Package(
             targets: ["CapApp-SPM"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.1"),
-        .package(name: "CapacitorApp", path: "..\..\..\node_modules\@capacitor\app"),
-        .package(name: "CapacitorDevice", path: "..\..\..\node_modules\@capacitor\device"),
-        .package(name: "CapacitorPreferences", path: "..\..\..\node_modules\@capacitor\preferences"),
-        .package(name: "CapgoCapacitorSocialLogin", path: "..\..\..\node_modules\@capgo\capacitor-social-login")
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.0"),
+        .package(name: "CapacitorApp", path: "..\..\..\node_modules\.pnpm\@capacitor+app@8.1.0_@capacitor+core@8.3.0\node_modules\@capacitor\app"),
+        .package(name: "CapacitorDevice", path: "..\..\..\node_modules\.pnpm\@capacitor+device@8.0.2_@capacitor+core@8.3.0\node_modules\@capacitor\device"),
+        .package(name: "CapacitorPreferences", path: "..\..\..\node_modules\.pnpm\@capacitor+preferences@8.0.1_@capacitor+core@8.3.0\node_modules\@capacitor\preferences"),
+        .package(name: "CapgoCapacitorSocialLogin", path: "..\..\..\node_modules\.pnpm\@capgo+capacitor-social-login@8.3.17_@capacitor+core@8.3.0\node_modules\@capgo\capacitor-social-login")
     ],
     targets: [
         .target(

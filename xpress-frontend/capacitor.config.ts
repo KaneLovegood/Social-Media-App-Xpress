@@ -10,7 +10,7 @@ const config: CapacitorConfig = {
   // HOẶC dùng ngrok để cấp proxy HTTPS cho port 3001.
   // server: {
   //   url: 'http://192.168.2.222:3001',
-    // url: 'http://192.168.0.124:3001',
+  // url: 'http://192.168.0.124:3001',
   //   cleartext: true
   // },
   // Giữ https://localhost để WebView được coi là "secure context",

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 
 /**
  * Hook for camera scanning using getUserMedia
@@ -8,8 +8,22 @@ export const useCameraScan = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setStream(null);
+    setIsCapturing(false);
+  }, []);
 
   const startCamera = useCallback(async () => {
+    // Nếu đang có stream rồi thì không start lại
+    if (streamRef.current) return streamRef.current;
+
     try {
       setIsCapturing(true);
       setError(null);
@@ -22,6 +36,7 @@ export const useCameraScan = () => {
         },
       });
       
+      streamRef.current = mediaStream;
       setStream(mediaStream);
       return mediaStream;
     } catch (err) {
@@ -32,14 +47,6 @@ export const useCameraScan = () => {
       return null;
     }
   }, []);
-
-  const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
-    }
-    setIsCapturing(false);
-  }, [stream]);
 
   return {
     stream,

@@ -1,4 +1,5 @@
-import { RefObject } from 'react';
+import { useEffect } from 'react';
+import { IRemoteAudioTrack } from 'agora-rtc-sdk-ng';
 
 interface AudioCallOverlayProps {
     peerName: string;
@@ -15,7 +16,7 @@ interface AudioCallOverlayProps {
     onEndCall: () => void;
     onAcceptIncoming: () => void;
     onDeclineIncoming: () => void;
-    remoteAudioRef: RefObject<HTMLAudioElement | null>;
+    remoteAudioTrack: IRemoteAudioTrack | null;
 }
 
 export default function AudioCallOverlay({
@@ -33,8 +34,16 @@ export default function AudioCallOverlay({
     onEndCall,
     onAcceptIncoming,
     onDeclineIncoming,
-    remoteAudioRef,
+    remoteAudioTrack,
 }: AudioCallOverlayProps) {
+    useEffect(() => {
+        if (remoteAudioTrack) {
+            remoteAudioTrack.play();
+        }
+        return () => {
+            remoteAudioTrack?.stop();
+        };
+    }, [remoteAudioTrack]);
     const controls = isIncomingRinging ? (
         <>
             <button
@@ -129,7 +138,6 @@ export default function AudioCallOverlay({
 
     return (
         <section className="fixed inset-0 z-50 bg-[#e8ebf3] animate-fade-in">
-            <audio ref={remoteAudioRef} autoPlay playsInline />
             <div className="relative flex h-full w-full flex-col overflow-hidden px-5 pb-24 pt-4 md:items-center md:justify-center md:px-10 md:pb-6">
                 <div className="flex justify-center text-[#0e1a36] md:absolute md:left-1/2 md:top-6 md:w-90 md:-translate-x-1/2">
                     <p className="text-[11px] font-semibold tracking-[0.2em] text-[#0b1328] text-center w-full">
