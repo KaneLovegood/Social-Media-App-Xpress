@@ -17,12 +17,6 @@ interface ChatAppRailProps {
 
 const NAV_ITEMS = [
   {
-    key: "newsfeed" as ActiveNav,
-    href: "/chat/news-feed",
-    icon: Newspaper,
-    title: "Bản tin",
-  },
-  {
     key: "chat" as ActiveNav,
     href: "/chat/me",
     icon: MessageCircleMore,
@@ -33,6 +27,12 @@ const NAV_ITEMS = [
     href: "/chat/contacts",
     icon: Users,
     title: "Danh bạ",
+  },
+  {
+    key: "newsfeed" as ActiveNav,
+    href: "/chat/news-feed",
+    icon: Newspaper,
+    title: "Bản tin",
   },
   {
     key: "profile" as ActiveNav,
