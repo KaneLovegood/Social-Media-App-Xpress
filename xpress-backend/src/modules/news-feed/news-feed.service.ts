@@ -82,11 +82,12 @@ export class NewsFeedService {
     }
 
     const content = (dto.noiDung ?? '').trim();
+    const location = (dto.viTri ?? '').trim();
     const imageUrls = (dto.danhSachAnh ?? []).filter((item) => item.trim());
     const videoUrls = (dto.danhSachVideo ?? []).filter((item) => item.trim());
 
-    if (!content && imageUrls.length === 0 && videoUrls.length === 0) {
-      throw new BadRequestException('Bai viet can co noi dung, anh hoac video');
+    if (!content && !location && imageUrls.length === 0 && videoUrls.length === 0) {
+      throw new BadRequestException('Bai viet can co noi dung, vi tri, anh hoac video');
     }
 
     const now = new Date().toISOString();
@@ -101,6 +102,7 @@ export class NewsFeedService {
       postId,
       userId: actorUserId,
       content,
+      location,
       imageUrls,
       videoUrls,
       visibility: dto.cheDoRiengTu ?? 'friends',
@@ -151,11 +153,13 @@ export class NewsFeedService {
     }
 
     const hasContentUpdate = dto.noiDung !== undefined;
+    const hasLocationUpdate = dto.viTri !== undefined;
     const hasImageUpdate = dto.danhSachAnh !== undefined;
     const hasVideoUpdate = dto.danhSachVideo !== undefined;
 
-    if (hasContentUpdate || hasImageUpdate || hasVideoUpdate) {
+    if (hasContentUpdate || hasLocationUpdate || hasImageUpdate || hasVideoUpdate) {
       const content = (dto.noiDung ?? post.content).trim();
+      const location = (dto.viTri ?? post.location ?? '').trim();
       const imageUrls = (dto.danhSachAnh ?? post.imageUrls).filter((item) =>
         item.trim(),
       );
@@ -163,13 +167,14 @@ export class NewsFeedService {
         item.trim(),
       );
 
-      if (!content && imageUrls.length === 0 && videoUrls.length === 0) {
-        throw new BadRequestException('Bai viet can co noi dung, anh hoac video');
+      if (!content && !location && imageUrls.length === 0 && videoUrls.length === 0) {
+        throw new BadRequestException('Bai viet can co noi dung, vi tri, anh hoac video');
       }
     }
 
     await this.newsFeedRepository.updatePost(postId, {
       content: dto.noiDung !== undefined ? dto.noiDung.trim() : undefined,
+      location: dto.viTri !== undefined ? dto.viTri.trim() : undefined,
       imageUrls: dto.danhSachAnh,
       videoUrls: dto.danhSachVideo,
       visibility: dto.cheDoRiengTu,
@@ -301,6 +306,7 @@ export class NewsFeedService {
     }
 
     const content = (dto.noiDung ?? '').trim();
+    const location = (dto.viTri ?? '').trim();
     const now = new Date().toISOString();
     const newPostId = randomUUID();
 
@@ -313,6 +319,7 @@ export class NewsFeedService {
       postId: newPostId,
       userId: actorUserId,
       content,
+      location,
       imageUrls: [],
       videoUrls: [],
       visibility: dto.cheDoRiengTu ?? 'friends',
@@ -349,6 +356,7 @@ export class NewsFeedService {
       postId: item.postId,
       userId: item.userId,
       content: item.content,
+      location: item.location,
       imageUrls: item.imageUrls ?? [],
       videoUrls: item.videoUrls ?? [],
       visibility: item.visibility,
@@ -421,6 +429,7 @@ export class NewsFeedService {
       maBaiViet: item.postId,
       maNguoiDung: item.userId,
       noiDung: item.content,
+      viTri: item.location,
       danhSachAnh: item.imageUrls,
       danhSachVideo: item.videoUrls,
       cheDoRiengTu: item.visibility,

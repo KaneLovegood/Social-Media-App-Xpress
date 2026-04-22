@@ -14,6 +14,11 @@ export class CreatePostDto {
   noiDung?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  viTri?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(8)
   @IsString({ each: true })
