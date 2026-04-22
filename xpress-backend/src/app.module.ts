@@ -1,17 +1,29 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { DeviceSessionModule } from './modules/device-session/device-session.module';
 import { SocialModule } from './modules/social/social.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { McpModule } from './modules/mcp/mcp.module';
 import { NewsFeedModule } from './modules/news-feed/news-feed.module';
 import { JwtGuard } from './middleware/jwt.guard';
 
+const mongoUri =
+  process.env.MONGODB_SESSION_URI ??
+  'mongodb+srv://admin-xpress:admin-xpress@cluster0.b9md2md.mongodb.net/xpress-sessions?retryWrites=true&w=majority&appName=Cluster0';
+
 @Module({
   imports: [
+    MongooseModule.forRoot(mongoUri, {
+      // single-device-session collection is tiny; keep pool small.
+      minPoolSize: 1,
+      maxPoolSize: 5,
+    }),
+    DeviceSessionModule,
     AuthModule,
     ChatModule,
     SocialModule,

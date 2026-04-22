@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { LoginTicket, OAuth2Client } from 'google-auth-library';
 import { JwtService } from '@nestjs/jwt';
+import { DeviceSessionService } from '../device-session/device-session.service';
 import { AuthSessionGateway } from './auth-session.gateway';
 import { EmailOtpService } from './email-otp.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
@@ -77,6 +78,7 @@ export class AuthService {
     private readonly authSessionGateway: AuthSessionGateway,
     private readonly emailOtpService: EmailOtpService,
     private readonly jwtService: JwtService,
+    private readonly deviceSessionService: DeviceSessionService,
   ) {}
 
   async register(dto: RegisterDto, context: SessionClientContext = {}) {
@@ -138,7 +140,7 @@ export class AuthService {
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
-    await this.assertLoginAllowedForDevice(user.userId, dto.deviceId);
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -282,6 +284,7 @@ export class AuthService {
 
     await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
     await this.sessionRepository.deactivateAllSessions(user.userId);
+    await this.deviceSessionService.revokeSession(user.userId);
 
     return {
       success: true,
@@ -351,7 +354,7 @@ export class AuthService {
       await this.usersRepository.createUser(user);
       this.logger.log(`Created new user from Google auth: ${user.userId}`);
     }
-    await this.assertLoginAllowedForDevice(user.userId, dto.deviceId);
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -449,6 +452,7 @@ export class AuthService {
     }
 
     await this.sessionRepository.deactivateAllSessions(session.userId);
+    await this.deviceSessionService.revokeSession(session.userId);
     this.authSessionGateway.notifySessionRevoked(session.userId, {
       sessionId: session.sessionId,
       revokedAt: new Date().toISOString(),
@@ -548,6 +552,20 @@ export class AuthService {
 
     const response = await this.buildAuthResponseFromSession(user, session);
 
+    // Bind the (userId, deviceId, sessionId) triple in MongoDB. If this
+    // replaces a previous device binding, the service will emit FORCE_LOGOUT
+    // to that device's /device-sessions socket so a live mobile/web app
+    // can clear its tokens and redirect to /login immediately. If the old
+    // device is backgrounded/offline, its next API call will 401 because
+    // JwtStrategy double-checks `currentSessionId` in MongoDB.
+    await this.deviceSessionService.bindDevice({
+      userId: user.userId,
+      deviceId: sessionContext.deviceId,
+      sessionId,
+      deviceName: sessionContext.deviceName,
+      platform: this.inferPlatform(sessionContext.userAgent),
+    });
+
     const isNewDeviceLogin = !existingSession;
     if (isNewDeviceLogin && activeSessions.length > 0) {
       this.authSessionGateway.notifyNewLogin(user.userId, {
@@ -559,6 +577,15 @@ export class AuthService {
     }
 
     return response;
+  }
+
+  private inferPlatform(userAgent?: string): string {
+    if (!userAgent) return 'unknown';
+    const ua = userAgent.toLowerCase();
+    if (ua.includes('android')) return 'android';
+    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+    if (ua.includes('capacitor')) return 'native';
+    return 'web';
   }
 
   private async buildAuthResponseFromSession(
@@ -644,7 +671,16 @@ export class AuthService {
     );
   }
 
-  private async assertLoginAllowedForDevice(
+  /**
+   * Single-device-session policy.
+   *
+   * Previous behaviour threw a 403 when another device was already active.
+   * The new policy is "last login wins": we deactivate every session except
+   * the one tied to the incoming deviceId (if any). The FORCE_LOGOUT socket
+   * notification is handled separately by `DeviceSessionService.bindDevice`
+   * (invoked from `buildAuthResponse`).
+   */
+  private async releaseOtherDeviceSessions(
     userId: string,
     deviceId: string,
   ): Promise<void> {
@@ -656,41 +692,18 @@ export class AuthService {
       return;
     }
 
-    const activeSessionOnCurrentDevice =
-      await this.sessionRepository.findActiveSessionByFingerprint(
-        userId,
-        deviceFingerprintHash,
-      );
-
-    if (!activeSessionOnCurrentDevice) {
-      const allRegisterPlaceholders = activeSessions.every(
-        (session) => session.deviceName === 'Thiết bị đăng ký',
-      );
-
-      if (allRegisterPlaceholders) {
-        await Promise.all(
-          activeSessions.map((session) =>
-            this.sessionRepository.deactivateSession(userId, session.sessionId),
-          ),
-        );
-        return;
-      }
-
-      throw new ForbiddenException(
-        'Tài khoản đang được đăng nhập ở nơi khác. Vui lòng đăng xuất trước khi đăng nhập lại.',
-      );
-    }
-
     const staleSessions = activeSessions.filter(
-      (session) => session.sessionId !== activeSessionOnCurrentDevice.sessionId,
+      (session) => session.deviceFingerprintHash !== deviceFingerprintHash,
     );
-    if (staleSessions.length > 0) {
-      await Promise.all(
-        staleSessions.map((session) =>
-          this.sessionRepository.deactivateSession(userId, session.sessionId),
-        ),
-      );
+    if (staleSessions.length === 0) {
+      return;
     }
+
+    await Promise.all(
+      staleSessions.map((session) =>
+        this.sessionRepository.deactivateSession(userId, session.sessionId),
+      ),
+    );
   }
 
   private async resolveLogoutSessionFromRefreshToken(

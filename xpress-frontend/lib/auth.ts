@@ -1,4 +1,5 @@
 import { persistSession } from './auth-client';
+import { getDeviceInfo } from './device';
 
 export type AuthUser = {
   userId: string;
@@ -27,7 +28,8 @@ type RegisterPayload = AuthPayload & {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
+  'http://localhost:3001';
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
 type SendOtpPayload = {
@@ -53,33 +55,30 @@ type ResetPasswordPayload = {
   newPassword: string;
 };
 
-type DevicePayload = {
-  deviceId: string;
-  deviceName: string;
-  timezone: string;
-};
-
 export async function login(payload: AuthPayload) {
-  const result = await request<AuthResponse>("/auth/login", {
+  const device = await getDevicePayload();
+  const result = await request<AuthResponse>('/auth/login', {
     ...payload,
-    ...getDevicePayload(),
+    ...device,
   });
-  persistSession(result);
+  await persistSession(result);
   return result;
 }
 
 export async function register(payload: RegisterPayload) {
-  return request<AuthResponse>("/auth/register", {
+  const device = await getDevicePayload();
+  return request<AuthResponse>('/auth/register', {
     ...payload,
-    ...getDevicePayload(),
+    ...device,
   });
 }
 
 export async function sendEmailOtp(payload: SendOtpPayload) {
-  return request<{ success: boolean; purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD'; expiresAt: string }>(
-    '/auth/otp/send',
-    payload,
-  );
+  return request<{
+    success: boolean;
+    purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
+    expiresAt: string;
+  }>('/auth/otp/send', payload);
 }
 
 export async function verifyEmailOtp(payload: VerifyOtpPayload) {
@@ -94,12 +93,13 @@ export async function loginWithGoogle(
   idToken: string,
   options: { platform?: 'web' | 'android' | 'ios' } = {},
 ) {
+  const device = await getDevicePayload();
   const result = await request<AuthResponse>('/auth/google', {
     idToken,
     platform: options.platform ?? 'web',
-    ...getDevicePayload(),
+    ...device,
   });
-  persistSession(result);
+  await persistSession(result);
   return result;
 }
 
@@ -107,16 +107,21 @@ export function getGoogleClientId() {
   return GOOGLE_CLIENT_ID;
 }
 
-async function request<TResponse>(path: string, payload: Record<string, unknown>) {
+async function request<TResponse>(
+  path: string,
+  payload: Record<string, unknown>,
+) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
-  const data = (await response.json().catch(() => ({}))) as { message?: unknown };
+  const data = (await response.json().catch(() => ({}))) as {
+    message?: unknown;
+  };
   if (!response.ok) {
     throw new Error(getErrorMessage(data.message));
   }
@@ -124,74 +129,25 @@ async function request<TResponse>(path: string, payload: Record<string, unknown>
   return data as TResponse;
 }
 
-const DEVICE_ID_KEY = 'xpress_device_id';
-
-function getDevicePayload(): DevicePayload {
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+async function getDevicePayload(): Promise<{
+  deviceId: string;
+  deviceName: string;
+  timezone: string;
+}> {
+  const timezone =
+    (typeof Intl !== 'undefined' &&
+      Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+    'UTC';
+  const { deviceId, deviceName } = await getDeviceInfo();
   return {
-    deviceId: getOrCreateDeviceId(),
-    deviceName: resolveDeviceName(),
+    deviceId,
+    deviceName,
     timezone,
   };
 }
 
-function resolveDeviceName(): string {
-  if (typeof window === 'undefined') return 'Web Browser';
-  const capacitor = (
-    window as unknown as {
-      Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
-    }
-  ).Capacitor;
-  if (capacitor?.isNativePlatform?.()) {
-    const platform = capacitor.getPlatform?.() ?? 'native';
-    return platform === 'android'
-      ? 'Android App'
-      : platform === 'ios'
-        ? 'iOS App'
-        : 'Capacitor App';
-  }
-  return 'Web Browser';
-}
-
-function getOrCreateDeviceId(): string {
-  if (typeof window === 'undefined') {
-    return `server-${generateUuid()}`;
-  }
-
-  try {
-    const existing = window.localStorage.getItem(DEVICE_ID_KEY);
-    if (existing && existing.length > 0) {
-      return existing;
-    }
-
-    const fresh = `web-${generateUuid()}`;
-    window.localStorage.setItem(DEVICE_ID_KEY, fresh);
-    return fresh;
-  } catch {
-    return `web-${generateUuid()}`;
-  }
-}
-
-function generateUuid(): string {
-  const cryptoRef =
-    typeof globalThis !== 'undefined'
-      ? (globalThis as { crypto?: Crypto }).crypto
-      : undefined;
-
-  if (cryptoRef?.randomUUID) {
-    return cryptoRef.randomUUID();
-  }
-
-  const randomSegment = () =>
-    Math.floor((1 + Math.random()) * 0x10000)
-      .toString(16)
-      .slice(1);
-
-  return `${randomSegment()}${randomSegment()}-${randomSegment()}-${randomSegment()}-${randomSegment()}-${randomSegment()}${randomSegment()}${randomSegment()}`;
-}
-
 function getErrorMessage(message: unknown) {
-  if (Array.isArray(message)) return message.join(", ");
-  if (typeof message === "string" && message.trim().length > 0) return message;
-  return "Đã có lỗi xảy ra, vui lòng thử lại.";
+  if (Array.isArray(message)) return message.join(', ');
+  if (typeof message === 'string' && message.trim().length > 0) return message;
+  return 'Đã có lỗi xảy ra, vui lòng thử lại.';
 }

@@ -53,6 +53,24 @@ describe('AuthService', () => {
   const jwtService = {
     verifyAsync: jest.fn(),
   } as unknown as jest.Mocked<JwtService>;
+  const deviceSessionService = {
+    bindDevice: jest.fn().mockResolvedValue({
+      replacedPreviousDevice: false,
+      previousDeviceId: null,
+    }),
+    isSessionValid: jest.fn().mockResolvedValue(true),
+    getBinding: jest.fn(),
+    registerSocket: jest.fn(),
+    clearSocket: jest.fn(),
+    revokeSession: jest.fn().mockResolvedValue(undefined),
+  } as unknown as {
+    bindDevice: jest.Mock;
+    isSessionValid: jest.Mock;
+    getBinding: jest.Mock;
+    registerSocket: jest.Mock;
+    clearSocket: jest.Mock;
+    revokeSession: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -65,6 +83,7 @@ describe('AuthService', () => {
       authSessionGateway,
       emailOtpService,
       jwtService,
+      deviceSessionService as never,
     );
   });
 

@@ -61,3 +61,5 @@ dist
 .claude
 
 .env.local
+
+.agents

@@ -1,3 +1,10 @@
+import {
+  hydrateSecureStorage,
+  secureGetSync,
+  secureRemove,
+  secureSet,
+} from './secure-storage';
+
 export interface StoredUser {
   userId: string;
   name: string;
@@ -21,23 +28,21 @@ const AUTH_NOTICE_KEY = 'xpress_auth_notice';
 const AUTH_LOCKED_KEY = 'xpress_auth_locked';
 const TOKEN_COOKIE = 'xpress_access_token';
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3001';
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
+  'http://localhost:3001';
 let refreshPromise: Promise<string> | null = null;
 
 function isBrowser() {
   return typeof window !== 'undefined';
 }
 
-function readStorage(key: string): string {
-  if (!isBrowser()) return '';
-  return window.localStorage.getItem(key) ?? '';
-}
-
 function writeAccessCookie(token: string) {
+  if (!isBrowser()) return;
   document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=2592000; samesite=lax`;
 }
 
 function clearAccessCookie() {
+  if (!isBrowser()) return;
   document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
@@ -54,15 +59,15 @@ async function fetchWithToken(
 }
 
 export function getAccessToken(): string {
-  return readStorage(ACCESS_TOKEN_KEY);
+  return secureGetSync(ACCESS_TOKEN_KEY) ?? '';
 }
 
 export function getRefreshToken(): string {
-  return readStorage(REFRESH_TOKEN_KEY);
+  return secureGetSync(REFRESH_TOKEN_KEY) ?? '';
 }
 
 export function getStoredUser(): StoredUser | null {
-  const raw = readStorage(USER_KEY);
+  const raw = secureGetSync(USER_KEY);
   if (!raw) return null;
 
   try {
@@ -72,28 +77,36 @@ export function getStoredUser(): StoredUser | null {
   }
 }
 
-export function updateStoredUser(user: StoredUser): void {
-  if (!isBrowser()) return;
-  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+export async function hydrateAuth(): Promise<void> {
+  await hydrateSecureStorage();
 }
 
-export function persistSession(session: SessionPayload) {
+export async function updateStoredUser(user: StoredUser): Promise<void> {
+  if (!isBrowser()) return;
+  await secureSet(USER_KEY, JSON.stringify(user));
+}
+
+export async function persistSession(session: SessionPayload): Promise<void> {
   if (!isBrowser()) return;
 
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
-  window.localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
-  window.localStorage.setItem(USER_KEY, JSON.stringify(session.user));
+  await Promise.all([
+    secureSet(ACCESS_TOKEN_KEY, session.accessToken),
+    secureSet(REFRESH_TOKEN_KEY, session.refreshToken),
+    secureSet(USER_KEY, JSON.stringify(session.user)),
+  ]);
   window.sessionStorage.removeItem(AUTH_LOCKED_KEY);
   window.sessionStorage.removeItem(AUTH_NOTICE_KEY);
   writeAccessCookie(session.accessToken);
 }
 
-export function clearSession() {
+export async function clearSession(): Promise<void> {
   if (!isBrowser()) return;
 
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-  window.localStorage.removeItem(USER_KEY);
+  await Promise.all([
+    secureRemove(ACCESS_TOKEN_KEY),
+    secureRemove(REFRESH_TOKEN_KEY),
+    secureRemove(USER_KEY),
+  ]);
   clearAccessCookie();
 }
 
@@ -112,13 +125,17 @@ function isAuthLocked(): boolean {
   return window.sessionStorage.getItem(AUTH_LOCKED_KEY) === '1';
 }
 
-function forceReLogin(message: string): never {
-  clearSession();
+export async function forceLogout(message: string): Promise<void> {
+  await clearSession();
   setAuthLocked();
   setAuthNotice(message);
   if (isBrowser() && window.location.pathname !== '/login') {
     window.location.replace('/login');
   }
+}
+
+function forceReLogin(message: string): never {
+  void forceLogout(message);
   throw new Error(message);
 }
 
@@ -136,7 +153,7 @@ export async function logoutSession(): Promise<void> {
   const accessToken = getAccessToken();
 
   if (!refreshToken && !accessToken) {
-    clearSession();
+    await clearSession();
     return;
   }
 
@@ -160,7 +177,7 @@ export async function logoutSession(): Promise<void> {
     throw new Error(getErrorMessage(data.message));
   }
 
-  clearSession();
+  await clearSession();
 }
 
 export async function refreshAccessToken(): Promise<string> {
@@ -186,7 +203,7 @@ export async function refreshAccessToken(): Promise<string> {
       }
 
       const session = (await response.json()) as SessionPayload;
-      persistSession(session);
+      await persistSession(session);
       return session.accessToken;
     })().finally(() => {
       refreshPromise = null;
@@ -197,6 +214,7 @@ export async function refreshAccessToken(): Promise<string> {
 }
 
 export async function getValidAccessToken(): Promise<string> {
+  await hydrateSecureStorage();
   if (isAuthLocked()) {
     return '';
   }
@@ -211,6 +229,7 @@ export async function authFetch(
   init: RequestInit = {},
   retryOnUnauthorized = true,
 ): Promise<Response> {
+  await hydrateSecureStorage();
   if (isAuthLocked()) {
     throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại');
   }
@@ -233,6 +252,28 @@ export async function authFetch(
   }
 
   return response;
+}
+
+/**
+ * Probe the backend to confirm the single-device-session binding still
+ * points at this device's sessionId. Used on app-resume and route change.
+ * Returns `true` when valid, `false` when the server rejected us (the
+ * caller should then redirect to /login).
+ */
+export async function validateSession(): Promise<boolean> {
+  const accessToken = getAccessToken();
+  if (!accessToken) return false;
+
+  try {
+    const response = await authFetch(
+      `${API_BASE_URL}/auth/validate-session`,
+      { method: 'GET' },
+      true,
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function getErrorMessage(message: unknown) {
