@@ -47,6 +47,8 @@ export default function VideoCallComponent({
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
   const [active, setActive] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -90,6 +92,28 @@ export default function VideoCallComponent({
     silenceFramesRef.current = 0;
     setIsAudioActive(false);
   }, []);
+
+  // Sync LOCAL stream to video element
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch((e) => console.warn('Sync local video failed:', e));
+    }
+  }, [localStream]);
+
+  // Sync REMOTE stream to video elements
+  useEffect(() => {
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch((e) => console.warn('Sync remote video failed:', e));
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch((e) => console.warn('Sync remote audio failed:', e));
+      }
+    }
+  }, [remoteStream]);
 
   const flushPendingIceCandidates = useCallback(async () => {
     const peer = peerRef.current;
@@ -182,43 +206,41 @@ export default function VideoCallComponent({
       throw new Error('Môi trường HTTP IP nội bộ bị chặn WebRTC.');
     }
 
-    const stream = await getUserMedia({
-      audio: true,
-      video: withVideo ? { facingMode: 'user' } : false,
-    });
-    localStreamRef.current = stream;
-
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
-
-    const peer = new RTCPeerConnection(rtcConfig);
-    peerRef.current = peer;
-
-    stream.getTracks().forEach((track) => {
-      peer.addTrack(track, stream);
-    });
-
-    peer.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-      }
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = remoteStream;
-      }
-      startAudioActivityMonitor(remoteStream);
-    };
-
-    peer.onicecandidate = (event) => {
-      if (!event.candidate || !socket) return;
-      socket.emit(CALL_EVENTS.ICE, {
-        receiverId: peerUserId,
-        candidate: event.candidate.toJSON(),
+    try {
+      const stream = await getUserMedia({
+        audio: true,
+        video: withVideo ? { facingMode: 'user' } : false,
       });
-    };
+      localStreamRef.current = stream;
+      setLocalStream(stream);
 
-    return peer;
+      const peer = new RTCPeerConnection(rtcConfig);
+      peerRef.current = peer;
+
+      stream.getTracks().forEach((track) => {
+        peer.addTrack(track, stream);
+      });
+
+      peer.ontrack = (event) => {
+        const [stream] = event.streams;
+        setRemoteStream(stream);
+        startAudioActivityMonitor(stream);
+      };
+
+      peer.onicecandidate = (event) => {
+        if (!event.candidate || !socket) return;
+        socket.emit(CALL_EVENTS.ICE, {
+          receiverId: peerUserId,
+          candidate: event.candidate.toJSON(),
+        });
+      };
+
+      return peer;
+    } catch (error) {
+      console.error("Lỗi getUserMedia: ", error);
+      alert("Không thể khởi động Camera/Mic. Lý do: " + (error instanceof Error ? error.message : String(error)) + ". Vui lòng cấp quyền hệ thống hoặc chạy trên Context bảo mật.");
+      throw error;
+    }
   }, [peerUserId, socket, startAudioActivityMonitor]);
 
   const startCall = useCallback(async (withVideo: boolean) => {
@@ -263,7 +285,10 @@ export default function VideoCallComponent({
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
+      setLocalStream(null);
     }
+
+    setRemoteStream(null);
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
