@@ -1,0 +1,59 @@
+name: Deploy Backend to EC2 (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "xpress-backend/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. SSH setup
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.BACKEND_EC2_SSH_KEY }}
+
+      # 3. Sync ONLY backend folder lên EC2
+      - name: Sync backend to EC2
+        run: |
+          rsync -avz --delete \
+            xpress-backend/ \
+            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/${{ secrets.BACKEND_EC2_USER }}/xpress-backend
+
+      # 4. SSH vào EC2 để build + run PM2
+      - name: Build & Run on EC2
+        run: |
+          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
+
+            echo "🚀 Deploy backend..."
+
+            cd ~/xpress-backend
+
+            echo "📥 Install dependencies"
+            npm install
+
+            echo "🔨 Build project"
+            npm run build
+
+            echo "⚙️ Restart PM2"
+
+            if pm2 describe xpress-backend > /dev/null; then
+              pm2 reload xpress-backend
+            else
+              pm2 start dist/main.js --name xpress-backend
+            fi
+
+            pm2 save
+
+            echo "✅ Deploy done!"
+
+          EOF

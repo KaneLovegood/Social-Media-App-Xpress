@@ -103,6 +103,7 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                 ref={videoRef}
                 autoPlay
                 playsInline
+                muted
                 className="h-full w-full object-cover"
               />
               {!isCapturing && (
