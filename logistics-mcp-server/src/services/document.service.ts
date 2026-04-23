@@ -95,8 +95,8 @@ export class DocumentService {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
-    // Use gemini-2.0-flash for document parsing as it has native PDF support
-    const model = "google/gemini-2.0-flash-001";
+    // Use gemini-1.5-pro for more reliable document parsing (more robust than Flash for complex docs)
+    const model = "google/gemini-1.5-pro";
     
     try {
       const base64Data = fileBuffer.toString("base64");
@@ -111,12 +111,14 @@ export class DocumentService {
               content: [
                 {
                   type: "text",
-                  text: "Please extract all text content from this document precisely. Return only the extracted text content without any additional comments."
+                  text: "Please extract all text content from this document precisely. Return only the extracted text content without any additional comments. If the document has tables, represent them as Markdown tables."
                 },
                 {
-                  type: "image_url", // OpenRouter often uses image_url for base64 files for Gemini
-                  image_url: {
-                    url: `data:application/pdf;base64,${base64Data}`
+                  type: "file",
+                  file: {
+                    name: fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`,
+                    data: base64Data,
+                    mime_type: "application/pdf"
                   }
                 }
               ]
@@ -130,7 +132,7 @@ export class DocumentService {
             "X-Title": "Logistics MCP Server",
             "Content-Type": "application/json"
           },
-          timeout: 60000 // Increase timeout for document parsing
+          timeout: 120000 // Increase timeout to 120s for large/complex document parsing
         }
       );
 

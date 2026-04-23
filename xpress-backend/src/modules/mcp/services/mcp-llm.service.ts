@@ -22,6 +22,25 @@ export class McpLlmService {
   }
 
   /**
+   * Cuộc gọi LLM chung với cơ chế Fallback
+   */
+  async chatCompletion(
+    messages: ChatCompletionMessageParam[],
+    options: {
+      tools?: ChatCompletionTool[];
+      temperature?: number;
+      top_p?: number;
+      model?: string;
+    } = {},
+  ) {
+    return this.executeWithFallback(
+      options.model || process.env.OPENROUTER_MODEL || '',
+      messages,
+      options,
+    );
+  }
+
+  /**
    * Helper nội bộ để thực hiện gọi LLM với cơ chế Fallback nếu model chính lỗi
    */
   private async executeWithFallback(

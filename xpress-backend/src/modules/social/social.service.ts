@@ -26,7 +26,7 @@ export class SocialService {
     private readonly usersRepository: UsersRepository,
     private readonly socialRepository: SocialRepository,
     private readonly presenceService: PresenceService,
-  ) {}
+  ) { }
 
   async searchUsersByEmail(actorUserId: string, dto: SearchUserByPhoneDto) {
     const query = this.usersRepository.normalizeEmail(dto.email);
@@ -255,6 +255,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
           connectedAt: item.updatedAt,
         };

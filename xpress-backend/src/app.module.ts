@@ -12,7 +12,8 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { NewsFeedModule } from './modules/news-feed/news-feed.module';
 import { JwtGuard } from './middleware/jwt.guard';
 
-const mongoUri = process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/xpress-session';
+const mongoUri =
+  process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/xpress-session';
 @Module({
   imports: [
     MongooseModule.forRoot(mongoUri, {

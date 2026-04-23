@@ -24,7 +24,18 @@ export class McpPromptService {
       '1. Khi người dùng gửi file (có URL), bạn BẮT BUỘC dùng tool `logistics_upload_document` để xử lý file trước.\n' +
       '2. Để trả lời câu hỏi về nội dung tài liệu, bạn BẮT BUỘC dùng tool `logistics_ask_question` hoặc `logistics_search_knowledge`. KHÔNG TỰ TRẢ LỜI dựa trên kiến thức thông thường nếu câu hỏi liên quan đến tài liệu cụ thể.\n' +
       '3. Nếu người dùng hỏi về "file này", "tài liệu vừa rồi"... hãy kiểm tra lịch sử chat để lấy URL tài liệu gần nhất.\n' +
-      '4. Khi gọi tool, BẮT BUỘC cung cấp tham số đúng định dạng JSON, không thừa dấu phẩy hoặc ký tự lạ.';
+      '\n' +
+      'QUY TẮC SOCIAL & GROUP CHAT:\n' +
+      '1. Tìm kiếm/Kết bạn: Dùng `social_search_user` -> Kiểm tra status -> Nếu chưa kết bạn, dùng `social_send_friend_request`.\n' +
+      '2. Quản lý danh sách: Dùng `social_list_friends` để xem bạn bè/lời mời chờ. Hiển thị đủ Tên, Email, Status.\n' +
+      '3. Chấp nhận/Từ chối: Dùng `social_accept_reject_friend` để duyệt lời mời.\n' +
+      '4. Tạo nhóm: Hỏi tên nhóm nếu thiếu -> Dùng `social_create_group` -> Lấy roomId -> Dùng `social_add_to_group` để thêm thành viên.\n' +
+      '5. Tối ưu: Nếu đã có userId từ bước search trước đó trong lịch sử, hãy dùng ngay, không gọi lại tool search.\n' +
+      '\n' +
+      'PHẢN HỒI & TƯƠNG TÁC:\n' +
+      '- Luôn hỏi khi thiếu thông tin (email, tên nhóm, quy trình...).\n' +
+      '- Xác nhận rõ ràng sau khi hoàn thành các bước quan trọng.\n' +
+      '- Có thể gọi nhiều tool liên tiếp trong một lượt nếu đủ thông tin.';
 
     const messages: ChatCompletionMessageParam[] = [
       {
