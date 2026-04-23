@@ -1,0 +1,55 @@
+name: Deploy Backend to EC2 (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "xpress-backend/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout source
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Setup SSH key
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BACKEND_EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
+
+      # 3. Deploy to EC2
+      - name: Deploy backend
+        run: |
+          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
+
+            set -e
+
+            echo "📦 Move to project directory"
+            cd /home/ubuntu/xpress-backend
+
+            echo "⬇️ Pull latest code"
+            git pull origin dev
+
+            echo "📥 Install dependencies (pnpm)"
+            corepack enable || true
+            pnpm install
+
+            echo "🏗️ Build project"
+            pnpm build
+
+            echo "♻️ Restart PM2"
+            pm2 restart xpress-backend || pm2 start dist/src/main.js --name xpress-backend
+
+            echo "💾 Save PM2 state"
+            pm2 save
+
+            echo "✅ Deploy done"
+
+          EOF

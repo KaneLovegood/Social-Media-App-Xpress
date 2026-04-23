@@ -36,3 +36,11 @@ export async function sendChatAction(action: ChatActionName, payload: ChatAction
     // UI action should not break if telemetry/action endpoint is unavailable.
   }
 }
+
+export async function fetchAgoraToken(channelName: string) {
+  const res = await authFetch(`${API_BASE_URL}/chat/agora-token?channelName=${channelName}`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch Agora token');
+  }
+  return res.json() as Promise<{ token: string; appId: string; channelName: string; uid: string }>;
+}

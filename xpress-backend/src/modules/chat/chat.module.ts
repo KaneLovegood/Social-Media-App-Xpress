@@ -12,6 +12,7 @@ import { ChatGatewayTransportService } from './services/chat-gateway-transport.s
 import { ChatRoomService } from './services/chat-room.service';
 import { GroupRoomsRepository } from './repositories/group-rooms.repository';
 import { MessagesRepository } from './repositories/messages.repository';
+import { AgoraService } from './services/agora.service';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MessagesRepository } from './repositories/messages.repository';
     ChatRoomService,
     MessagesRepository,
     GroupRoomsRepository,
+    AgoraService,
   ],
   exports: [MessagesRepository, ChatService],
 })
