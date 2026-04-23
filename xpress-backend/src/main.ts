@@ -11,8 +11,22 @@ class SocketIoCorsAdapter extends IoAdapter {
     return super.createIOServer(port, {
       ...options,
       cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
+        origin: [
+          'http://localhost',
+          'https://localhost',
+          'capacitor://localhost',
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:5173',
+          'http://deploy-frontend-01.s3-website-us-east-1.amazonaws.com',
+          'capacitor://localhost',
+          /\.devtunnels\.ms$/,
+          /^http:\/\/10\.0\.2\.2(:\d+)?$/,
+          /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/,
+          /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/,
+        ],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        credentials: true,
         ...(options?.cors ?? {}),
       },
     });
@@ -22,11 +36,25 @@ class SocketIoCorsAdapter extends IoAdapter {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Configure CORS for HTTP
   app.enableCors({
-    origin: '*',
+    origin: [
+      'http://localhost',
+      'https://localhost',
+      'capacitor://localhost',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5173',
+      'http://deploy-frontend-01.s3-website-us-east-1.amazonaws.com',
+      'https://localhost',
+      'capacitor://localhost',
+      /\.devtunnels\.ms$/,
+      /^http:\/\/10\.0\.2\.2(:\d+)?$/,
+      /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/,
+      /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/,
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
+    allowedHeaders: 'Content-Type, Authorization, Idempotency-Key',
   });
 
   // Configure Socket.IO adapter with CORS

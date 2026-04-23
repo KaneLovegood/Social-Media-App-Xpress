@@ -39,5 +39,7 @@ export interface GroupCallSignalDto {
 
 export interface GroupCallEndDto {
   roomId: string;
+  callMode?: 'voice' | 'video';
   reason?: string;
+  endForAll?: boolean;
 }

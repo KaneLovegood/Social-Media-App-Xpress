@@ -5,6 +5,7 @@ interface ChatHeaderProps {
   orderTitle: string;
   typingText: string;
   isPeerOnline: boolean;
+  isGroup: boolean;
   onBack: () => void;
   onOpenInfo: () => void;
   onOpenVoiceCall: () => void;
@@ -15,13 +16,14 @@ const initials = (value: string) => {
   const words = value.split(/[\s._-]+/).filter(Boolean);
   const chars = words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "");
   return chars.join("") || "GC";
-}
+};
 
 export default function ChatHeader({
   peerName,
   orderTitle,
   typingText,
   isPeerOnline,
+  isGroup,
   onBack,
   onOpenInfo,
   onOpenVoiceCall,
@@ -52,21 +54,31 @@ export default function ChatHeader({
             <p className="truncate text-[22px] font-bold leading-none text-zinc-900 md:text-base md:leading-tight lg:text-lg">
               {peerName}
             </p>
-            <p className="mt-1 truncate text-sm text-[#727687] md:mt-0.5 md:text-[11px]">
-              {subTitle}
-            </p>
+            <div className="flex items-center gap-2">
+              {isPeerOnline && (
+                <span
+                  className="inline-block h-2 w-2 shrink-0 rounded-full bg-green-500"
+                  aria-hidden="true"
+                />
+              )}
+              <p className="mt-1 truncate text-sm text-[#727687] md:mt-0.5 md:text-[11px]">
+                {subTitle}
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1 md:gap-2">
-          <button
-            type="button"
-            onClick={onOpenVoiceCall}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#eaf2ff]"
-            aria-label="Mở gọi thoại"
-          >
-            <Phone className="h-4 w-4" />
-          </button>
+          {!isGroup ? (
+            <button
+              type="button"
+              onClick={onOpenVoiceCall}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#0068ff] hover:bg-[#eaf2ff]"
+              aria-label="Mở gọi thoại"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onOpenVideoCall}

@@ -238,6 +238,9 @@ export class EmailOtpService {
     if (purpose === 'REGISTER') {
       return isVietnamese ? 'dang ky tai khoan' : 'account registration';
     }
+    if (purpose === 'CHANGE_PASSWORD') {
+      return isVietnamese ? 'quen mat khau' : 'password reset';
+    }
     return isVietnamese ? 'dang nhap' : 'login';
   }
 

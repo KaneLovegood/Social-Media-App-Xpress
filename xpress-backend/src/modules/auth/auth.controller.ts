@@ -4,19 +4,22 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
+import { Public } from '../../middleware/public.decorator';
 import { AuthService } from './auth.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 
 interface AuthenticatedRequest extends Request {
@@ -32,6 +35,7 @@ interface AuthenticatedRequest extends Request {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Post('register')
   register(@Body() dto: RegisterDto, @Req() req: Request) {
     return this.authService.register(dto, {
@@ -40,6 +44,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, {
@@ -48,6 +53,7 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post('google')
   google(@Body() dto: GoogleAuthDto, @Req() req: Request) {
     return this.authService.loginWithGoogle(dto, {
@@ -56,27 +62,41 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post('otp/send')
   sendOtp(@Body() dto: SendEmailOtpDto) {
     return this.authService.sendEmailOtp(dto);
   }
 
+  @Public()
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyEmailOtpDto) {
     return this.authService.verifyEmailOtp(dto);
   }
 
+  @Public()
+  @Post('password/reset')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Public()
   @Post('refresh')
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
   }
 
+  @Public()
   @Post('logout')
-  logout(@Body() dto: RefreshTokenDto) {
-    return this.authService.logout(dto);
+  logout(@Body() dto: LogoutDto, @Req() req: Request) {
+    return this.authService.logout(dto, {
+      authorizationHeader:
+        typeof req.headers.authorization === 'string'
+          ? req.headers.authorization
+          : undefined,
+    });
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Get('sessions')
   getSessions(@Req() req: AuthenticatedRequest) {
     const userId = req.user?.userId;
@@ -88,7 +108,6 @@ export class AuthController {
     return this.authService.listUserSessions(userId, sessionId);
   }
 
-  @UseGuards(AuthGuard('jwt'))
   @Delete('sessions/:sessionId')
   revokeSession(
     @Req() req: AuthenticatedRequest,
@@ -101,6 +120,16 @@ export class AuthController {
     }
 
     return this.authService.revokeSession(userId, sessionId, currentSessionId);
+  }
+
+  @Patch('avatar')
+  updateAvatar(@Req() req: AuthenticatedRequest, @Body() dto: UpdateAvatarDto) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.updateAvatar(userId, dto);
   }
 
   private resolveIp(req: Request): string {

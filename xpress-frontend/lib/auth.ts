@@ -1,4 +1,5 @@
 import { persistSession } from './auth-client';
+import { getDeviceInfo } from './device';
 
 export type AuthUser = {
   userId: string;
@@ -6,6 +7,7 @@ export type AuthUser = {
   email: string;
   role: string;
   status: string;
+  avatarUrl?: string;
 };
 
 export type AuthResponse = {
@@ -26,62 +28,78 @@ type RegisterPayload = AuthPayload & {
 };
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
+  'http://localhost:3001';
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
 type SendOtpPayload = {
   email: string;
-  purpose?: 'REGISTER' | 'LOGIN';
+  purpose?: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 };
 
 type VerifyOtpPayload = {
   email: string;
   code: string;
-  purpose: 'REGISTER' | 'LOGIN';
+  purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 };
 
 type VerifyOtpResponse = {
   verified: boolean;
   otpToken: string;
-  purpose: 'REGISTER' | 'LOGIN';
+  purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 };
 
-type DevicePayload = {
-  deviceId: string;
-  deviceName: string;
-  timezone: string;
+type ResetPasswordPayload = {
+  email: string;
+  otpToken: string;
+  newPassword: string;
 };
 
 export async function login(payload: AuthPayload) {
-  const result = await request<AuthResponse>("/auth/login", {
+  const device = await getDevicePayload();
+  const result = await request<AuthResponse>('/auth/login', {
     ...payload,
-    ...getDevicePayload(),
+    ...device,
   });
-  persistSession(result);
+  await persistSession(result);
   return result;
 }
 
 export async function register(payload: RegisterPayload) {
-  return request<AuthResponse>("/auth/register", payload);
+  const device = await getDevicePayload();
+  return request<AuthResponse>('/auth/register', {
+    ...payload,
+    ...device,
+  });
 }
 
 export async function sendEmailOtp(payload: SendOtpPayload) {
-  return request<{ success: boolean; purpose: 'REGISTER' | 'LOGIN'; expiresAt: string }>(
-    '/auth/otp/send',
-    payload,
-  );
+  return request<{
+    success: boolean;
+    purpose: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
+    expiresAt: string;
+  }>('/auth/otp/send', payload);
 }
 
 export async function verifyEmailOtp(payload: VerifyOtpPayload) {
   return request<VerifyOtpResponse>('/auth/otp/verify', payload);
 }
 
-export async function loginWithGoogle(idToken: string) {
+export async function resetPassword(payload: ResetPasswordPayload) {
+  return request<{ success: boolean }>('/auth/password/reset', payload);
+}
+
+export async function loginWithGoogle(
+  idToken: string,
+  options: { platform?: 'web' | 'android' | 'ios' } = {},
+) {
+  const device = await getDevicePayload();
   const result = await request<AuthResponse>('/auth/google', {
     idToken,
-    ...getDevicePayload(),
+    platform: options.platform ?? 'web',
+    ...device,
   });
-  persistSession(result);
+  await persistSession(result);
   return result;
 }
 
@@ -89,16 +107,21 @@ export function getGoogleClientId() {
   return GOOGLE_CLIENT_ID;
 }
 
-async function request<TResponse>(path: string, payload: Record<string, unknown>) {
+async function request<TResponse>(
+  path: string,
+  payload: Record<string, unknown>,
+) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
-  const data = (await response.json().catch(() => ({}))) as { message?: unknown };
+  const data = (await response.json().catch(() => ({}))) as {
+    message?: unknown;
+  };
   if (!response.ok) {
     throw new Error(getErrorMessage(data.message));
   }
@@ -106,28 +129,25 @@ async function request<TResponse>(path: string, payload: Record<string, unknown>
   return data as TResponse;
 }
 
-function getDevicePayload(): DevicePayload {
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  const userAgent =
-    typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown-user-agent';
+async function getDevicePayload(): Promise<{
+  deviceId: string;
+  deviceName: string;
+  timezone: string;
+}> {
+  const timezone =
+    (typeof Intl !== 'undefined' &&
+      Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+    'UTC';
+  const { deviceId, deviceName } = await getDeviceInfo();
   return {
-    deviceId: `web-${hashString(userAgent)}`,
-    deviceName: 'Web Browser',
+    deviceId,
+    deviceName,
     timezone,
   };
 }
 
-function hashString(value: string): string {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16);
-}
-
 function getErrorMessage(message: unknown) {
-  if (Array.isArray(message)) return message.join(", ");
-  if (typeof message === "string" && message.trim().length > 0) return message;
-  return "Đã có lỗi xảy ra, vui lòng thử lại.";
+  if (Array.isArray(message)) return message.join(', ');
+  if (typeof message === 'string' && message.trim().length > 0) return message;
+  return 'Đã có lỗi xảy ra, vui lòng thử lại.';
 }

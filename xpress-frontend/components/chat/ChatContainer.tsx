@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
@@ -9,17 +9,20 @@ import {
   fetchGroupRoomDetails,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
-import { clearSession, getValidAccessToken } from "@/lib/auth-client";
+import {
+  clearSession,
+  getStoredUser,
+  getValidAccessToken,
+  logoutSession,
+  USER_UPDATED_EVENT,
+} from "@/lib/auth-client";
 import { sendChatAction } from "@/lib/chat-actions";
 import { fetchChatRoomMessages } from "@/lib/chat-messages";
 import { ChatRoomSummary, fetchChatRooms } from "@/lib/chat-rooms";
 import { CHAT_EVENTS, CALL_EVENTS } from "@/lib/realtime/events";
 import { createChatSocket } from "@/lib/realtime/socket-client";
 import { ChatMessage, ReplyPreview } from "@/lib/realtime/types";
-import {
-  toAgeLabel,
-  mergeMessages,
-} from "@/lib/chat-utils";
+import { toAgeLabel, mergeMessages } from "@/lib/chat-utils";
 import IncomingCallModal from "./modal/IncomingCallModal";
 import IncomingGroupCallModal from "./modal/IncomingGroupCallModal";
 import ChatInfoPanel from "./ChatInfoPanel";
@@ -68,10 +71,8 @@ export default function ChatContainer({
 }: ChatContainerProps) {
   const router = useRouter();
   // Manage cleared history
-  const {
-    clearedRoomAtById,
-    setClearedRoomAtById,
-  } = useClearedHistory(currentUserId);
+  const { clearedRoomAtById, setClearedRoomAtById } =
+    useClearedHistory(currentUserId);
 
   // Manage call states
   const {
@@ -87,6 +88,8 @@ export default function ChatContainer({
     setGroupCallMode,
     groupCallDirection,
     setGroupCallDirection,
+    groupCallHostUserId,
+    setGroupCallHostUserId,
     pendingGroupCall,
     setPendingGroupCall,
   } = useCallState();
@@ -95,18 +98,54 @@ export default function ChatContainer({
   const [rooms, setRooms] = useState<ChatRoomSummary[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
   const [activeRoomId, setActiveRoomId] = useState("");
-  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({});
-  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>({});
-  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<Record<string, GroupRoomDetails>>({});
-  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
+  const [messagesByRoom, setMessagesByRoom] = useState<
+    Record<string, ChatMessage[]>
+  >({});
+  const [loadedRoomIds, setLoadedRoomIds] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [groupDetailsByRoom, setGroupDetailsByRoom] = useState<
+    Record<string, GroupRoomDetails>
+  >({});
+  const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>(
+    {},
+  );
   const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
   const [typingText, setTypingText] = useState("");
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
-  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardingMessage, setForwardingMessage] =
+    useState<ChatMessage | null>(null);
   const [isMobileInfoOpen, setIsMobileInfoOpen] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [currentUserAvatarUrl, setCurrentUserAvatarUrl] = useState(
+    () => getStoredUser()?.avatarUrl?.trim() ?? "",
+  );
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncUserAvatar = () => {
+      setCurrentUserAvatarUrl(getStoredUser()?.avatarUrl?.trim() ?? "");
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== "xpress_user") {
+        return;
+      }
+
+      syncUserAvatar();
+    };
+
+    window.addEventListener(USER_UPDATED_EVENT, syncUserAvatar);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(USER_UPDATED_EVENT, syncUserAvatar);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // Load rooms
   const reloadRooms = useCallback(async () => {
@@ -130,8 +169,13 @@ export default function ChatContainer({
     let cancelled = false;
     let socket: Socket | null = null;
 
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
     void getValidAccessToken().then((token) => {
-      if (!token || cancelled || socketRef.current) return;
+      if (!token || cancelled) return;
       socket = createChatSocket(token);
       socketRef.current = socket;
     });
@@ -143,7 +187,7 @@ export default function ChatContainer({
         socketRef.current = null;
       }
     };
-  }, []);
+  }, [currentUserId]);
 
   // Load initial rooms
   useEffect(() => {
@@ -161,7 +205,11 @@ export default function ChatContainer({
   }, [reloadRooms]);
 
   const effectiveActiveRoomId = useMemo(
-    () => (rooms.some((room) => room.id === activeRoomId) || activeRoomId === "AI_ASSISTANT" ? activeRoomId : ""),
+    () =>
+      rooms.some((room) => room.id === activeRoomId) ||
+      activeRoomId === "AI_ASSISTANT"
+        ? activeRoomId
+        : "",
     [activeRoomId, rooms],
   );
 
@@ -187,6 +235,60 @@ export default function ChatContainer({
   const isPeerOnline = peerUserId
     ? (presenceByUser[peerUserId] ?? activeRoom?.isPeerOnline ?? false)
     : false;
+  const senderNameById = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {
+      [currentUserId]: currentUserName,
+    };
+
+    if (activeRoom?.roomType === "GROUP") {
+      for (const member of activeGroupDetails?.members ?? []) {
+        map[member.userId] = member.nickname ?? member.name;
+      }
+      return map;
+    }
+
+    if (peerUserId) {
+      map[peerUserId] = peerName;
+    }
+
+    return map;
+  }, [
+    activeGroupDetails?.members,
+    activeRoom?.roomType,
+    currentUserId,
+    currentUserName,
+    peerName,
+    peerUserId,
+  ]);
+  const senderAvatarById = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+
+    if (currentUserAvatarUrl) {
+      map[currentUserId] = currentUserAvatarUrl;
+    }
+
+    if (activeRoom?.roomType === "GROUP") {
+      for (const member of activeGroupDetails?.members ?? []) {
+        if (member.avatarUrl) {
+          map[member.userId] = member.avatarUrl;
+        }
+      }
+      return map;
+    }
+
+    if (peerUserId && activeRoom?.avatarUrl) {
+      map[peerUserId] = activeRoom.avatarUrl;
+    }
+
+    return map;
+  }, [
+    activeGroupDetails?.members,
+    activeRoom?.avatarUrl,
+    activeRoom?.roomType,
+    currentUserAvatarUrl,
+    currentUserId,
+    peerUserId,
+  ]);
   const activeMessages = useMemo(() => {
     if (!effectiveActiveRoomId) {
       return [];
@@ -249,43 +351,40 @@ export default function ChatContainer({
     [rooms],
   );
 
-  const sidebarRooms = useMemo<SidebarChatItem[]>(
-    () => {
-      const dbRooms = rooms.map((room) => {
-        const clearedAt = clearedRoomAtById[room.id];
-        const hasHiddenHistory =
-          typeof clearedAt === "string" &&
-          Date.parse(room.lastMessageAt) <= Date.parse(clearedAt);
+  const sidebarRooms = useMemo<SidebarChatItem[]>(() => {
+    const dbRooms = rooms.map((room) => {
+      const clearedAt = clearedRoomAtById[room.id];
+      const hasHiddenHistory =
+        typeof clearedAt === "string" &&
+        Date.parse(room.lastMessageAt) <= Date.parse(clearedAt);
 
-        return {
-          id: room.id,
-          roomType: room.roomType,
-          title: room.title,
-          preview: hasHiddenHistory ? "Đã xóa lịch sử" : room.preview,
-          age: room.age,
-          unreadCount: hasHiddenHistory ? 0 : room.unreadCount,
-          isOnline:
-            room.roomType === "GROUP"
-              ? false
-              : (presenceByUser[room.peerUserId] ?? room.isPeerOnline),
-        };
-      });
+      return {
+        id: room.id,
+        roomType: room.roomType,
+        title: room.title,
+        preview: hasHiddenHistory ? "Đã xóa lịch sử" : room.preview,
+        age: room.age,
+        unreadCount: hasHiddenHistory ? 0 : room.unreadCount,
+        isOnline:
+          room.roomType === "GROUP"
+            ? false
+            : (presenceByUser[room.peerUserId] ?? room.isPeerOnline),
+      };
+    });
 
-      return [
-        {
-          id: "AI_ASSISTANT",
-          roomType: "PRIVATE",
-          title: "Logistics AI Assistant",
-          preview: "Trợ lý ảo phân tích Logistics",
-          age: "",
-          unreadCount: 0,
-          isOnline: true,
-        },
-        ...dbRooms,
-      ];
-    },
-    [clearedRoomAtById, presenceByUser, rooms],
-  );
+    return [
+      {
+        id: "AI_ASSISTANT",
+        roomType: "PRIVATE",
+        title: "Logistics AI Assistant",
+        preview: "Trợ lý ảo phân tích Logistics",
+        age: "",
+        unreadCount: 0,
+        isOnline: true,
+      },
+      ...dbRooms,
+    ];
+  }, [clearedRoomAtById, presenceByUser, rooms]);
 
   const handleSelectRoom = (roomId: string) => {
     setActiveRoomId(roomId);
@@ -441,13 +540,17 @@ export default function ChatContainer({
     setPresenceByUser,
     setTypingText,
     setIncomingCall,
+    groupCallRoomId,
+    groupCallMode,
+    pendingGroupCall,
     setGroupCallRoomId,
     setGroupCallMode,
     setGroupCallDirection,
+    setGroupCallHostUserId,
     setPendingGroupCall,
     setCallMode,
     setCallDirection,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 
   useEffect(() => {
@@ -633,6 +736,7 @@ export default function ChatContainer({
       setGroupCallRoomId(activeRoom.id);
       setGroupCallMode(mode);
       setGroupCallDirection("outgoing");
+      setGroupCallHostUserId(currentUserId);
 
       socketRef.current.emit(CHAT_EVENTS.GROUP_CALL_START, {
         roomId: activeRoom.id,
@@ -645,6 +749,8 @@ export default function ChatContainer({
       groupCallDirection,
       groupCallMode,
       groupCallRoomId,
+      currentUserId,
+      setGroupCallHostUserId,
     ],
   );
 
@@ -710,10 +816,22 @@ export default function ChatContainer({
     setIsCreateGroupOpen(true);
   };
 
-  const handleLogout = useCallback(() => {
-    clearSession();
-    router.replace("/login");
-    router.refresh();
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutSession();
+    } catch (error) {
+      await clearSession();
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Đăng xuất thất bại, vui lòng thử lại.";
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
   }, [router]);
 
   const handleGroupCreated = async (roomId: string) => {
@@ -823,6 +941,7 @@ export default function ChatContainer({
     setGroupCallRoomId(pendingGroupCall.roomId);
     setGroupCallMode(pendingGroupCall.callMode);
     setGroupCallDirection("incoming");
+    setGroupCallHostUserId(pendingGroupCall.senderId);
     setPendingGroupCall(null);
   };
 
@@ -876,12 +995,12 @@ export default function ChatContainer({
             <ChatNoRoomWelcome />
           ) : effectiveActiveRoomId === "AI_ASSISTANT" ? (
             <AiChatBox
-               currentUserId={currentUserId}
-               currentUserName={currentUserName}
-               onBackToList={() => {
-                 setIsMobileInfoOpen(false);
-                 setActiveRoomId("");
-               }}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              onBackToList={() => {
+                setIsMobileInfoOpen(false);
+                setActiveRoomId("");
+              }}
             />
           ) : (
             <ChatContent
@@ -889,9 +1008,12 @@ export default function ChatContainer({
               orderTitle={orderTitle}
               typingText={typingText}
               isPeerOnline={isPeerOnline}
+              isGroup={activeRoom?.roomType === "GROUP"}
               activeMessages={activeMessages}
               currentUserId={currentUserId}
               currentUserName={currentUserName}
+              senderNameById={senderNameById}
+              senderAvatarById={senderAvatarById}
               listRef={listRef}
               replyTo={replyTo}
               onBackToList={() => {
@@ -934,7 +1056,9 @@ export default function ChatContainer({
           />
         ) : null}
 
-        {effectiveActiveRoomId && effectiveActiveRoomId !== "AI_ASSISTANT" && isMobileInfoOpen ? (
+        {effectiveActiveRoomId &&
+        effectiveActiveRoomId !== "AI_ASSISTANT" &&
+        isMobileInfoOpen ? (
           <>
             <button
               type="button"
@@ -1023,10 +1147,12 @@ export default function ChatContainer({
           groupDetails={activeGroupCallDetails}
           callMode={groupCallMode}
           callDirection={groupCallDirection ?? "incoming"}
+          callHostUserId={groupCallHostUserId}
           onClose={() => {
             setGroupCallRoomId("");
             setGroupCallMode(null);
             setGroupCallDirection(null);
+            setGroupCallHostUserId("");
           }}
         />
       ) : (

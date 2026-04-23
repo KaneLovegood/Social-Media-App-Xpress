@@ -124,4 +124,14 @@ export class SessionRepository {
       }),
     );
   }
+
+  async deactivateAllSessions(userId: string): Promise<void> {
+    const activeSessions = await this.findActiveSessions(userId);
+
+    await Promise.all(
+      activeSessions.map((session) =>
+        this.deactivateSession(userId, session.sessionId),
+      ),
+    );
+  }
 }

@@ -30,8 +30,15 @@ export default function ChatMePage() {
     return (
       <section className="mx-auto flex h-full w-full max-w-3xl items-center justify-center px-4 py-8">
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          User session not found. Please login again.
-        </p>
+          Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.
+        </p> 
+        <br/>
+        <button
+          onClick={() => router.push('/login')}
+          className="rounded-md bg-[#f25019] px-4 py-2 text-sm font-semibold text-white hover:bg-[#df4614]"
+        >
+          Đăng nhập lại
+        </button>
       </section>
     );
   }

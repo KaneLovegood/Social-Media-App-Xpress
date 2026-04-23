@@ -1,15 +1,15 @@
 import { IsEmail, IsIn, IsString, Length } from 'class-validator';
 
-const OTP_PURPOSES = ['REGISTER', 'LOGIN'] as const;
+const OTP_PURPOSES = ['REGISTER', 'LOGIN', 'CHANGE_PASSWORD'] as const;
 
 export class VerifyEmailOtpDto {
   @IsEmail({}, { message: 'email không hợp lệ' })
-  email: string;
+  email!: string;
 
   @IsString()
   @Length(4, 4)
-  code: string;
+  code!: string;
 
   @IsIn(OTP_PURPOSES)
-  purpose: 'REGISTER' | 'LOGIN';
+  purpose!: 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 }

@@ -5,7 +5,13 @@ export interface ReplyPreview {
   content: string;
 }
 
-export type MessageType = "TEXT" | "CALL_LOG" | "IMAGE" | "FILE";
+export type MessageType =
+  | "TEXT"
+  | "CALL_LOG"
+  | "IMAGE"
+  | "FILE"
+  | "VIDEO"
+  | "SYSTEM";
 
 export interface CallLogPayload {
   mode: "voice" | "video";
@@ -121,5 +127,7 @@ export interface GroupCallIcePayload {
 export interface GroupCallEndPayload {
   senderId: string;
   roomId: string;
+  callMode?: "voice" | "video";
   reason?: string;
+  endForAll?: boolean;
 }

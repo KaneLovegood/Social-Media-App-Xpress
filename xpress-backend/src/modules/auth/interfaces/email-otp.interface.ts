@@ -1,4 +1,4 @@
-export type EmailOtpPurpose = 'REGISTER' | 'LOGIN';
+export type EmailOtpPurpose = 'REGISTER' | 'LOGIN' | 'CHANGE_PASSWORD';
 
 export interface EmailOtpEntity {
   PK: string; // OTP#{email}

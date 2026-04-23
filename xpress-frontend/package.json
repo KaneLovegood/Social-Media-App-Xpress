@@ -9,21 +9,32 @@
     "lint": "eslint",
     "prepare": "husky",
     "cap:sync": "cap sync",
-    "build:mobile": "next build && cap sync"
+    "fix:rsc": "node scripts/fix-rsc-paths.mjs",
+    "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.3.0",
+    "@capacitor/device": "^8.0.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capgo/capacitor-social-login": "^8.3.17",
     "@fortawesome/fontawesome-free": "^7.2.0",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/leaflet": "^1.9.21",
+    "agora-rtc-sdk-ng": "^4.24.3",
     "dotenv": "^17.4.2",
     "emoji-picker-react": "^4.18.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.8.0",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@capacitor/android": "^8.3.0",
@@ -32,7 +43,6 @@
     "@commitlint/cli": "^20.4.3",
     "@commitlint/config-conventional": "^20.4.3",
     "@tailwindcss/postcss": "^4",
-    "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

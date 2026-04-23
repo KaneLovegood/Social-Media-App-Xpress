@@ -15,6 +15,8 @@ import AttachmentPreviewTray from "./message-input/AttachmentPreviewTray";
 import ComposerInputRow from "./message-input/ComposerInputRow";
 import ComposerToolbar from "./message-input/ComposerToolbar";
 import { PendingAttachment } from "./message-input/types";
+import CameraCapture from "./message-input/CameraCapture";
+import { useCameraScan } from "@/hooks/use-camera-scan";
 
 export interface SendMessageOptions {
   messageType?: MessageType;
@@ -58,9 +60,13 @@ export default function MessageInput({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const { startCamera, stopCamera, stream } = useCameraScan();
+  const [isCameraActive, setIsCameraActive] = useState(false);
 
   const canSend = useMemo(
     () => content.trim().length > 0 || attachments.length > 0,
@@ -102,6 +108,11 @@ export default function MessageInput({
       'image/png',
       'image/gif',
       'image/webp',
+      'video/mp4',
+      'video/x-m4v',
+      'video/webm',
+      'video/ogg',
+      'video/quicktime',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -143,6 +154,40 @@ export default function MessageInput({
 
   const openImagePicker = () => {
     imageInputRef.current?.click();
+  };
+
+  const handleTakePhotoClick = async () => {
+    const s = await startCamera();
+    if (s) {
+      setIsCameraActive(true);
+    }
+  };
+
+  const handleCapture = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const file = new File([blob], `photo-${Date.now()}.png`, { type: "image/png" });
+        addFiles([file]);
+        stopCamera();
+        setIsCameraActive(false);
+      }
+    }, "image/png");
+  };
+
+  const cancelCamera = () => {
+    stopCamera();
+    setIsCameraActive(false);
   };
 
   const removeAttachment = (id: string) => {
@@ -187,7 +232,12 @@ export default function MessageInput({
             );
           });
           
-          const messageType: MessageType = file.type.startsWith("image/") ? "IMAGE" : "FILE";
+          let messageType: MessageType = "FILE";
+          if (file.type.startsWith("image/")) {
+            messageType = "IMAGE";
+          } else if (file.type.startsWith("video/")) {
+            messageType = "VIDEO";
+          }
           // Attach text to only the first sent file
           const sentContent = i === 0 ? content.trim() : "";
           
@@ -253,6 +303,31 @@ export default function MessageInput({
     addFiles(pastedFiles);
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) {
+      addFiles(files);
+    }
+  };
+
   const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     addFiles(files);
@@ -273,11 +348,18 @@ export default function MessageInput({
     const imageCount = attachments.filter(
       (item) => item.kind === "image",
     ).length;
-    const fileCount = attachments.length - imageCount;
+    const videoCount = attachments.filter(
+      (item) => item.kind === "video",
+    ).length;
+    const fileCount = attachments.length - imageCount - videoCount;
     const parts: string[] = [];
 
     if (imageCount > 0) {
       parts.push(`${imageCount} ảnh`);
+    }
+
+    if (videoCount > 0) {
+      parts.push(`${videoCount} video`);
     }
 
     if (fileCount > 0) {
@@ -304,8 +386,33 @@ export default function MessageInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="overflow-visible border border-[#d8dce2] bg-white"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`relative overflow-visible border transition-colors ${
+        isDragging ? "border-blue-500 bg-blue-50/50" : "border-[#d8dce2] bg-white"
+      }`}
     >
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-blue-500/10 transition-all">
+          <div className="flex flex-col items-center gap-2 rounded-lg bg-white px-6 py-4 shadow-xl shadow-blue-500/20">
+            <svg
+              className="h-8 w-8 text-blue-500 animate-bounce"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+            <span className="text-[15px] font-medium text-blue-600">Thả tệp vào đây</span>
+          </div>
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -318,17 +425,60 @@ export default function MessageInput({
         ref={imageInputRef}
         type="file"
         multiple
-        accept="image/*"
+        accept="image/*,video/*"
         className="hidden"
         onChange={handleImageInputChange}
       />
 
       <ReplyPreview reply={replyTo} onClear={onClearReply} mode="composer" />
       <ComposerToolbar
+        onOpenCamera={() => setIsCameraOpen(true)}
         onOpenImagePicker={openImagePicker}
         onOpenFilePicker={openFilePicker}
+        onTakePhoto={handleTakePhotoClick}
         onEmojiSelect={handleEmojiSelect}
       />
+      {isCameraOpen && (
+        <CameraCapture
+          onCapture={(file) => addFiles([file])}
+          onClose={() => setIsCameraOpen(false)}
+        />
+      )}
+
+      {isCameraActive && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/80 p-4">
+          <div className="relative aspect-video w-full max-w-2xl overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl">
+            <video
+              ref={(el) => {
+                videoRef.current = el;
+                if (el) el.srcObject = stream;
+              }}
+              autoPlay
+              playsInline
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-x-0 bottom-6 flex justify-center gap-6">
+              <button
+                type="button"
+                onClick={handleCapture}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-black shadow-lg transition active:scale-90"
+              >
+                <div className="h-10 w-10 rounded-full border-2 border-black" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelCamera}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition active:scale-90"
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <p className="mt-4 text-sm font-medium text-white/60">Đang sử dụng camera...</p>
+        </div>
+      )}
 
       <AttachmentPreviewTray
         attachments={attachments}

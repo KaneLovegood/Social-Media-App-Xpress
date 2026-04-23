@@ -21,9 +21,14 @@ import {
   GroupRoomDetails,
   GroupRoomMemberSummary,
 } from '../interfaces/chat-room-summary.interface';
-import { MessageEntity } from '../interfaces/message.interface';
+import { CallLogOutcome, MessageEntity } from '../interfaces/message.interface';
 import { GroupRoomsRepository } from '../repositories/group-rooms.repository';
 import { MessagesRepository } from '../repositories/messages.repository';
+
+export interface GroupRoomMutationResult {
+  roomDetails: GroupRoomDetails;
+  systemMessage?: MessageEntity;
+}
 
 @Injectable()
 export class ChatRoomService {
@@ -102,22 +107,43 @@ export class ChatRoomService {
     actorUserId: string,
     roomId: string,
     dto: GroupMemberDto,
-  ): Promise<GroupRoomDetails> {
-    await this.assertGroupAdmin(actorUserId, roomId);
+  ): Promise<GroupRoomMutationResult> {
+    await this.assertGroupMembership(actorUserId, roomId);
     const user = await this.usersRepository.findByUserId(dto.userId);
     if (!user) {
       throw new NotFoundException('Nguoi dung khong ton tai');
     }
 
+    const existingMember = await this.groupRoomsRepository.findMember(
+      roomId,
+      dto.userId,
+    );
+    if (existingMember) {
+      return {
+        roomDetails: await this.buildGroupRoomDetails(actorUserId, roomId),
+      };
+    }
+
     await this.groupRoomsRepository.addMember(roomId, dto.userId, 'MEMBER');
-    return this.buildGroupRoomDetails(actorUserId, roomId);
+
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+    const systemMessage = await this.createGroupSystemMessage(
+      actorUserId,
+      roomId,
+      `${actor?.name ?? 'Một thành viên'} đã thêm ${user.name} vào nhóm`,
+    );
+
+    return {
+      roomDetails: await this.buildGroupRoomDetails(actorUserId, roomId),
+      systemMessage,
+    };
   }
 
   async removeGroupMember(
     actorUserId: string,
     roomId: string,
     memberUserId: string,
-  ): Promise<GroupRoomDetails> {
+  ): Promise<GroupRoomMutationResult> {
     await this.assertGroupAdmin(actorUserId, roomId);
     if (memberUserId === actorUserId) {
       throw new BadRequestException(
@@ -125,22 +151,57 @@ export class ChatRoomService {
       );
     }
 
+    const currentMember = await this.groupRoomsRepository.findMember(
+      roomId,
+      memberUserId,
+    );
+    if (!currentMember) {
+      throw new NotFoundException('Thanh vien khong ton tai trong nhom');
+    }
+
+    const memberUser = await this.usersRepository.findByUserId(memberUserId);
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
     await this.groupRoomsRepository.removeMember(roomId, memberUserId);
-    return this.buildGroupRoomDetails(actorUserId, roomId);
+
+    const systemMessage = await this.createGroupSystemMessage(
+      actorUserId,
+      roomId,
+      `${actor?.name ?? 'Một thành viên'} đã xóa ${memberUser?.name ?? 'một thành viên'} khỏi nhóm`,
+    );
+
+    return {
+      roomDetails: await this.buildGroupRoomDetails(actorUserId, roomId),
+      systemMessage,
+    };
   }
 
   async leaveGroup(
     actorUserId: string,
     roomId: string,
-  ): Promise<GroupRoomDetails> {
+  ): Promise<GroupRoomMutationResult> {
     await this.assertGroupMembership(actorUserId, roomId);
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
     await this.groupRoomsRepository.removeMember(roomId, actorUserId);
-    const room = await this.getGroupRoom(roomId);
     const allMembers = await this.groupRoomsRepository.listMembers(roomId);
     if (allMembers.length === 0) {
       throw new Error('Cannot fetch group details after leaving');
     }
-    return this.buildGroupRoomDetails(allMembers[0].userId, roomId);
+
+    const systemMessage = await this.createGroupSystemMessage(
+      actorUserId,
+      roomId,
+      `${actor?.name ?? 'Một thành viên'} đã rời nhóm`,
+    );
+
+    return {
+      roomDetails: await this.buildGroupRoomDetails(
+        allMembers[0].userId,
+        roomId,
+      ),
+      systemMessage,
+    };
   }
 
   async promoteGroupMember(
@@ -178,7 +239,7 @@ export class ChatRoomService {
   async joinGroupByInvite(
     actorUserId: string,
     inviteCode: string,
-  ): Promise<GroupRoomDetails> {
+  ): Promise<GroupRoomMutationResult> {
     const room =
       await this.groupRoomsRepository.findRoomByInviteCode(inviteCode);
     if (!room) {
@@ -190,12 +251,32 @@ export class ChatRoomService {
       throw new NotFoundException('Nguoi dung khong ton tai');
     }
 
+    const existingMember = await this.groupRoomsRepository.findMember(
+      room.roomId,
+      actorUserId,
+    );
+    if (existingMember) {
+      return {
+        roomDetails: await this.buildGroupRoomDetails(actorUserId, room.roomId),
+      };
+    }
+
     await this.groupRoomsRepository.addMember(
       room.roomId,
       actorUserId,
       'MEMBER',
     );
-    return this.buildGroupRoomDetails(actorUserId, room.roomId);
+
+    const systemMessage = await this.createGroupSystemMessage(
+      actorUserId,
+      room.roomId,
+      `${userExists.name} đã tham gia nhóm`,
+    );
+
+    return {
+      roomDetails: await this.buildGroupRoomDetails(actorUserId, room.roomId),
+      systemMessage,
+    };
   }
 
   async sendGroupMessage(
@@ -241,6 +322,57 @@ export class ChatRoomService {
     return item;
   }
 
+  async createGroupCallLogMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+      outcome: CallLogOutcome;
+    },
+  ): Promise<MessageEntity> {
+    await this.assertGroupMembership(senderId, roomId);
+
+    const room = await this.getGroupRoom(roomId);
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+    const content = this.toGroupCallLogContent(payload.mode, payload.outcome);
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${room.roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: room.roomId,
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: room.roomId,
+      content,
+      messageType: 'CALL_LOG',
+      callLog: {
+        mode: payload.mode,
+        outcome: payload.outcome,
+        durationSeconds: 0,
+        actorUserId: senderId,
+        initiatorUserId: senderId,
+      },
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: content,
+    });
+
+    return item;
+  }
+
   async getChatRoomsForUser(userId: string): Promise<ChatRoomSummary[]> {
     const [messages, friends, groupMemberships] = await Promise.all([
       this.messagesRepository.findMessagesByUser(userId),
@@ -280,6 +412,7 @@ export class ChatRoomService {
           title: existed?.title ?? peerName,
           peerUserId,
           peerName,
+          avatarUrl: existed?.avatarUrl,
           preview: this.toRoomPreview(message),
           lastMessageAt: message.createdAt,
           unreadCount: (existed?.unreadCount ?? 0) + unreadDelta,
@@ -384,6 +517,7 @@ export class ChatRoomService {
         title: friend.name,
         peerUserId: friend.userId,
         peerName: friend.name,
+        avatarUrl: friend.avatarUrl,
         preview: 'Bat dau tro chuyen',
         lastMessageAt: friend.connectedAt,
         unreadCount: 0,
@@ -524,6 +658,7 @@ export class ChatRoomService {
         return {
           userId: user.userId,
           name: user.name,
+          ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
           role: member.role,
           ...(member.nickname ? { nickname: member.nickname } : {}),
           isOnline: this.presenceService.getPresence(user.userId).isOnline,
@@ -587,6 +722,56 @@ export class ChatRoomService {
     }
 
     return 'Bạn đã hủy';
+  }
+
+  private toGroupCallLogContent(
+    mode: 'voice' | 'video',
+    outcome: CallLogOutcome,
+  ): string {
+    const modeText = mode === 'video' ? 'video' : 'thoại';
+
+    if (outcome === 'connected_ended') {
+      return `Cuộc gọi nhóm ${modeText} kết thúc`;
+    }
+
+    return `Cuộc gọi nhóm ${modeText} bị hủy`;
+  }
+
+  private async createGroupSystemMessage(
+    senderId: string,
+    roomId: string,
+    content: string,
+  ): Promise<MessageEntity> {
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: roomId,
+      roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: roomId,
+      content,
+      messageType: 'SYSTEM',
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: content,
+    });
+
+    return item;
   }
 
   private toPeerName(peerUserId: string): string {

@@ -8,6 +8,7 @@ export interface GroupMemberSummary {
   userId: string;
   name: string;
   email: string;
+  avatarUrl?: string;
   role: "ADMIN" | "MEMBER";
   nickname?: string;
   isOnline: boolean;
@@ -219,6 +220,10 @@ export async function fetchRoomImages(roomId: string) {
     Array<{
       messageId: string;
       content: string;
+      messageType: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileSize?: number;
       createdAt: string;
       roomId?: string;
       roomType?: "PRIVATE" | "GROUP";
@@ -239,6 +244,10 @@ export async function fetchRoomFiles(roomId: string) {
     Array<{
       messageId: string;
       content: string;
+      messageType: string;
+      fileUrl?: string;
+      fileName?: string;
+      fileSize?: number;
       createdAt: string;
       roomId?: string;
       roomType?: "PRIVATE" | "GROUP";

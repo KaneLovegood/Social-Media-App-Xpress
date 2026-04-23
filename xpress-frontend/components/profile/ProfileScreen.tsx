@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from 'react';
-import { Shield, Lock, Bell, TextAlignJustify } from 'lucide-react';
+import { ChangeEvent, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Shield, Lock, Bell, Camera, TextAlignJustify } from 'lucide-react';
 import ChatAppRail from '@/components/chat/ChatAppRail';
-import { getProfileModel } from '@/modules/profile/profile.service';
+import { getProfileModel, updateProfileAvatar } from '@/modules/profile/profile.service';
 
 const noopSubscribe = () => () => {};
 
@@ -21,8 +21,36 @@ function StatusDot({ status }: { status: 'online' | 'offline' | 'unknown' }) {
 
 export default function ProfileScreen() {
   const isHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
-  const profile = useMemo(() => (isHydrated ? getProfileModel() : null), [isHydrated]);
+  const [profile, setProfile] = useState<ReturnType<typeof getProfileModel> | null>(null);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    setProfile(getProfileModel());
+  }, [isHydrated]);
+
+  const handleAvatarSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    try {
+      setIsUploadingAvatar(true);
+      const nextProfile = await updateProfileAvatar(file);
+      setProfile(nextProfile);
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Không thể cập nhật avatar, vui lòng thử lại.',
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   if (!isHydrated || !profile) {
     return <section className="h-full w-full bg-[#f3f4f6]" />;
@@ -48,11 +76,41 @@ export default function ProfileScreen() {
           <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <article className="rounded-xl bg-white p-6 shadow-[0_4px_20px_rgba(25,28,30,0.06)] sm:p-8">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-7">
-                <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#0052cc] to-[#3d83ff] text-2xl font-black text-white shadow-lg">
-                  {profile.initials}
-                  <span className="absolute bottom-1 right-1">
-                    <StatusDot status={profile.status} />
-                  </span>
+                <div className="flex shrink-0 flex-col items-center gap-3">
+                  <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-[#0052cc] to-[#3d83ff] text-2xl font-black text-white shadow-lg">
+                    {profile.avatarUrl ? (
+                      <img
+                        src={profile.avatarUrl}
+                        alt={`Avatar của ${profile.displayName}`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      profile.initials
+                    )}
+                    <span className="absolute bottom-1 right-1">
+                      <StatusDot status={profile.status} />
+                    </span>
+                  </div>
+
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      void handleAvatarSelect(event);
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={isUploadingAvatar}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#d8dce2] bg-white px-3 py-1.5 text-xs font-semibold text-[#2c3342] hover:bg-[#f6f7f9] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    {isUploadingAvatar ? 'Đang tải ảnh...' : 'Đổi avatar'}
+                  </button>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -144,6 +202,7 @@ export default function ProfileScreen() {
             />
             <ChatAppRail
               activeNav="profile"
+              avatarUrl={profile.avatarUrl || undefined}
               initials={profile.initials || undefined}
               mobileOpen
               onRequestClose={() => setIsMobileRailOpen(false)}

@@ -5,7 +5,13 @@ export interface ReplyPreview {
   content: string;
 }
 
-export type MessageType = 'TEXT' | 'CALL_LOG' | 'IMAGE' | 'FILE';
+export type MessageType =
+  | 'TEXT'
+  | 'CALL_LOG'
+  | 'IMAGE'
+  | 'FILE'
+  | 'VIDEO'
+  | 'SYSTEM';
 
 export type CallLogOutcome =
   | 'self_cancelled'

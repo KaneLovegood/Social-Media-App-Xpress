@@ -1,8 +1,10 @@
-import { PointerEvent, RefObject, useRef, useState } from 'react';
+import { PointerEvent, RefObject, useEffect, useRef, useState } from 'react';
+import { ICameraVideoTrack, IRemoteAudioTrack, IRemoteVideoTrack } from 'agora-rtc-sdk-ng';
 
 interface VideoCallOverlayProps {
-    localVideoRef: RefObject<HTMLVideoElement | null>;
-    remoteVideoRef: RefObject<HTMLVideoElement | null>;
+    localVideoTrack: ICameraVideoTrack | null;
+    remoteVideoTrack: IRemoteVideoTrack | null;
+    remoteAudioTrack: IRemoteAudioTrack | null;
     timerText: string;
     muted: boolean;
     cameraOff: boolean;
@@ -12,8 +14,9 @@ interface VideoCallOverlayProps {
 }
 
 export default function VideoCallOverlay({
-    localVideoRef,
-    remoteVideoRef,
+    localVideoTrack,
+    remoteVideoTrack,
+    remoteAudioTrack,
     timerText,
     muted,
     cameraOff,
@@ -21,6 +24,8 @@ export default function VideoCallOverlay({
     onToggleCamera,
     onEndCall,
 }: VideoCallOverlayProps) {
+    const localVideoRef = useRef<HTMLDivElement | null>(null);
+    const remoteVideoRef = useRef<HTMLDivElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const previewRef = useRef<HTMLDivElement | null>(null);
     const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
@@ -31,6 +36,30 @@ export default function VideoCallOverlay({
         baseX: number;
         baseY: number;
     } | null>(null);
+
+    useEffect(() => {
+        if (remoteAudioTrack) {
+            remoteAudioTrack.play();
+        }
+        return () => {
+            remoteAudioTrack?.stop();
+        };
+    }, [remoteAudioTrack]);
+
+    useEffect(() => {
+        if (remoteVideoTrack && remoteVideoRef.current) {
+            remoteVideoTrack.play(remoteVideoRef.current);
+        }
+        return () => {
+            remoteVideoTrack?.stop();
+        };
+    }, [remoteVideoTrack]);
+
+    useEffect(() => {
+        if (localVideoTrack && localVideoRef.current && !cameraOff) {
+            localVideoTrack.play(localVideoRef.current);
+        }
+    }, [localVideoTrack, cameraOff]);
 
     const handlePreviewPointerDown = (event: PointerEvent<HTMLDivElement>) => {
         const target = event.currentTarget;
@@ -90,11 +119,9 @@ export default function VideoCallOverlay({
     return (
         <section className="fixed inset-0 z-50 bg-[#ececf5] p-3 md:p-6 animate-fade-in">
             <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-[18px] border border-[#8aa2d8] bg-[#edf0fa] p-4 animate-rise-up">
-                <video
+                <div
                     ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="absolute inset-0 z-0 h-full w-full object-cover scale-110"
+                    className="absolute inset-0 z-0 h-full w-full bg-zinc-900"
                 />
 
                 <div className="relative z-20 flex items-center gap-3">
@@ -112,7 +139,7 @@ export default function VideoCallOverlay({
                     onPointerUp={handlePreviewPointerUp}
                     onPointerCancel={handlePreviewPointerUp}
                 >
-                    <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                    <div ref={localVideoRef} className="h-full w-full bg-zinc-800" />
                 </div>
 
                 <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white/88 px-5 py-3 shadow-xl backdrop-blur">

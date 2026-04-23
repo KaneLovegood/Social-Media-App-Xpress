@@ -12,9 +12,12 @@ interface ChatContentProps {
   orderTitle: string;
   typingText: string;
   isPeerOnline: boolean;
+  isGroup: boolean;
   activeMessages: ChatMessage[];
   currentUserId: string;
   currentUserName: string;
+  senderNameById: Record<string, string>;
+  senderAvatarById: Record<string, string>;
   listRef: React.RefObject<HTMLUListElement | null>;
   replyTo: ReplyPreview | undefined;
   onBackToList: () => void;
@@ -41,9 +44,12 @@ export default function ChatContent({
   orderTitle,
   typingText,
   isPeerOnline,
+  isGroup,
   activeMessages,
   currentUserId,
   currentUserName,
+  senderNameById,
+  senderAvatarById,
   listRef,
   replyTo,
   onBackToList,
@@ -77,6 +83,7 @@ export default function ChatContent({
         orderTitle={orderTitle}
         typingText={typingText}
         isPeerOnline={isPeerOnline}
+        isGroup={isGroup}
         onBack={onBackToList}
         onOpenInfo={onOpenInfo}
         onOpenVoiceCall={onOpenVoiceCall}
@@ -89,6 +96,8 @@ export default function ChatContent({
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           peerName={peerName}
+          senderNameById={senderNameById}
+          senderAvatarById={senderAvatarById}
           listRef={listRef}
           onReply={onReply}
           onForward={onForward}
@@ -105,12 +114,12 @@ export default function ChatContent({
           }
           className="flex-1"
         />
-          <MessageInput
-            replyTo={replyTo}
-            onClearReply={onClearReply}
-            onSend={onSend}
-            onTyping={onTyping}
-          />
+        <MessageInput
+          replyTo={replyTo}
+          onClearReply={onClearReply}
+          onSend={onSend}
+          onTyping={onTyping}
+        />
       </div>
 
       <ImageViewerModal

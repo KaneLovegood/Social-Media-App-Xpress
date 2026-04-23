@@ -14,6 +14,7 @@ export interface UserEntity {
   passwordHash: string;
   role: UserRole;
   status: UserStatus;
+  avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

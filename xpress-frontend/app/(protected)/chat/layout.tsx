@@ -13,9 +13,13 @@ interface ChatLayoutProps {
 
 const noopSubscribe = () => () => {};
 
-type ActiveNav = 'chat' | 'contacts' | 'profile';
+type ActiveNav = 'newsfeed' | 'chat' | 'contacts' | 'profile';
 
 function resolveActiveNav(pathname: string): ActiveNav {
+  if (pathname.startsWith('/chat/news-feed')) {
+    return 'newsfeed';
+  }
+
   if (pathname.startsWith('/chat/contacts')) {
     return 'contacts';
   }
@@ -49,9 +53,17 @@ export default function ChatLayout({ children }: ChatLayoutProps) {
   const activeNav = resolveActiveNav(pathname || '/chat/me');
   const initials = toInitials(currentUser?.name);
 
-  const handleLogout = () => {
-    logoutProfile();
-    router.replace('/login');
+  const handleLogout = async () => {
+    try {
+      await logoutProfile();
+      router.replace('/login');
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : 'Đăng xuất thất bại, vui lòng thử lại.',
+      );
+    }
   };
 
   return (
@@ -59,6 +71,7 @@ export default function ChatLayout({ children }: ChatLayoutProps) {
       <ChatAppRail
         activeNav={activeNav}
         fixed
+        avatarUrl={currentUser?.avatarUrl || undefined}
         initials={initials || undefined}
         onLogout={handleLogout}
       />

@@ -40,6 +40,10 @@ function getForwardPreview(message: ChatMessage | null): string {
     return message.content || "Ảnh";
   }
 
+  if (message.messageType === "VIDEO") {
+    return message.content || "Video";
+  }
+
   if (message.messageType === "CALL_LOG") {
     return message.content || "Nhật ký cuộc gọi";
   }

@@ -10,13 +10,17 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import { LoginTicket, OAuth2Client } from 'google-auth-library';
 import { JwtService } from '@nestjs/jwt';
+import { DeviceSessionService } from '../device-session/device-session.service';
 import { AuthSessionGateway } from './auth-session.gateway';
 import { EmailOtpService } from './email-otp.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import {
   EmailOtpEntity,
@@ -48,6 +52,10 @@ interface SessionClientContext {
   userAgent?: string;
 }
 
+interface LogoutContext {
+  authorizationHeader?: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -60,6 +68,8 @@ export class AuthService {
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
   private readonly googleClient = new OAuth2Client();
+  private readonly googleAllowedAudiences: string[] =
+    AuthService.resolveGoogleAudiences();
 
   constructor(
     private readonly usersRepository: UsersRepository,
@@ -68,6 +78,7 @@ export class AuthService {
     private readonly authSessionGateway: AuthSessionGateway,
     private readonly emailOtpService: EmailOtpService,
     private readonly jwtService: JwtService,
+    private readonly deviceSessionService: DeviceSessionService,
   ) {}
 
   async register(dto: RegisterDto, context: SessionClientContext = {}) {
@@ -101,10 +112,23 @@ export class AuthService {
 
     await this.usersRepository.createUser(user);
 
+    const deviceId =
+      dto.deviceId && dto.deviceId.trim().length > 0
+        ? dto.deviceId.trim()
+        : `register-${randomUUID()}`;
+    const deviceName =
+      dto.deviceName && dto.deviceName.trim().length > 0
+        ? dto.deviceName.trim()
+        : 'Thiết bị đăng ký';
+    const timezone =
+      dto.timezone && dto.timezone.trim().length > 0
+        ? dto.timezone.trim()
+        : 'UTC';
+
     return this.buildAuthResponse(user, {
-      deviceId: `register-${randomUUID()}`,
-      deviceName: 'Thiết bị đăng ký',
-      timezone: 'UTC',
+      deviceId,
+      deviceName,
+      timezone,
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
@@ -116,6 +140,7 @@ export class AuthService {
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -137,7 +162,7 @@ export class AuthService {
       }
     }
 
-    if (purpose === 'LOGIN') {
+    if (purpose === 'LOGIN' || purpose === 'CHANGE_PASSWORD') {
       const existed = await this.usersRepository.findByEmail(normalizedEmail);
       if (!existed) {
         throw new BadRequestException('Email chưa được đăng ký');
@@ -229,12 +254,48 @@ export class AuthService {
     };
   }
 
+  async resetPassword(dto: ResetPasswordDto) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const user = await this.usersRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      throw new BadRequestException('Email chưa được đăng ký');
+    }
+
+    let payload: OtpTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<OtpTokenPayload>(
+        dto.otpToken,
+      );
+    } catch {
+      throw new BadRequestException('OTP token không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (
+      payload.type !== 'otp' ||
+      payload.email !== normalizedEmail ||
+      payload.purpose !== 'CHANGE_PASSWORD'
+    ) {
+      throw new BadRequestException('OTP token không hợp lệ');
+    }
+
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, rounds);
+
+    await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
+    await this.sessionRepository.deactivateAllSessions(user.userId);
+    await this.deviceSessionService.revokeSession(user.userId);
+
+    return {
+      success: true,
+    };
+  }
+
   async loginWithGoogle(
     dto: GoogleAuthDto,
     context: SessionClientContext = {},
   ) {
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
+    if (this.googleAllowedAudiences.length === 0) {
       throw new UnauthorizedException('Google auth chưa được cấu hình');
     }
 
@@ -242,9 +303,17 @@ export class AuthService {
     try {
       ticket = await this.googleClient.verifyIdToken({
         idToken: dto.idToken,
-        audience: googleClientId,
+        // google-auth-library accepts a string[] and matches the token `aud`
+        // against any entry. That lets a single backend accept tokens issued
+        // for Web, Android, and iOS OAuth client IDs.
+        audience: this.googleAllowedAudiences,
       });
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `Google token verification failed (platform=${dto.platform ?? 'unknown'}): ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
       throw new UnauthorizedException('Google token không hợp lệ');
     }
 
@@ -277,6 +346,7 @@ export class AuthService {
         passwordHash,
         role: 'CUSTOMER',
         status: 'ACTIVE',
+        avatarUrl: payload.picture,
         createdAt: now,
         updatedAt: now,
       };
@@ -284,6 +354,7 @@ export class AuthService {
       await this.usersRepository.createUser(user);
       this.logger.log(`Created new user from Google auth: ${user.userId}`);
     }
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
@@ -292,6 +363,28 @@ export class AuthService {
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
+  }
+
+  async updateAvatar(userId: string, dto: UpdateAvatarDto) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    const avatarUrl = dto.avatarUrl.trim();
+    await this.usersRepository.updateAvatarUrl(userId, avatarUrl);
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl,
+      },
+    };
   }
 
   async refresh(dto: RefreshTokenDto) {
@@ -342,29 +435,26 @@ export class AuthService {
     return this.buildAuthResponseFromSession(user, session);
   }
 
-  async logout(dto: RefreshTokenDto) {
-    if (!this.refreshTokenSecret) {
-      throw new UnauthorizedException('Refresh token chưa được cấu hình');
+  async logout(dto: LogoutDto, context: LogoutContext = {}) {
+    const fromRefreshToken = await this.resolveLogoutSessionFromRefreshToken(
+      dto.refreshToken,
+    );
+    const fromAccessToken =
+      fromRefreshToken == null
+        ? await this.resolveLogoutSessionFromAccessToken(
+            context.authorizationHeader,
+          )
+        : null;
+
+    const session = fromRefreshToken ?? fromAccessToken;
+    if (!session) {
+      throw new UnauthorizedException('Token đăng xuất không hợp lệ');
     }
 
-    let payload: JwtPayload;
-    try {
-      payload = await this.jwtService.verifyAsync<JwtPayload>(
-        dto.refreshToken,
-        {
-          secret: this.refreshTokenSecret,
-        },
-      );
-    } catch {
-      throw new UnauthorizedException('Refresh token không hợp lệ');
-    }
-    if (!payload.sid) {
-      throw new UnauthorizedException('Token session không hợp lệ');
-    }
-
-    await this.sessionRepository.deactivateSession(payload.sub, payload.sid);
-    this.authSessionGateway.notifySessionRevoked(payload.sub, {
-      sessionId: payload.sid,
+    await this.sessionRepository.deactivateAllSessions(session.userId);
+    await this.deviceSessionService.revokeSession(session.userId);
+    this.authSessionGateway.notifySessionRevoked(session.userId, {
+      sessionId: session.sessionId,
       revokedAt: new Date().toISOString(),
     });
 
@@ -462,6 +552,20 @@ export class AuthService {
 
     const response = await this.buildAuthResponseFromSession(user, session);
 
+    // Bind the (userId, deviceId, sessionId) triple in MongoDB. If this
+    // replaces a previous device binding, the service will emit FORCE_LOGOUT
+    // to that device's /device-sessions socket so a live mobile/web app
+    // can clear its tokens and redirect to /login immediately. If the old
+    // device is backgrounded/offline, its next API call will 401 because
+    // JwtStrategy double-checks `currentSessionId` in MongoDB.
+    await this.deviceSessionService.bindDevice({
+      userId: user.userId,
+      deviceId: sessionContext.deviceId,
+      sessionId,
+      deviceName: sessionContext.deviceName,
+      platform: this.inferPlatform(sessionContext.userAgent),
+    });
+
     const isNewDeviceLogin = !existingSession;
     if (isNewDeviceLogin && activeSessions.length > 0) {
       this.authSessionGateway.notifyNewLogin(user.userId, {
@@ -473,6 +577,15 @@ export class AuthService {
     }
 
     return response;
+  }
+
+  private inferPlatform(userAgent?: string): string {
+    if (!userAgent) return 'unknown';
+    const ua = userAgent.toLowerCase();
+    if (ua.includes('android')) return 'android';
+    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+    if (ua.includes('capacitor')) return 'native';
+    return 'web';
   }
 
   private async buildAuthResponseFromSession(
@@ -535,6 +648,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
       },
     };
   }
@@ -555,6 +669,106 @@ export class AuthService {
       session.refreshTokenHash,
       session.refreshTokenExpiresAt,
     );
+  }
+
+  /**
+   * Single-device-session policy.
+   *
+   * Previous behaviour threw a 403 when another device was already active.
+   * The new policy is "last login wins": we deactivate every session except
+   * the one tied to the incoming deviceId (if any). The FORCE_LOGOUT socket
+   * notification is handled separately by `DeviceSessionService.bindDevice`
+   * (invoked from `buildAuthResponse`).
+   */
+  private async releaseOtherDeviceSessions(
+    userId: string,
+    deviceId: string,
+  ): Promise<void> {
+    const deviceFingerprintHash = this.hashDeviceFingerprint(deviceId);
+    const activeSessions =
+      await this.sessionRepository.findActiveSessions(userId);
+
+    if (activeSessions.length === 0) {
+      return;
+    }
+
+    const staleSessions = activeSessions.filter(
+      (session) => session.deviceFingerprintHash !== deviceFingerprintHash,
+    );
+    if (staleSessions.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      staleSessions.map((session) =>
+        this.sessionRepository.deactivateSession(userId, session.sessionId),
+      ),
+    );
+  }
+
+  private async resolveLogoutSessionFromRefreshToken(
+    refreshToken?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    if (!refreshToken || !this.refreshTokenSecret) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(
+        refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
+
+      if (payload.type !== 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveLogoutSessionFromAccessToken(
+    authorizationHeader?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    const token = this.extractBearerToken(authorizationHeader);
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+      if (payload.type === 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private extractBearerToken(authorizationHeader?: string): string | null {
+    if (!authorizationHeader) {
+      return null;
+    }
+
+    const trimmed = authorizationHeader.trim();
+    if (!trimmed.toLowerCase().startsWith('bearer ')) {
+      return null;
+    }
+
+    const token = trimmed.slice(7).trim();
+    return token.length > 0 ? token : null;
   }
 
   private async assertVerifiedOtpToken(
@@ -586,5 +800,34 @@ export class AuthService {
 
   private hashDeviceFingerprint(deviceId: string): string {
     return createHash('sha256').update(deviceId.trim()).digest('hex');
+  }
+
+  /**
+   * Collect every allowed Google OAuth `aud` value.
+   *
+   * Supports three env shapes so teams can pick what they prefer:
+   *  - GOOGLE_CLIENT_ID               Web OAuth Client ID (legacy, still supported)
+   *  - GOOGLE_CLIENT_ID_WEB           Web OAuth Client ID
+   *  - GOOGLE_CLIENT_ID_ANDROID       Android OAuth Client ID
+   *  - GOOGLE_CLIENT_ID_IOS           iOS OAuth Client ID
+   *  - GOOGLE_CLIENT_IDS              Comma-separated list (wins over the above if set)
+   *
+   * Duplicates are removed so `verifyIdToken` gets a clean list.
+   */
+  private static resolveGoogleAudiences(): string[] {
+    const fromList = (process.env.GOOGLE_CLIENT_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    const individualIds = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_ID_WEB,
+      process.env.GOOGLE_CLIENT_ID_ANDROID,
+      process.env.GOOGLE_CLIENT_ID_IOS,
+    ].filter((value): value is string => !!value && value.trim().length > 0);
+
+    const combined = [...fromList, ...individualIds.map((v) => v.trim())];
+    return Array.from(new Set(combined));
   }
 }

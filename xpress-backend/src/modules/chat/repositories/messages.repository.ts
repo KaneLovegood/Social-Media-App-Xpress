@@ -242,7 +242,10 @@ export class MessagesRepository {
     return messages.filter(
       (message) =>
         !message.isDeleted &&
-        /\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content),
+        (message.messageType === 'IMAGE' ||
+          message.messageType === 'VIDEO' ||
+          (!message.messageType &&
+            /\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content))),
     );
   }
 
@@ -253,8 +256,10 @@ export class MessagesRepository {
     return messages.filter(
       (message) =>
         !message.isDeleted &&
-        /\.[a-z0-9]{2,5}$/i.test(message.content) &&
-        !/\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content),
+        (message.messageType === 'FILE' ||
+          (!message.messageType &&
+            /\.[a-z0-9]{2,5}$/i.test(message.content) &&
+            !/\.(jpg|jpeg|png|gif|webp|mp4|mov|webm)$/i.test(message.content))),
     );
   }
 }
