@@ -54,11 +54,63 @@ export class McpService {
     }
 
     try {
-      const messages: ChatCompletionMessageParam[] = [];
+      const systemPrompt = `Bạn là một trợ lý Logistics AI thông minh. 
+Khi người dùng upload file hoặc gửi một URL file mới:
+1. Đầu tiên, bạn PHẢI sử dụng công cụ 'logistics_upload_document' để parse và index nội dung file vào cơ sở dữ liệu.
+2. Sau khi index thành công, bạn mới có thể sử dụng 'logistics_ask_question' để tìm kiếm thông tin và trả lời các câu hỏi liên quan đến nội dung file đó.
+KHÔNG sử dụng 'logistics_summarize_topic' để tóm tắt các file người dùng đã upload.
+
+Dưới đây là thông tin định danh của người dùng hiện tại (bạn):
+- userId (actorUserId): ${userId}
+
+Nếu người dùng muốn tìm kiếm người dùng khác hoặc kết bạn:
+1. Sử dụng 'social_search_user' với email người dùng cung cấp và actorUserId của bạn.
+2. Kiểm tra 'friendStatus' trong kết quả trả về.
+3. Nếu chưa kết bạn, sử dụng 'social_send_friend_request' với actorUserId của bạn và targetUserId tìm được.
+4. Bạn có thể dùng 'social_list_friends' để liệt kê toàn bộ bạn bè hoặc xem có yêu cầu kết bạn nào đang chờ không. Khi hiển thị danh sách, hãy liệt kê đầy đủ Tên (name), Email, và Trạng thái (status) của từng người.
+5. Để chấp nhận hoặc từ chối yêu cầu kết bạn, dùng 'social_accept_reject_friend' với targetUserId và action (ACCEPT/REJECT).
+
+Nếu người dùng muốn tạo nhóm chat hoặc thêm người vào nhóm:
+- LUÔN hỏi tên nhóm (title) nếu người dùng chưa cung cấp.
+- Nếu bạn đã tìm thấy userId từ bước 'social_search_user' trước đó, hãy dùng ngay userId đó cho 'social_add_to_group', KHÔNG cần gọi lại tool search nếu thông tin đã có trong lịch sử chat.
+- Quy trình: Tạo nhóm mới bằng 'social_create_group' -> Lấy roomId từ kết quả -> Thêm thành viên bằng 'social_add_to_group' với roomId đó và targetUserId.
+- Bạn CÓ THỂ gọi nhiều tool liên tiếp trong một lượt nếu đã đủ thông tin.
+- Dùng 'social_list_my_groups' để xem danh sách nhóm hiện có của bạn.
+
+Nếu chưa đủ thông tin (ví dụ thiếu quy trình, thiếu dữ liệu để thực hiện tool, thiếu email, thiếu tên nhóm, ...), hãy trả lời hoặc đặt câu hỏi và yêu cầu người dùng cung cấp thêm một cách thân thiện.
+Khi đã thực hiện xong các bước (tạo nhóm, thêm người), hãy xác nhận rõ ràng với người dùng.
+Luôn trả lời bằng tiếng Việt.`;
+
+      const messages: ChatCompletionMessageParam[] = [
+        { role: 'system', content: systemPrompt },
+      ];
+
+      // Load conversation history if userId is provided
+      if (userId) {
+        const history = await this.mcpHistoryService.getHistory(userId);
+        // Take the last 10 messages to maintain relevant context without excessive tokens
+        const recentHistory = history.slice(-10);
+
+        for (const entry of recentHistory) {
+          messages.push({
+            role: entry.role === 'ai' ? 'assistant' : 'user',
+            content: entry.message,
+          });
+
+          // If the historical message had a file, remind the AI about its context
+          if (entry.fileUrl) {
+            messages.push({
+              role: 'system',
+              content: `[Context] Bạn đã xử lý file tại URL: ${entry.fileUrl}`,
+            });
+          }
+        }
+      }
+
       if (fileUrl) {
         messages.push({
           role: 'system',
-          content: `Người dùng vừa upload file tại URL: ${fileUrl}. Hãy xử lý file này bằng công cụ nếu cần.`,
+          content: `Người dùng vừa upload file tại URL: ${fileUrl}. Hãy sử dụng các công cụ logistics để phân tích file này nếu cần thiết.`,
         });
       }
 
@@ -78,90 +130,96 @@ export class McpService {
       }));
 
       this.logger.log(`Calling LLM API (OpenRouter) to decide actions...`);
-      // 1. Gọi LLM qua OpenRouter
-      const completion = await this.openai.chat.completions.create({
-        model: process.env.OPENROUTER_MODEL || 'openrouter/free',
-        messages: messages,
-        tools: openaiTools.length > 0 ? openaiTools : undefined,
-      });
 
-      const responseMessage = completion.choices[0].message;
-      this.logger.log(
-        `Received answer from LLM. Tool calls present: ${!!responseMessage.tool_calls}`,
-      );
+      let finalReply = '';
+      let iteration = 0;
+      const MAX_ITERATIONS = 5;
 
-      // 2. Chạy tool nếu có
-      if (responseMessage.tool_calls) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        messages.push(responseMessage as any);
-
-        for (const toolCall of responseMessage.tool_calls) {
-          if (toolCall.type !== 'function') continue;
-
-          const functionName = toolCall.function.name;
-          const functionArgs = JSON.parse(
-            toolCall.function.arguments,
-          ) as Record<string, unknown>;
-
-          this.logger.log(
-            `Executing MCP Tool: [${functionName}] with args:`,
-            functionArgs,
-          );
-
-          const mcpResult = await this.mcpClientService.callTool(
-            functionName,
-            functionArgs,
-          );
-
-          this.logger.log(
-            `MCP Tool execution finished. Calling LLM again with results...`,
-          );
-
-          const mcpContent = mcpResult.content as any[];
-          const mcpTextContext =
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
-            mcpContent?.map((c: any) => c.text).join('\n') ||
-            'Action completed';
-
-          messages.push({
-            tool_call_id: toolCall.id,
-            role: 'tool',
-            content: mcpTextContext,
-          });
-        }
-
-        // 3. Gửi kết quả lại cho LLM
-        const secondResponse = await this.openai.chat.completions.create({
-          model: process.env.OPENROUTER_MODEL || 'openrouter/free',
+      while (iteration < MAX_ITERATIONS) {
+        iteration++;
+        const completion = await this.openai.chat.completions.create({
+          model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
           messages: messages,
+          tools: openaiTools.length > 0 ? openaiTools : undefined,
+          tool_choice: 'auto',
+          temperature: 0,
         });
 
-        this.logger.log(
-          `Received final answer from LLM combined with Tool results.`,
-        );
-        const finalReply = secondResponse.choices[0].message.content || '';
-        if (userId) {
-          await this.mcpHistoryService.saveMessage(
-            'AI_ASSISTANT',
-            userId,
-            finalReply,
-            userId,
+        const responseMessage = completion.choices[0].message;
+
+        if (
+          responseMessage.tool_calls &&
+          responseMessage.tool_calls.length > 0
+        ) {
+          this.logger.log(
+            `Iteration ${iteration}: Received ${responseMessage.tool_calls.length} tool calls.`,
           );
+          messages.push(responseMessage);
+
+          for (const toolCall of responseMessage.tool_calls) {
+            if (toolCall.type !== 'function') continue;
+
+            const functionName = toolCall.function.name;
+            const functionArgs = JSON.parse(
+              toolCall.function.arguments,
+            ) as Record<string, unknown>;
+
+            this.logger.log(`Executing Tool: [${functionName}]`, functionArgs);
+
+            try {
+              const mcpResult = await this.mcpClientService.callTool(
+                functionName,
+                functionArgs,
+              );
+
+              const mcpContent = mcpResult.content as Array<{ text: string }>;
+              const mcpTextContext =
+                mcpContent?.map((c) => c.text).join('\n') ||
+                'Action completed successfully.';
+
+              messages.push({
+                tool_call_id: toolCall.id,
+                role: 'tool',
+                content: mcpTextContext,
+              });
+            } catch (error: unknown) {
+              const toolError = error as Error;
+              this.logger.error(
+                `Error calling tool ${functionName}:`,
+                toolError.message,
+              );
+              messages.push({
+                tool_call_id: toolCall.id,
+                role: 'tool',
+                content: `Error: ${toolError.message}`,
+              });
+            }
+          }
+          // Continue loop to give LLM a chance to process tool results and potentially call more tools
+          continue;
         }
-        return { reply: finalReply };
+
+        // No more tool calls, we have the final content
+        finalReply = responseMessage.content || '';
+        this.logger.log(`Iteration ${iteration}: Final answer received.`);
+        break;
       }
 
-      this.logger.log(`Received answer from LLM with NO tool calls.`);
-      const reply = responseMessage.content || '';
-      if (userId) {
+      if (iteration >= MAX_ITERATIONS) {
+        this.logger.warn(
+          `Reached MAX_ITERATIONS (${MAX_ITERATIONS}) in tool execution loop.`,
+        );
+      }
+
+      if (userId && finalReply) {
         await this.mcpHistoryService.saveMessage(
           'AI_ASSISTANT',
           userId,
-          reply,
+          finalReply,
           userId,
         );
       }
-      return { reply };
+      return { reply: finalReply };
     } catch (error: any) {
       this.logger.error('Error in chatWithMcp:', error);
       throw error;

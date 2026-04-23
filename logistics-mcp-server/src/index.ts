@@ -8,6 +8,7 @@ import { DocumentService } from "./services/document.service.js";
 import { IntelligenceService } from "./services/intelligence.service.js";
 import { ExecutionService } from "./services/execution.service.js";
 import { WebSearchService } from "./services/web-search.service.js";
+import { SocialService } from "./services/social.service.js";
 import { CacheService } from "./services/cache.service.js";
 import { S3Service } from "./services/s3.service.js";
 
@@ -32,6 +33,7 @@ const documentService = new DocumentService(searchService, cacheService, s3Servi
 const intelligenceService = new IntelligenceService(searchService, OPENROUTER_API_KEY);
 const executionService = new ExecutionService(OPENROUTER_API_KEY);
 const webSearchService = new WebSearchService(SERPER_API_KEY);
+const socialService = new SocialService();
 
 const server = new McpServer({
   name: "logistics-mcp-server",
@@ -87,8 +89,8 @@ server.tool(
 
 server.tool(
   "logistics_ask_question",
-  "Answer logistics questions using RAG.",
-  { question: z.string().describe("The logistics question") },
+  "Use this tool to ask questions, retrieve information, or summarize content from previously uploaded and indexed documents. It uses Vector Search (RAG) to find internal knowledge from your files.",
+  { question: z.string().describe("The logistics question or summary request for indexed documents") },
   async ({ question }) => {
     try {
       const answer = await intelligenceService.askQuestion(question);
@@ -117,14 +119,135 @@ server.tool(
 
 server.tool(
   "logistics_summarize_topic",
-  "Summarize a logistics topic.",
-  { topic: z.string().describe("The logistics topic to summarize") },
+  "Summarize a general logistics topic using general LLM knowledge. DO NOT use this tool for summarizing specific documents you have uploaded; use 'logistics_ask_question' for that.",
+  { topic: z.string().describe("The general logistics topic to summarize (not for specific files)") },
   async ({ topic }) => {
     try {
       const summary = await intelligenceService.summarizeTopic(topic);
       return { content: [{ type: "text", text: summary }] };
     } catch (error: any) {
       return { content: [{ type: "text", text: `Summarize error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+// --- 5.3 Social Tools ---
+
+server.tool(
+  "social_search_user",
+  "Tìm kiếm người dùng theo email và xem trạng thái bạn bè hiện tại giữa bạn và người đó.",
+  { 
+    email: z.string().describe("Email của người dùng cần tìm"),
+    actorUserId: z.string().describe("UserId của bạn (lấy từ system context)")
+  },
+  async ({ email, actorUserId }) => {
+    try {
+      const users = await socialService.searchUserByEmail(email, actorUserId);
+      return { content: [{ type: "text", text: JSON.stringify(users, null, 2) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Social search error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_send_friend_request",
+  "Gửi lời mời kết bạn tới một người dùng cụ thể bằng targetUserId.",
+  { 
+    actorUserId: z.string().describe("UserId của bạn (lấy từ system context)"),
+    targetUserId: z.string().describe("UserId của người nhận lời mời")
+  },
+  async ({ actorUserId, targetUserId }) => {
+    try {
+      const result = await socialService.sendFriendRequest(actorUserId, targetUserId);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Send friend request error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_create_group",
+  "Tạo một nhóm chat mới với tiêu đề (title).",
+  { 
+    title: z.string().describe("Tên của nhóm chat mới"),
+    actorUserId: z.string().describe("UserId của bạn (lấy từ system context)")
+  },
+  async ({ title, actorUserId }) => {
+    try {
+      const result = await socialService.createGroup(title, actorUserId);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Create group error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_add_to_group",
+  "Thêm một người dùng (targetUserId) vào nhóm chat (roomId).",
+  { 
+    roomId: z.string().describe("ID của nhóm chat"),
+    targetUserId: z.string().describe("UserId của người cần thêm vào"),
+    actorUserId: z.string().describe("UserId của bạn (phải là ADMIN nhóm)")
+  },
+  async ({ roomId, targetUserId, actorUserId }) => {
+    try {
+      const result = await socialService.addMemberToGroup(roomId, targetUserId, actorUserId);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Add member to group error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_list_my_groups",
+  "Liệt kê danh sách các nhóm chat mà bạn đang tham gia.",
+  { 
+    actorUserId: z.string().describe("UserId của bạn")
+  },
+  async ({ actorUserId }) => {
+    try {
+      const groups = await socialService.listMyGroups(actorUserId);
+      return { content: [{ type: "text", text: JSON.stringify(groups, null, 2) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `List groups error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_list_friends",
+  "Liệt kê danh sách bạn bè và các yêu cầu kết bạn của bạn.",
+  { 
+    actorUserId: z.string().describe("UserId của bạn")
+  },
+  async ({ actorUserId }) => {
+    try {
+      const friends = await socialService.listFriends(actorUserId);
+      return { content: [{ type: "text", text: JSON.stringify(friends, null, 2) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `List friends error: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "social_accept_reject_friend",
+  "Chấp nhận hoặc từ chối một yêu cầu kết bạn.",
+  { 
+    actorUserId: z.string().describe("UserId của bạn"),
+    targetUserId: z.string().describe("UserId của người gửi lời mời"),
+    action: z.enum(["ACCEPT", "REJECT"]).describe("Action cần thực hiện")
+  },
+  async ({ actorUserId, targetUserId, action }) => {
+    try {
+      const result = await socialService.handleFriendRequest(actorUserId, targetUserId, action);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Handle friend request error: ${error.message}` }], isError: true };
     }
   }
 );

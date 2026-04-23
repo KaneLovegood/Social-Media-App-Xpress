@@ -95,8 +95,8 @@ export class DocumentService {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
-    // Revert to a model that is more likely to handle 'file' type correctly
-    const model = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+    // Use gemini-2.0-flash for document parsing as it has native PDF support
+    const model = "google/gemini-2.0-flash-001";
     
     try {
       const base64Data = fileBuffer.toString("base64");
@@ -114,21 +114,12 @@ export class DocumentService {
                   text: "Please extract all text content from this document precisely. Return only the extracted text content without any additional comments."
                 },
                 {
-                  type: "file",
-                  file: {
-                    name: fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`,
-                    data: base64Data
+                  type: "image_url", // OpenRouter often uses image_url for base64 files for Gemini
+                  image_url: {
+                    url: `data:application/pdf;base64,${base64Data}`
                   }
                 }
               ]
-            }
-          ],
-          plugins: [
-            {
-              id: "file-parser",
-              pdf: {
-                engine: "cloudflare-ai"
-              }
             }
           ]
         },
