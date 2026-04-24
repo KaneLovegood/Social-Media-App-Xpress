@@ -8,8 +8,9 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomInt, randomUUID } from 'crypto';
-import { LoginTicket, OAuth2Client } from 'google-auth-library';
+import * as admin from 'firebase-admin';
 import { JwtService } from '@nestjs/jwt';
+import { FirebaseAdminService } from '../../common/firebase/firebase-admin.service';
 import { DeviceSessionService } from '../device-session/device-session.service';
 import { AuthSessionGateway } from './auth-session.gateway';
 import { EmailOtpService } from './email-otp.service';
@@ -67,9 +68,6 @@ export class AuthService {
     process.env.REFRESH_TOKEN_EXPIRES_IN ?? '30d';
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
-  private readonly googleClient = new OAuth2Client();
-  private readonly googleAllowedAudiences: string[] =
-    AuthService.resolveGoogleAudiences();
 
   constructor(
     private readonly usersRepository: UsersRepository,
@@ -79,6 +77,7 @@ export class AuthService {
     private readonly emailOtpService: EmailOtpService,
     private readonly jwtService: JwtService,
     private readonly deviceSessionService: DeviceSessionService,
+    private readonly firebaseAdmin: FirebaseAdminService,
   ) {}
 
   async register(dto: RegisterDto, context: SessionClientContext = {}) {
@@ -291,41 +290,38 @@ export class AuthService {
     };
   }
 
+  /**
+   * Sign in / sign up via a Firebase ID token.
+   *
+   * Flow:
+   *   1. Client authenticates with Firebase (Google provider) and obtains a
+   *      Firebase ID token.
+   *   2. We verify the ID token with the Firebase Admin SDK. This validates
+   *      signature, `aud` (project id), issuer, expiry, and that the user has
+   *      not been disabled/revoked.
+   *   3. We require the token to have been minted via the Google provider.
+   *   4. We find-or-create a local user by email and return our own JWT pair.
+   */
   async loginWithGoogle(
     dto: GoogleAuthDto,
     context: SessionClientContext = {},
   ) {
-    if (this.googleAllowedAudiences.length === 0) {
-      throw new UnauthorizedException('Google auth chưa được cấu hình');
-    }
+    const decoded = await this.verifyFirebaseIdToken(dto.idToken, dto.platform);
 
-    let ticket: LoginTicket;
-    try {
-      ticket = await this.googleClient.verifyIdToken({
-        idToken: dto.idToken,
-        // google-auth-library accepts a string[] and matches the token `aud`
-        // against any entry. That lets a single backend accept tokens issued
-        // for Web, Android, and iOS OAuth client IDs.
-        audience: this.googleAllowedAudiences,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Google token verification failed (platform=${dto.platform ?? 'unknown'}): ${
-          error instanceof Error ? error.message : 'unknown error'
-        }`,
+    const signInProvider = decoded.firebase?.sign_in_provider;
+    if (signInProvider && signInProvider !== 'google.com') {
+      throw new UnauthorizedException(
+        `Nhà cung cấp đăng nhập không hỗ trợ: ${signInProvider}`,
       );
-      throw new UnauthorizedException('Google token không hợp lệ');
+    }
+    if (!decoded.email) {
+      throw new UnauthorizedException('Firebase token không chứa email');
+    }
+    if (decoded.email_verified === false) {
+      throw new UnauthorizedException('Email Firebase chưa được xác thực');
     }
 
-    const payload = ticket.getPayload();
-    if (!payload?.email) {
-      throw new UnauthorizedException('Google token không chứa email');
-    }
-    if (!payload.email_verified) {
-      throw new UnauthorizedException('Email Google chưa được xác thực');
-    }
-
-    const normalizedEmail = this.usersRepository.normalizeEmail(payload.email);
+    const normalizedEmail = this.usersRepository.normalizeEmail(decoded.email);
     let user = await this.usersRepository.findByEmail(normalizedEmail);
 
     if (!user) {
@@ -333,6 +329,10 @@ export class AuthService {
       const now = new Date().toISOString();
       const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
       const passwordHash = await bcrypt.hash(randomUUID(), rounds);
+      const nameFromToken =
+        typeof decoded.name === 'string' ? decoded.name.trim() : '';
+      const displayName =
+        nameFromToken || normalizedEmail.split('@')[0] || 'User';
 
       user = {
         PK: `USER#${userId}`,
@@ -341,18 +341,20 @@ export class AuthService {
         GSI1SK: `USER#${userId}`,
         entityType: 'USER',
         userId,
-        name: payload.name?.trim() || normalizedEmail.split('@')[0] || 'User',
+        name: displayName,
         email: normalizedEmail,
         passwordHash,
         role: 'CUSTOMER',
         status: 'ACTIVE',
-        avatarUrl: payload.picture,
+        avatarUrl: decoded.picture,
         createdAt: now,
         updatedAt: now,
       };
 
       await this.usersRepository.createUser(user);
-      this.logger.log(`Created new user from Google auth: ${user.userId}`);
+      this.logger.log(
+        `Created new user from Firebase auth: ${user.userId} (uid=${decoded.uid})`,
+      );
     }
     await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
@@ -363,6 +365,29 @@ export class AuthService {
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
+  }
+
+  private async verifyFirebaseIdToken(
+    idToken: string,
+    platform?: string,
+  ): Promise<admin.auth.DecodedIdToken> {
+    try {
+      return await this.firebaseAdmin.verifyIdToken(idToken);
+    } catch (error) {
+      const code =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof (error as { code: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+      this.logger.warn(
+        `Firebase token verification failed (platform=${platform ?? 'unknown'}${code ? `, code=${code}` : ''}): ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      throw new UnauthorizedException('Firebase token không hợp lệ');
+    }
   }
 
   async updateAvatar(userId: string, dto: UpdateAvatarDto) {
@@ -800,34 +825,5 @@ export class AuthService {
 
   private hashDeviceFingerprint(deviceId: string): string {
     return createHash('sha256').update(deviceId.trim()).digest('hex');
-  }
-
-  /**
-   * Collect every allowed Google OAuth `aud` value.
-   *
-   * Supports three env shapes so teams can pick what they prefer:
-   *  - GOOGLE_CLIENT_ID               Web OAuth Client ID (legacy, still supported)
-   *  - GOOGLE_CLIENT_ID_WEB           Web OAuth Client ID
-   *  - GOOGLE_CLIENT_ID_ANDROID       Android OAuth Client ID
-   *  - GOOGLE_CLIENT_ID_IOS           iOS OAuth Client ID
-   *  - GOOGLE_CLIENT_IDS              Comma-separated list (wins over the above if set)
-   *
-   * Duplicates are removed so `verifyIdToken` gets a clean list.
-   */
-  private static resolveGoogleAudiences(): string[] {
-    const fromList = (process.env.GOOGLE_CLIENT_IDS ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    const individualIds = [
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_ID_WEB,
-      process.env.GOOGLE_CLIENT_ID_ANDROID,
-      process.env.GOOGLE_CLIENT_ID_IOS,
-    ].filter((value): value is string => !!value && value.trim().length > 0);
-
-    const combined = [...fromList, ...individualIds.map((v) => v.trim())];
-    return Array.from(new Set(combined));
   }
 }

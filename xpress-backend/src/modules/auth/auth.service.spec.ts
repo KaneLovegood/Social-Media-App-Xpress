@@ -72,6 +72,10 @@ describe('AuthService', () => {
     revokeSession: jest.Mock;
   };
 
+  const firebaseAdmin = {
+    verifyIdToken: jest.fn(),
+  } as unknown as { verifyIdToken: jest.Mock };
+
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.JWT_SECRET = 'test-jwt-secret';
@@ -84,6 +88,7 @@ describe('AuthService', () => {
       emailOtpService,
       jwtService,
       deviceSessionService as never,
+      firebaseAdmin as never,
     );
   });
 
