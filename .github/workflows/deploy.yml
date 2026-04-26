@@ -20,11 +20,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: xpress-frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+        working-directory: ./xpress-frontend
 
       # 🔥 Fix lightningcss native binding
       - name: Rebuild native modules
@@ -32,7 +39,8 @@ jobs:
 
       # 🔥 (optional nhưng nên có) tránh bug turbopack
       - name: Build project
-        run: npm run build -- --no-turbopack
+        run: pnpm build
+        working-directory: ./xpress-frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           NEXT_PUBLIC_AGORA_APP_ID: ${{ secrets.NEXT_PUBLIC_AGORA_APP_ID }}
