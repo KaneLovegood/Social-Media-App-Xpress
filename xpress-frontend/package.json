@@ -10,7 +10,8 @@
     "prepare": "husky",
     "cap:sync": "cap sync",
     "fix:rsc": "node scripts/fix-rsc-paths.mjs",
-    "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync"
+    "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync",
+    "export": "next export"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.2.0",
