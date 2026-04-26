@@ -17,13 +17,20 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
+          cache: pnpm
+          cache-dependency-path: xpress-frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
         working-directory: ./xpress-frontend
 
       - name: Build project
-        run: npm run build
+        run: pnpm build
         working-directory: ./xpress-frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
