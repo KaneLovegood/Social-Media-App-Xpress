@@ -9,29 +9,41 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./xpress-frontend
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
-        working-directory: ./xpress-frontend
+        run: npm ci
 
+      # 🔥 Fix lightningcss native binding
+      - name: Rebuild native modules
+        run: npm rebuild lightningcss
+
+      # 🔥 (optional nhưng nên có) tránh bug turbopack
       - name: Build project
-        run: npm run build
-        working-directory: ./xpress-frontend
+        run: npm run build -- --no-turbopack
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           NEXT_PUBLIC_AGORA_APP_ID: ${{ secrets.NEXT_PUBLIC_AGORA_APP_ID }}
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
 
+      # ❗ đảm bảo có static export
+      - name: Export static files
+        run: npm run export
+
       - name: Deploy to S3
-        uses: jakejarvis/s3-sync-action@master
+        uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --delete
         env:
