@@ -9,6 +9,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./xpress-frontend
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -20,6 +24,7 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
@@ -29,6 +34,11 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: ./xpress-frontend
 
+      # 🔥 Fix lightningcss native binding
+      - name: Rebuild native modules
+        run: npm rebuild lightningcss
+
+      # 🔥 (optional nhưng nên có) tránh bug turbopack
       - name: Build project
         run: pnpm build
         working-directory: ./xpress-frontend
@@ -37,8 +47,12 @@ jobs:
           NEXT_PUBLIC_AGORA_APP_ID: ${{ secrets.NEXT_PUBLIC_AGORA_APP_ID }}
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
 
+      # ❗ đảm bảo có static export
+      - name: Export static files
+        run: npm run export
+
       - name: Deploy to S3
-        uses: jakejarvis/s3-sync-action@master
+        uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --delete
         env:
