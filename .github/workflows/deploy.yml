@@ -31,24 +31,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: ./xpress-frontend
 
-      # 🔥 Fix lightningcss native binding
+      # Fix lightningcss native binding
       - name: Rebuild native modules
-        run: npm rebuild lightningcss
+        run: pnpm rebuild lightningcss
 
-      # 🔥 (optional nhưng nên có) tránh bug turbopack
       - name: Build project
         run: pnpm build
-        working-directory: ./xpress-frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           NEXT_PUBLIC_AGORA_APP_ID: ${{ secrets.NEXT_PUBLIC_AGORA_APP_ID }}
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-
-      # ❗ đảm bảo có static export
-      - name: Export static files
-        run: npm run export
 
       - name: Deploy to S3
         uses: jakejarvis/s3-sync-action@v0.5.1
