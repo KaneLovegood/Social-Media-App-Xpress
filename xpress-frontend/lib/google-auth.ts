@@ -1,34 +1,34 @@
 import { Capacitor } from "@capacitor/core";
-import { SocialLogin } from "@capgo/capacitor-social-login";
+import {
+  GoogleAuthProvider,
+  signInWithCredential,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from "firebase/auth";
+import { getFirebaseAuth } from "./firebase";
 
 /**
  * Unified Google Sign-In entry point for Web (Next.js) and Native (Capacitor).
  *
- * Architecture:
- * - Web browser: uses Google Identity Services (rendered by the login page) to
- *   produce an ID token. We do NOT call this helper on web; the GIS button
- *   returns the credential directly.
- * - Native (Android/iOS Capacitor WebView): GIS is blocked inside a WebView,
- *   so we must use the native Google Sign-In flow. `@capgo/capacitor-social-login`
- *   wraps Google's Credential Manager on Android and Sign in with Google on iOS.
+ * Why this exists:
+ * - `signInWithPopup` / `signInWithRedirect` trigger Google's OAuth consent
+ *   screen which is BLOCKED inside mobile WebViews (`disallowed_useragent`).
+ * - On native Capacitor apps we must call the OS-native Google Sign-In SDK
+ *   through `@capacitor-firebase/authentication`, then replay the ID token
+ *   into the Firebase Web SDK via `signInWithCredential` so the web layer's
+ *   Firebase auth state is in sync.
  *
- * On Android, Google authenticates the APK via the Android OAuth Client ID
- * registered with the matching package name + SHA-1 fingerprint. The Android
- * Client ID is NOT passed in code — Google looks it up at runtime from the
- * signing certificate. What we DO pass is the Web Client ID as `webClientId`,
- * which becomes the `aud` of the returned ID token so the NestJS backend can
- * verify it exactly the same way as a web login.
+ * The function always returns the Firebase ID token that the NestJS backend
+ * verifies with the Firebase Admin SDK.
  */
+
+export type GoogleSignInPlatform = "web" | "android" | "ios";
 
 export type GoogleSignInResult = {
   idToken: string;
-  platform: "web" | "android" | "ios";
+  platform: GoogleSignInPlatform;
 };
-
-const GOOGLE_WEB_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
-const GOOGLE_IOS_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
-
-let initializePromise: Promise<void> | null = null;
 
 export function isNativePlatform(): boolean {
   try {
@@ -38,7 +38,7 @@ export function isNativePlatform(): boolean {
   }
 }
 
-export function currentPlatform(): "web" | "android" | "ios" {
+export function currentPlatform(): GoogleSignInPlatform {
   try {
     const platform = Capacitor.getPlatform();
     if (platform === "android" || platform === "ios") return platform;
@@ -49,93 +49,94 @@ export function currentPlatform(): "web" | "android" | "ios" {
 }
 
 /**
- * Initialize SocialLogin exactly once. Safe to call multiple times — subsequent
- * calls return the same promise. No-op on web (we still use GIS there).
+ * Sign in with Google and return a Firebase ID token to send to the backend.
+ *
+ * The backend (NestJS) uses Firebase Admin SDK to verify the token, then
+ * issues its own JWT pair.
  */
-export function initializeSocialLogin(): Promise<void> {
-  if (!isNativePlatform()) {
-    return Promise.resolve();
+export async function signInWithGoogle(): Promise<GoogleSignInResult> {
+  if (isNativePlatform()) {
+    return signInWithGoogleNative();
   }
-
-  if (!GOOGLE_WEB_CLIENT_ID) {
-    return Promise.reject(
-      new Error(
-        "NEXT_PUBLIC_GOOGLE_CLIENT_ID (Web OAuth Client ID) is required for native Google Sign-In.",
-      ),
-    );
-  }
-
-  if (!initializePromise) {
-    initializePromise = SocialLogin.initialize({
-      google: {
-        webClientId: GOOGLE_WEB_CLIENT_ID,
-        ...(GOOGLE_IOS_CLIENT_ID
-          ? {
-              iOSClientId: GOOGLE_IOS_CLIENT_ID,
-              iOSServerClientId: GOOGLE_WEB_CLIENT_ID,
-            }
-          : {}),
-        mode: "online",
-      },
-    }).catch((error: unknown) => {
-      initializePromise = null;
-      throw error;
-    });
-  }
-
-  return initializePromise;
+  return signInWithGoogleWeb();
 }
 
 /**
- * Trigger the native Google Sign-In flow on Android/iOS and return the ID token.
- * Throws when called on web — the web login page should use the GIS button instead.
+ * Web flow: open Firebase's Google popup and return the current user's
+ * Firebase ID token. Popups are the simplest DX on desktop browsers.
+ * Fallback to redirect if popups are blocked (common on Safari iOS).
  */
-export async function signInWithGoogleNative(): Promise<GoogleSignInResult> {
-  const platform = currentPlatform();
-  if (platform === "web") {
-    throw new Error(
-      "signInWithGoogleNative() is only supported on native platforms. Use the Google Identity Services button on web.",
-    );
+async function signInWithGoogleWeb(): Promise<GoogleSignInResult> {
+  const auth = getFirebaseAuth();
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const idToken = await result.user.getIdToken();
+    return { idToken, platform: "web" };
+  } catch (error) {
+    if (isPopupBlockedError(error)) {
+      await signInWithRedirect(auth, provider);
+      throw new Error(
+        "Trình duyệt chặn cửa sổ popup, đang chuyển hướng sang Google...",
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Native flow (Android/iOS): run native Google Sign-In through the
+ * @capacitor-firebase/authentication plugin, then bridge the credential
+ * into the Firebase Web SDK so `auth.currentUser` is populated.
+ *
+ * The plugin is loaded dynamically so this module still builds on the web
+ * bundle where the plugin is not installed.
+ */
+async function signInWithGoogleNative(): Promise<GoogleSignInResult> {
+  const { FirebaseAuthentication } = await import(
+    "@capacitor-firebase/authentication"
+  );
+  const result = await FirebaseAuthentication.signInWithGoogle();
+  const idToken = result.credential?.idToken;
+  if (!idToken) {
+    throw new Error("Google Sign-In không trả về ID token trên thiết bị.");
   }
 
-  await initializeSocialLogin();
-
-  // NOTE: Do NOT pass a `scopes` array here on Android. The @capgo/capacitor-
-  // social-login plugin uses Credential Manager to produce the ID token, which
-  // already includes `email` + `profile` claims. Passing custom scopes forces
-  // the plugin into a separate Authorization flow that requires overriding
-  // MainActivity.onActivityResult — hence the
-  // "You CANNOT use scopes without modifying the main activity" error.
-  const response = await SocialLogin.login({
-    provider: "google",
-    options: {},
-  });
-
-  if (response.provider !== "google") {
-    throw new Error("Unexpected provider response from SocialLogin.login");
-  }
-
-  const result = response.result;
-  if (result.responseType !== "online" || !result.idToken) {
-    throw new Error(
-      "Google Sign-In did not return an ID token. Check that webClientId is a Web OAuth Client ID and the Android SHA-1 fingerprint is registered on the Android OAuth Client ID.",
-    );
-  }
+  const auth = getFirebaseAuth();
+  const credential = GoogleAuthProvider.credential(idToken);
+  const userCredential = await signInWithCredential(auth, credential);
+  const firebaseIdToken = await userCredential.user.getIdToken();
 
   return {
-    idToken: result.idToken,
-    platform,
+    idToken: firebaseIdToken,
+    platform: currentPlatform() as "android" | "ios",
   };
 }
 
-/**
- * Sign out from the native Google session. Safe to call on web (no-op).
- */
-export async function signOutGoogleNative(): Promise<void> {
-  if (!isNativePlatform()) return;
-  try {
-    await SocialLogin.logout({ provider: "google" });
-  } catch {
-    // Logout failure shouldn't block the app logout flow.
+export async function signOutFromFirebase(): Promise<void> {
+  const auth = getFirebaseAuth();
+  await signOut(auth).catch(() => undefined);
+
+  if (isNativePlatform()) {
+    try {
+      const { FirebaseAuthentication } = await import(
+        "@capacitor-firebase/authentication"
+      );
+      await FirebaseAuthentication.signOut();
+    } catch {
+      // Native sign-out failure must not block the app logout flow.
+    }
   }
+}
+
+function isPopupBlockedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: string }).code;
+  return (
+    code === "auth/popup-blocked" ||
+    code === "auth/popup-closed-by-user" ||
+    code === "auth/cancelled-popup-request"
+  );
 }

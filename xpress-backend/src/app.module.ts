@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { FirebaseModule } from './common/firebase/firebase.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DeviceSessionModule } from './modules/device-session/device-session.module';
@@ -21,6 +22,7 @@ const mongoUri =
       minPoolSize: 1,
       maxPoolSize: 5,
     }),
+    FirebaseModule,
     DeviceSessionModule,
     AuthModule,
     ChatModule,
