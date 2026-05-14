@@ -255,6 +255,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
           connectedAt: item.updatedAt,
         };

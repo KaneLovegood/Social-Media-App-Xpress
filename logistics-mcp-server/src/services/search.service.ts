@@ -46,7 +46,20 @@ export class SearchService {
     if (!this.geminiApiKey) {
       throw new Error("GEMINI_API_KEY is not configured in .env file.");
     }
-    const baseModel = this.model.includes("text-embedding-004") ? "gemini-embedding-001" : this.model.split(":")[0];
+
+    // Determine the correct Gemini embedding model
+    let baseModel = "gemini-embedding-001"; // Default fallback (latest recommended)
+    
+    if (this.model.includes("gemini-embedding-001")) {
+      baseModel = "gemini-embedding-001";
+    } else if (this.model.includes("embedding-001")) {
+      baseModel = "embedding-001";
+    } else if (this.model.includes("gemini")) {
+      // If it contains "gemini" but not the specific ones above, 
+      // try to extract the name or use fallback
+      baseModel = this.model.split(":")[0];
+    }
+
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${baseModel}:embedContent?key=${this.geminiApiKey}`;
     const normalizedText = text.replace(/\s+/g, " ").trim();
 
