@@ -1,11 +1,8 @@
 import { io, Socket } from "socket.io-client";
-
-const WS_BASE_URL =
-  process.env.NEXT_PUBLIC_WS_BASE_URL?.replace(/\/$/, "") ??
-  "http://localhost:3000";
+import { getRealtimeBaseUrl } from "./get-realtime-base-url";
 
 export function createChatSocket(token: string): Socket {
-  const socket = io(`${WS_BASE_URL}/chat`, {
+  const socket = io(`${getRealtimeBaseUrl()}/chat`, {
     auth: {
       token,
     },
@@ -29,7 +26,7 @@ export function createChatSocket(token: string): Socket {
 }
 
 export function createFeedSocket(token: string): Socket {
-  const socket = io(`${WS_BASE_URL}/feed`, {
+  const socket = io(`${getRealtimeBaseUrl()}/feed`, {
     auth: {
       token,
     },
