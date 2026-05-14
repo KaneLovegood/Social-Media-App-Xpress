@@ -34,7 +34,7 @@ jobs:
             set -e
 
             echo "📂 Move to project root"
-            cd /home/ubuntu/New-Technology-Xpress
+            cd New-Technology-Xpress
 
             echo "⬇️ Pull latest code"
             git pull origin dev
