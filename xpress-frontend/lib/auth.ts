@@ -30,7 +30,6 @@ type RegisterPayload = AuthPayload & {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
   'http://localhost:3001';
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
 type SendOtpPayload = {
   email: string;
@@ -89,6 +88,12 @@ export async function resetPassword(payload: ResetPasswordPayload) {
   return request<{ success: boolean }>('/auth/password/reset', payload);
 }
 
+/**
+ * Exchange a Firebase ID token for our own JWT pair.
+ *
+ * The token must come from Firebase Authentication (Google provider). The
+ * backend verifies it with the Firebase Admin SDK before issuing the JWT.
+ */
 export async function loginWithGoogle(
   idToken: string,
   options: { platform?: 'web' | 'android' | 'ios' } = {},
@@ -101,10 +106,6 @@ export async function loginWithGoogle(
   });
   await persistSession(result);
   return result;
-}
-
-export function getGoogleClientId() {
-  return GOOGLE_CLIENT_ID;
 }
 
 async function request<TResponse>(

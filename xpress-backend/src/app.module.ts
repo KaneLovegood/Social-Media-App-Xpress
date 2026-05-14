@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { FirebaseModule } from './common/firebase/firebase.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DeviceSessionModule } from './modules/device-session/device-session.module';
@@ -12,7 +13,8 @@ import { McpModule } from './modules/mcp/mcp.module';
 import { NewsFeedModule } from './modules/news-feed/news-feed.module';
 import { JwtGuard } from './middleware/jwt.guard';
 
-const mongoUri = process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/xpress-session';
+const mongoUri =
+  process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/xpress-session';
 @Module({
   imports: [
     MongooseModule.forRoot(mongoUri, {
@@ -20,6 +22,7 @@ const mongoUri = process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/x
       minPoolSize: 1,
       maxPoolSize: 5,
     }),
+    FirebaseModule,
     DeviceSessionModule,
     AuthModule,
     ChatModule,

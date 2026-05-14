@@ -18,23 +18,18 @@ const config: CapacitorConfig = {
   // Backend phải truy cập qua HTTPS (dev tunnel Public hoặc ngrok),
   // nếu không sẽ bị Mixed Content chặn.
   server: {
-    androidScheme: 'https',
+    androidScheme: 'http',
   },
   plugins: {
     Media: {
       androidGalleryMode: true
     },
-    // Google Sign-In (native) via @capgo/capacitor-social-login.
-    // Only the `google` provider is bundled to keep the APK size small.
-    // The actual Web Client ID is passed at runtime via SocialLogin.initialize()
-    // so it can come from NEXT_PUBLIC_GOOGLE_CLIENT_ID without being hard-coded here.
-    SocialLogin: {
-      providers: {
-        google: true,
-        facebook: false,
-        apple: false,
-        twitter: false
-      }
+    // Google Sign-In on native devices is handled by
+    // @capacitor-firebase/authentication. The Firebase Android config
+    // (google-services.json) already carries the OAuth client metadata,
+    // so no runtime plugin options are required here.
+    FirebaseAuthentication: {
+      providers: ['google.com']
     }
   }
 };

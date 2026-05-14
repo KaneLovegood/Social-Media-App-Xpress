@@ -1,44 +1,13 @@
 "use client";
 
 import InstagramLoginInputs from "@/components/instagram-login-inputs";
-import { getGoogleClientId, login, loginWithGoogle } from "@/lib/auth";
+import { login, loginWithGoogle } from "@/lib/auth";
 import { consumeAuthNotice } from "@/lib/auth-client";
-import {
-  currentPlatform,
-  initializeSocialLogin,
-  isNativePlatform,
-  signInWithGoogleNative,
-} from "@/lib/google-auth";
+import { signInWithGoogle } from "@/lib/google-auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import Script from "next/script";
-import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (options: {
-            client_id: string;
-            callback: (response: { credential?: string }) => void;
-          }) => void;
-          renderButton: (
-            parent: HTMLElement,
-            options: {
-              theme?: "outline" | "filled_blue" | "filled_black";
-              size?: "large" | "medium" | "small";
-              width?: number;
-              text?: "signin_with" | "signup_with" | "continue_with" | "signin";
-              shape?: "rectangular" | "pill" | "circle" | "square";
-            },
-          ) => void;
-        };
-      };
-    };
-  }
-}
 
 function LoginContent() {
   const router = useRouter();
@@ -47,15 +16,7 @@ function LoginContent() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleScriptReady, setGoogleScriptReady] = useState(false);
   const [error, setError] = useState("");
-  const [isNative, setIsNative] = useState(false);
-  const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const googleClientId = getGoogleClientId();
-
-  useEffect(() => {
-    setIsNative(isNativePlatform());
-  }, []);
 
   useEffect(() => {
     const prefetchedEmail = searchParams.get("email")?.trim() ?? "";
@@ -70,21 +31,6 @@ function LoginContent() {
       toast.error(authNotice);
     }
   }, []);
-
-  useEffect(() => {
-    if (!googleClientId) return;
-    if (isNative) return;
-    if (window.google?.accounts?.id) {
-      setGoogleScriptReady(true);
-    }
-  }, [googleClientId, isNative]);
-
-  useEffect(() => {
-    if (!isNative) return;
-    initializeSocialLogin().catch((initError) => {
-      console.error("SocialLogin initialize failed", initError);
-    });
-  }, [isNative]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -101,81 +47,29 @@ function LoginContent() {
     }
   };
 
-  const handleGoogleCredential = useCallback(
-    async (credential: string, platform: "web" | "android" | "ios") => {
-      setGoogleLoading(true);
-      setError("");
-      try {
-        await loginWithGoogle(credential, { platform });
-        router.push("/chat/me");
-        router.refresh();
-      } catch (googleError) {
-        setError(
-          googleError instanceof Error
-            ? googleError.message
-            : "Đăng nhập Google thất bại.",
-        );
-      } finally {
-        setGoogleLoading(false);
-      }
-    },
-    [router],
-  );
-
-  const handleNativeGoogleClick = useCallback(async () => {
+  const handleGoogleClick = useCallback(async () => {
     setGoogleLoading(true);
     setError("");
     try {
-      const { idToken, platform } = await signInWithGoogleNative();
-      await handleGoogleCredential(idToken, platform);
-    } catch (nativeError) {
+      const { idToken, platform } = await signInWithGoogle();
+      // console.log("idToken", idToken);
+      // console.log("platform", platform);
+      await loginWithGoogle(idToken, { platform });
+      router.push("/chat/me");
+      router.refresh();
+    } catch (googleError) {
       setError(
-        nativeError instanceof Error
-          ? nativeError.message
-          : "Không thể đăng nhập Google trên thiết bị.",
+        googleError instanceof Error
+          ? googleError.message
+          : "Đăng nhập Google thất bại.",
       );
+    } finally {
       setGoogleLoading(false);
     }
-  }, [handleGoogleCredential]);
-
-  useEffect(() => {
-    if (isNative) return;
-    if (!googleClientId) return;
-    if (!googleScriptReady) return;
-    if (!window.google?.accounts?.id) return;
-    if (!googleButtonRef.current) return;
-
-    googleButtonRef.current.innerHTML = "";
-    window.google.accounts.id.initialize({
-      client_id: googleClientId,
-      callback: (response) => {
-        if (!response.credential) {
-          setError("Không nhận được Google credential.");
-          return;
-        }
-        void handleGoogleCredential(response.credential, currentPlatform());
-      },
-    });
-    window.google.accounts.id.renderButton(googleButtonRef.current, {
-      theme: "outline",
-      size: "large",
-      width: 320,
-      text: "continue_with",
-      shape: "pill",
-    });
-  }, [googleClientId, googleScriptReady, handleGoogleCredential, isNative]);
+  }, [router]);
 
   return (
     <>
-      {googleClientId && !isNative ? (
-        <Script
-          id="google-identity-client"
-          src="https://accounts.google.com/gsi/client"
-          strategy="afterInteractive"
-          onLoad={() => setGoogleScriptReady(true)}
-          onReady={() => setGoogleScriptReady(true)}
-        />
-      ) : null}
       <p className="text-sm font-medium text-[#f25019]">Xpress</p>
       <h1 className="mt-1 text-5xl font-bold leading-tight text-[#333333]">Đăng nhập</h1>
 
@@ -213,26 +107,15 @@ function LoginContent() {
       <p className="mt-6 text-center text-sm text-[#333333]">Hoặc tiếp tục với</p>
 
       <div className="mt-4 flex flex-col items-center gap-3">
-        {isNative ? (
-          <button
-            type="button"
-            onClick={handleNativeGoogleClick}
-            disabled={googleLoading}
-            className="flex h-10 w-[320px] items-center justify-center gap-2 rounded-full border border-[#dadce0] bg-white text-sm font-medium text-[#3c4043] transition hover:bg-[#f7f8f9] disabled:opacity-60"
-          >
-            <GoogleGlyph />
-            {googleLoading ? "Đang kết nối Google..." : "Tiếp tục với Google"}
-          </button>
-        ) : googleClientId ? (
-          <div ref={googleButtonRef} className="min-h-[40px]" />
-        ) : (
-          <p className="text-xs text-amber-700">
-            Thiếu `NEXT_PUBLIC_GOOGLE_CLIENT_ID` nên chưa hiển thị nút đăng nhập Google.
-          </p>
-        )}
-        {!isNative && googleLoading ? (
-          <p className="text-xs text-[#727687]">Đang xác thực Google...</p>
-        ) : null}
+        <button
+          type="button"
+          onClick={handleGoogleClick}
+          disabled={googleLoading}
+          className="flex h-10 w-[320px] items-center justify-center gap-2 rounded-full border border-[#dadce0] bg-white text-sm font-medium text-[#3c4043] transition hover:bg-[#f7f8f9] disabled:opacity-60"
+        >
+          <GoogleGlyph />
+          {googleLoading ? "Đang kết nối Google..." : "Tiếp tục với Google"}
+        </button>
       </div>
 
       <p className="mt-9 text-center text-sm text-[#333333]">
