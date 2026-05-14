@@ -1,4 +1,4 @@
-name: Deploy Backend to EC2
+name: Deploy Backend to EC2 (Dev)
 
 on:
   push:
@@ -11,53 +11,76 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: xpress-backend
+
     steps:
       # 1. Checkout source
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Setup SSH
+      # 2. Setup Node.js
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      # 3. Setup pnpm
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      # 4. Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. Build on GitHub Actions (NOT EC2)
+      - name: Build project
+        run: NODE_OPTIONS="--max-old-space-size=512" pnpm build
+
+      # 6. Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.BACKEND_EC2_SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-
           ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 3. Deploy
-      - name: Deploy to EC2
+      # 7. Upload dist + package files
+      - name: Upload files to EC2
         run: |
+          rsync -avz --delete \
+            dist \
+            package.json \
+            pnpm-lock.yaml \
+            prisma \
+            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/
 
+      # 8. Install production deps + restart PM2
+      - name: Restart backend on EC2
+        run: |
           ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
 
             set -e
 
-            echo "📂 Move to project root"
-            cd New-Technology-Xpress
-
-            echo "⬇️ Pull latest code"
-            git pull origin dev
-
             echo "📂 Move to backend"
-            cd xpress-backend
+            cd /home/ubuntu/xpress-backend
 
-            echo "📥 Install dependencies"
+            echo "📥 Install production dependencies"
             corepack enable || true
-
-            export HUSKY=0
-
-            pnpm install --frozen-lockfile --ignore-scripts=false
-
-            echo "🏗️ Build backend"
-            pnpm build
+            pnpm install --prod --frozen-lockfile
 
             echo "♻️ Restart PM2"
-            pm2 restart xpress-backend
 
-            echo "💾 Save PM2"
+            pm2 restart xpress-backend \
+              || pm2 start dist/src/main.js --name xpress-backend
+
+            echo "💾 Save PM2 state"
             pm2 save
 
-            echo "✅ Deploy success"
+            echo "✅ Deploy completed"
 
           EOF
