@@ -26,11 +26,11 @@ jobs:
         with:
           node-version: 22
 
-      # 3. Setup pnpm
+      # 3. Setup pnpm v9
       - name: Setup pnpm
         run: |
           corepack enable
-          corepack prepare pnpm@latest --activate
+          corepack prepare pnpm@9.15.9 --activate
 
       # 4. Cache pnpm store
       - name: Get pnpm store directory
@@ -47,9 +47,7 @@ jobs:
 
       # 5. Install dependencies
       - name: Install dependencies
-        run: |
-          pnpm config set ignore-scripts false
-          pnpm install --frozen-lockfile --ignore-scripts=false
+        run: pnpm install --frozen-lockfile
 
       # 6. Build project on GitHub runner
       - name: Build project
@@ -74,7 +72,7 @@ jobs:
             ecosystem.config.js \
             ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/
 
-      # 9. Install production dependencies + restart PM2
+      # 9. Restart backend on EC2
       - name: Restart backend on EC2
         run: |
           ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
@@ -86,11 +84,10 @@ jobs:
 
             echo "📦 Setup pnpm"
             corepack enable || true
-            corepack prepare pnpm@latest --activate
+            corepack prepare pnpm@9.15.9 --activate
 
             echo "📥 Install production dependencies"
-            pnpm config set ignore-scripts false
-            pnpm install --prod --frozen-lockfile --ignore-scripts=false
+            pnpm install --prod --frozen-lockfile
 
             echo "♻️ Restart PM2"
 
