@@ -1,11 +1,7 @@
 {
-    "headers": [
-      {
-        "source": "/(.*)",
-        "headers": [
-          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" },
-          { "key": "Cross-Origin-Embedder-Policy", "value": "unsafe-none" }
-        ]
-      }
-    ]
-  }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "out"
+}
