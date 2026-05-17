@@ -11,12 +11,36 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: xpress-backend
+
     steps:
-      # 1. Checkout source
+      # 1. Checkout
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Setup SSH key
+      # 2. Setup Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 3. Setup pnpm
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+
+      # 4. Install deps
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. Build
+      - name: Build project
+        run: NODE_OPTIONS="--max-old-space-size=512" pnpm build
+
+      # 6. Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -24,32 +48,34 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 3. Deploy to EC2
-      - name: Deploy backend
+      # 7. Ensure remote directory exists
+      - name: Prepare EC2 directory
+        run: |
+          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} "
+            mkdir -p /home/ubuntu/xpress-backend/dist
+          "
+
+      # 8. Upload ONLY dist
+      - name: Upload dist to EC2
+        run: |
+          rsync -avz --delete \
+            dist/ \
+            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/dist/
+
+      # 9. Restart PM2
+      - name: Restart backend
         run: |
           ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
 
             set -e
 
-            echo "📦 Move to project directory"
             cd /home/ubuntu/xpress-backend
 
-            echo "⬇️ Pull latest code"
-            git pull origin dev
+            pm2 restart xpress-backend \
+              || pm2 start dist/src/main.js --name xpress-backend
 
-            echo "📥 Install dependencies (pnpm)"
-            corepack enable || true
-            pnpm install
-
-            echo "🏗️ Build project"
-            pnpm build
-
-            echo "♻️ Restart PM2"
-            pm2 restart xpress-backend || pm2 start dist/src/main.js --name xpress-backend
-
-            echo "💾 Save PM2 state"
             pm2 save
 
-            echo "✅ Deploy done"
+            echo "✅ Deploy completed"
 
           EOF
