@@ -41,6 +41,8 @@ export interface ChatMessage {
   readAt?: string;
   isDeleted: boolean;
   isRecalled: boolean;
+  reactions?: Record<string, string[]>;
+  reactionOrder?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -130,4 +132,11 @@ export interface GroupCallEndPayload {
   callMode?: "voice" | "video";
   reason?: string;
   endForAll?: boolean;
+}
+
+export interface ReactionPayload {
+  messageId: string;
+  roomId?: string;
+  userId: string;
+  emoji: string;
 }

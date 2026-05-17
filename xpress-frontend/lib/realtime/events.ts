@@ -25,6 +25,7 @@ export const CHAT_EVENTS = {
   GROUP_CALL_ANSWER: "chat:group:call:answer",
   GROUP_CALL_ICE: "chat:group:call:ice",
   GROUP_CALL_END: "chat:group:call:end",
+  REACTION: "chat:reaction",
 } as const;
 
 export const CALL_EVENTS = {

@@ -10,7 +10,9 @@ import {
   fetchRoomImages,
   promoteGroupMember,
   removeGroupMember,
+  transferGroupAdmin,
 } from "@/lib/chat-groups";
+import TransferAdminAndLeaveModal from "./modal/TransferAdminAndLeaveModal";
 import AddGroupMemberModal from "./modal/AddGroupMemberModal";
 import MediaGalleryModal from "./modal/MediaGalleryModal";
 import FilesListModal from "./modal/FilesListModal";
@@ -22,6 +24,7 @@ interface ChatInfoPanelProps {
   groupDetails: GroupRoomDetails | null;
   currentUserId: string;
   onLeaveGroup: () => void;
+  onAdminLeaveGroup?: () => void;
   onDissolveGroup: () => void;
   onOpenCreateGroup: () => void;
   onDeleteChatHistory?: () => Promise<void>;
@@ -184,6 +187,7 @@ export default function ChatInfoPanel({
   groupDetails,
   currentUserId,
   onLeaveGroup,
+  onAdminLeaveGroup,
   onDissolveGroup,
   onOpenCreateGroup,
   onDeleteChatHistory,
@@ -197,6 +201,7 @@ export default function ChatInfoPanel({
   const [showFilesList, setShowFilesList] = useState(false);
   const [showDeleteHistory, setShowDeleteHistory] = useState(false);
   const [showShareQr, setShowShareQr] = useState(false);
+  const [showTransferAdmin, setShowTransferAdmin] = useState(false);
   const [shareLink, setShareLink] = useState("");
   const [isConversationPinned, setIsConversationPinned] = useState(false);
   const [isNotificationEnabled, setIsNotificationEnabled] = useState(true);
@@ -244,12 +249,12 @@ export default function ChatInfoPanel({
   }
 
   const isGroup = room.roomType === "GROUP";
-  const currentMemberRole = groupDetails?.members.find(
+  const membersList = groupDetails?.members ?? [];
+  const currentMemberRole = membersList.find(
     (member) => member.userId === currentUserId,
   )?.role;
-  const isGroupAdmin = currentMemberRole
-    ? currentMemberRole === "ADMIN"
-    : groupDetails?.currentUserRole === "ADMIN";
+  const isGroupAdmin =
+    currentMemberRole === "ADMIN" || groupDetails?.currentUserRole === "ADMIN";
   const avatarLabel = room.emoji ?? initials(room.title);
   const subtitle = isGroup
     ? `${groupDetails?.memberCount ?? room.memberCount ?? 0} thành viên`
@@ -416,6 +421,13 @@ export default function ChatInfoPanel({
     }
   };
 
+  const handleTransferAdminAndLeave = async (newAdminUserId: string) => {
+    if (!groupDetails) return;
+    await transferGroupAdmin(groupDetails.roomId, newAdminUserId);
+    // Gọi callback chỉ refresh UI, không gọi API leave thêm lần nữa
+    (onAdminLeaveGroup ?? onLeaveGroup)();
+  };
+
   const handleRemoveMember = async (memberUserId: string) => {
     if (!groupDetails || !isGroupAdmin) return;
 
@@ -552,12 +564,12 @@ export default function ChatInfoPanel({
               {isGroup && groupDetails ? (
                 <SectionCard title="Thành viên">
                   <div className="space-y-2">
-                    {groupDetails.members.length === 0 ? (
+                    {membersList.length === 0 ? (
                       <p className="text-sm text-slate-500">
                         Chưa có thành viên nào
                       </p>
                     ) : (
-                      groupDetails.members.slice(0, 5).map((member) => (
+                      membersList.slice(0, 5).map((member) => (
                         <MemberItem
                           key={member.userId}
                           member={member}
@@ -727,6 +739,56 @@ export default function ChatInfoPanel({
                   Xóa lịch sử
                 </button>
               </div>
+
+              {isGroup && isGroupAdmin && groupDetails ? (
+                (() => {
+                  const otherMembers = membersList.filter(
+                    (m) => m.userId !== currentUserId,
+                  );
+
+                  if (otherMembers.length === 0) {
+                    // Admin is the only member — call dissolveGroup to remove the group
+                    return (
+                      <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                        <h3 className="flex items-center gap-2 text-sm font-semibold text-orange-700">
+                          <Icon name="trash" size="sm" />
+                          Giải tán nhóm
+                        </h3>
+                        <p className="mt-2 text-xs text-orange-600">
+                          Bạn là quản trị viên duy nhất trong nhóm. Giải tán sẽ xóa nhóm và tất cả dữ liệu liên quan.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={onDissolveGroup}
+                          className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                        >
+                          Giải tán nhóm
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  // There are other members — require transfer before leaving
+                  return (
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                      <h3 className="flex items-center gap-2 text-sm font-semibold text-orange-700">
+                        <Icon name="sign-out-alt" size="sm" />
+                        Rời nhóm
+                      </h3>
+                      <p className="mt-2 text-xs text-orange-600">
+                        Trước khi rời nhóm, bạn cần chuyển quyền quản trị cho một thành viên khác.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowTransferAdmin(true)}
+                        className="mt-3 w-full rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-orange-600"
+                      >
+                        Chuyển quyền &amp; Rời nhóm
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : null}
             </div>
           </div>
         </div>
@@ -736,9 +798,7 @@ export default function ChatInfoPanel({
         isOpen={showAddMembers}
         onClose={() => setShowAddMembers(false)}
         groupId={room.id}
-        existingMemberIds={
-          groupDetails?.members.map((member) => member.userId) ?? []
-        }
+        existingMemberIds={membersList.map((member) => member.userId)}
         onMemberAdded={() => {
           setShowAddMembers(false);
           onMembersAdded?.();
@@ -773,6 +833,17 @@ export default function ChatInfoPanel({
         inviteLink={shareLink}
         onCopy={() => {
           void handleCopyInviteLink();
+        }}
+      />
+
+      <TransferAdminAndLeaveModal
+        isOpen={showTransferAdmin}
+        onClose={() => setShowTransferAdmin(false)}
+        members={groupDetails?.members ?? []}
+        currentUserId={currentUserId}
+        roomTitle={room.title}
+        onConfirm={async (newAdminUserId) => {
+          await handleTransferAdminAndLeave(newAdminUserId);
         }}
       />
     </>
