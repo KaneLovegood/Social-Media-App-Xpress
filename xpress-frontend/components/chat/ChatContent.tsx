@@ -27,6 +27,7 @@ interface ChatContentProps {
   onClearReply: () => void;
   onSend: (content: string, options?: SendMessageOptions) => void;
   onTyping: (isTyping: boolean) => void;
+  typingSenderId?: string;
   onReply: (preview: ReplyPreview) => void;
   onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
@@ -59,6 +60,7 @@ export default function ChatContent({
   onClearReply,
   onSend,
   onTyping,
+  typingSenderId,
   onReply,
   onForward,
   onRecall,
@@ -96,6 +98,9 @@ export default function ChatContent({
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           peerName={peerName}
+          typingText={typingText}
+          typingSenderId={typingSenderId}
+          isGroup={isGroup}
           senderNameById={senderNameById}
           senderAvatarById={senderAvatarById}
           listRef={listRef}

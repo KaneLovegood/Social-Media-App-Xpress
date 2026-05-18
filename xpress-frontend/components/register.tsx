@@ -48,7 +48,6 @@ export default function Register() {
                   className="h-10 w-full rounded-md border border-transparent bg-white px-4 text-sm text-[#333333] outline-none ring-orange-300 placeholder:text-[#bfbfbf] focus:ring-2"
                 />
               </div>
-
               <div className="space-y-2">
                 <label
                   htmlFor="password"

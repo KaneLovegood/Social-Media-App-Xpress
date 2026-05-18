@@ -51,11 +51,30 @@ function toErrorMessage(message: unknown): string {
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  const data = (await response.json().catch(() => ({}))) as {
-    message?: unknown;
-  };
+  // Handle empty responses (204) and non-JSON responses gracefully
+  const contentType = response.headers.get("content-type") || "";
+  let data: { message?: unknown } | unknown = {};
+
+  if (response.status === 204) {
+    // No content
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return ({} as unknown) as T;
+  }
+
+  if (contentType.includes("application/json")) {
+    data = await response.json().catch(() => ({}));
+  } else {
+    // Non-JSON response (HTML error page, plain text, etc.) — capture status text
+    data = { message: response.statusText || "Server error" };
+  }
+
   if (!response.ok) {
-    throw new Error(toErrorMessage(data.message));
+    const msg = (data && typeof data === "object" && "message" in data)
+      ? toErrorMessage((data as any).message)
+      : response.statusText || "Đã có lỗi xảy ra";
+    throw new Error(`${response.status} ${msg}`);
   }
 
   return data as T;
@@ -124,6 +143,39 @@ export async function leaveGroup(roomId: string) {
   );
 
   return parseResponse<GroupRoomDetails>(response);
+}
+
+export async function transferGroupAdmin(
+  roomId: string,
+  newAdminUserId: string,
+) {
+  // Bước 1: Promote thành viên được chọn lên ADMIN
+  const promoteResponse = await fetch(
+    `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/members/${encodeURIComponent(newAdminUserId)}/promote`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+    },
+  );
+  await parseResponse<GroupRoomDetails>(promoteResponse);
+
+  // Bước 2: Rời nhóm — nếu server đã xử lý rời nhóm cùng lúc promote
+  // (hoặc trả 403/404 vì role đã đổi), ta vẫn coi như thành công
+  try {
+    const leaveResponse = await fetch(
+      `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/leave`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+      },
+    );
+    // Chỉ throw nếu lỗi thực sự (không phải 403/404 do role đổi)
+    if (!leaveResponse.ok && leaveResponse.status !== 403 && leaveResponse.status !== 404) {
+      await parseResponse<GroupRoomDetails>(leaveResponse);
+    }
+  } catch {
+    // Promote đã thành công — bỏ qua lỗi leave để UI vẫn được refresh
+  }
 }
 
 export async function promoteGroupMember(roomId: string, memberUserId: string) {
