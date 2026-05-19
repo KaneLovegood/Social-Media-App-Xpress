@@ -1,5 +1,10 @@
 "use client";
 
+import { AuthErrorMessage } from "@/components/auth/auth-footer-link";
+import { AuthField } from "@/components/auth/auth-field";
+import { AuthFooterLink } from "@/components/auth/auth-footer-link";
+import { AuthHeading } from "@/components/auth/auth-heading";
+import { AuthOutlineButton } from "@/components/auth/auth-outline-button";
 import { register, sendEmailOtp, verifyEmailOtp } from "@/lib/auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,6 +17,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [step, setStep] = useState<"account" | "otp">("account");
   const [otpDigits, setOtpDigits] = useState<string[]>(
     Array.from({ length: OTP_LENGTH }, () => ""),
@@ -24,7 +30,10 @@ export default function RegisterPage() {
 
   const otpCode = useMemo(() => otpDigits.join(""), [otpDigits]);
   const canContinueToOtp =
-    name.trim().length > 0 && email.trim().length > 0 && password.trim().length >= 8;
+    name.trim().length > 0 &&
+    email.trim().length > 0 &&
+    password.trim().length >= 8 &&
+    password === confirmPassword;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,6 +71,10 @@ export default function RegisterPage() {
     setOtpStatus("");
 
     if (!canContinueToOtp) {
+      if (password !== confirmPassword) {
+        setError("Mật khẩu xác nhận không khớp.");
+        return;
+      }
       setError("Vui lòng nhập đầy đủ tên, email và mật khẩu (tối thiểu 8 ký tự).");
       return;
     }
@@ -165,80 +178,87 @@ export default function RegisterPage() {
 
   return (
     <>
-      <p className="text-sm font-medium text-[#f25019]">Xpress</p>
-      <h1 className="mt-1 text-5xl font-bold leading-tight text-[#333333]">Đăng ký</h1>
+      <AuthHeading
+        title="Đăng ký"
+        subtitle="Vui lòng nhập họ tên, email và mật khẩu của bạn"
+      />
 
-      <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-[22px]" onSubmit={handleSubmit}>
         {step === "account" ? (
-          <>
+          <div className="space-y-[22px]">
+            <AuthField
+              id="name"
+              icon="user"
+              name="name"
+              type="text"
+              autoComplete="name"
+              placeholder="Nguyễn Văn A"
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <AuthField
+              id="email"
+              icon="user"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="email@example.com"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            <AuthField
+              id="password"
+              icon="lock"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Mật khẩu"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
             <div className="space-y-2">
-              <label htmlFor="name" className="block text-sm font-medium text-[#333333]">
-                Họ và tên
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                placeholder="Nam"
-                required
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="h-10 w-full rounded-md border border-transparent bg-white px-4 text-sm text-[#333333] outline-none ring-orange-300 placeholder:text-[#bfbfbf] focus:ring-2"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-[#333333]">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="h-10 w-full rounded-md border border-transparent bg-white px-4 text-sm text-[#333333] outline-none ring-orange-300 placeholder:text-[#bfbfbf] focus:ring-2"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-[#333333]">
-                Mật khẩu
-              </label>
-              <input
-                id="password"
-                name="password"
+              <AuthField
+                id="confirmPassword"
+                icon="lock"
+                name="confirmPassword"
                 type="password"
-                placeholder="Pass1234"
+                autoComplete="new-password"
+                placeholder="Nhập lại mật khẩu"
                 required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="h-10 w-full rounded-md border border-transparent bg-white px-4 text-sm text-[#333333] outline-none ring-orange-300 placeholder:text-[#bfbfbf] focus:ring-2"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
               />
+              <p className="text-right text-[10px] text-white">
+                <Link
+                  href={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ""}`}
+                  className="hover:underline"
+                >
+                  Quên mật khẩu?
+                </Link>
+              </p>
             </div>
-          </>
+          </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-md border border-[#ffd8c2] bg-[#fff7f2] px-3 py-2 text-xs text-[#8f4b1f]">
+            <div className="rounded-[15px] border border-white/40 bg-white/10 px-4 py-3 text-xs text-white">
               <p>
-                Xác thực email: <span className="font-semibold">{email}</span>
+                Xác thực email: <span className="font-bold">{email}</span>
               </p>
               <button
                 type="button"
                 onClick={handleBackToAccount}
-                className="mt-1 font-semibold text-[#f25019] underline"
+                className="mt-1 font-bold text-[#18a6c6] underline"
               >
                 Sửa thông tin đăng ký
               </button>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-[#333333]">
-                Mã OTP (4 số)
-              </label>
-              <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-white">Mã OTP (4 số)</p>
+              <div className="flex flex-wrap items-center gap-2">
                 {otpDigits.map((digit, index) => (
                   <input
                     key={index}
@@ -252,65 +272,55 @@ export default function RegisterPage() {
                     onChange={(event) => handleOtpDigitChange(index, event.target.value)}
                     onKeyDown={(event) => handleOtpKeyDown(index, event)}
                     onPaste={handleOtpPaste}
-                    className="h-11 w-11 rounded-md border border-transparent bg-white text-center text-lg font-semibold text-[#333333] outline-none ring-orange-300 focus:ring-2"
+                    className="h-11 w-11 rounded-[15px] border border-white bg-transparent text-center text-lg font-bold text-white outline-none focus:ring-2 focus:ring-[#18a6c6]"
                   />
                 ))}
                 <button
                   type="button"
                   onClick={() => void handleQuickPaste()}
-                  className="ml-1 h-10 rounded-md border border-[#f25019] px-3 text-xs font-semibold text-[#f25019] hover:bg-[#fff0e8]"
+                  className="h-10 rounded-[15px] border border-[#18a6c6] px-3 text-xs font-bold text-[#18a6c6] hover:bg-[#18a6c6]/10"
                 >
                   Dán nhanh
                 </button>
               </div>
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => void handleSendOtp()}
-                  disabled={sendingOtp}
-                  className="h-10 rounded-md border border-[#f25019] px-3 text-xs font-semibold text-[#f25019] hover:bg-[#fff0e8] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {sendingOtp ? "Đang gửi..." : "Gửi lại"}
-                </button>
-              </div>
-              {otpStatus ? <p className="text-xs text-emerald-700">{otpStatus}</p> : null}
+              <button
+                type="button"
+                onClick={() => void handleSendOtp()}
+                disabled={sendingOtp}
+                className="h-10 rounded-[15px] border border-[#18a6c6] px-3 text-xs font-bold text-[#18a6c6] hover:bg-[#18a6c6]/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sendingOtp ? "Đang gửi..." : "Gửi lại"}
+              </button>
+              {otpStatus ? <p className="text-xs text-[#7ee0f7]">{otpStatus}</p> : null}
             </div>
           </div>
         )}
 
-        {error ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
+        {error ? <AuthErrorMessage>{error}</AuthErrorMessage> : null}
 
         {step === "account" ? (
-          <button
+          <AuthOutlineButton
             type="button"
-            onClick={() => void handleContinueToOtp()}
+            label={sendingOtp ? "Đang gửi OTP..." : "Xác thực email"}
             disabled={sendingOtp}
-            className="mt-2 h-9 w-full rounded bg-[#f25019] text-sm font-semibold text-white transition hover:bg-[#df4614] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {sendingOtp ? "Đang gửi OTP..." : "Xác thực email"}
-          </button>
+            onClick={() => void handleContinueToOtp()}
+          />
         ) : (
-          <button
+          <AuthOutlineButton
             type="submit"
+            label={loading ? "Đang xác thực..." : "Xác thực"}
             disabled={loading || otpCode.length !== OTP_LENGTH}
-            className="mt-2 h-9 w-full rounded bg-[#f25019] text-sm font-semibold text-white transition hover:bg-[#df4614] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Đang xác thực..." : "Xác thực"}
-          </button>
+          />
         )}
       </form>
 
-      <p className="mt-6 text-center text-sm text-[#333333]">
-        Đã có tài khoản?{" "}
-        <Link href="/login" className="font-semibold text-[#ae4700]">
-          Đăng nhập
-        </Link>
-      </p>
+      <AuthFooterLink
+        className="mt-8"
+        prefix="Đã có tài khoản?"
+        linkLabel="Đăng nhập"
+        href="/login"
+      />
     </>
   );
 }

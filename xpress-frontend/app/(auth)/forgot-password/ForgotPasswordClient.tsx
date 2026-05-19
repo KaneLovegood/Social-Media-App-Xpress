@@ -1,5 +1,7 @@
 "use client";
 
+import { AuthField } from "@/components/auth/auth-field";
+import { AuthHeading } from "@/components/auth/auth-heading";
 import { resetPassword, sendEmailOtp, verifyEmailOtp } from "@/lib/auth";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -262,29 +264,24 @@ export default function ForgotPasswordClient() {
 
   return (
     <>
-      <p className="text-sm font-medium text-[#f25019]">Xpress</p>
-      <h1 className="mt-1 text-4xl font-bold leading-tight text-[#333333]">Quên mật khẩu</h1>
-      <p className="mt-2 text-sm text-[#727687]">
-        Nhập email để nhận OTP. Sau khi xác thực OTP thành công, bạn mới được đổi mật khẩu.
-      </p>
+      <AuthHeading
+        title="Quên mật khẩu"
+        subtitle="Nhập email để nhận OTP. Sau khi xác thực OTP thành công, bạn mới được đổi mật khẩu."
+      />
 
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+      <form className="space-y-[22px]" onSubmit={handleSubmit}>
         {step === "email" ? (
-          <div className="space-y-2">
-            <label htmlFor="email" className="block text-sm font-medium text-[#333333]">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="you@example.com"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="h-10 w-full rounded-md border border-transparent bg-white px-4 text-sm text-[#333333] outline-none ring-orange-300 placeholder:text-[#bfbfbf] focus:ring-2"
-            />
-          </div>
+          <AuthField
+            id="email"
+            icon="user"
+            name="email"
+            type="email"
+            autoComplete="email"
+            placeholder="email@example.com"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
         ) : null}
 
         {step === "otp" ? (
@@ -441,10 +438,10 @@ export default function ForgotPasswordClient() {
         ) : null}
       </form>
 
-      <p className="mt-6 text-center text-sm text-[#333333]">
+      <p className="mt-8 text-center text-[14px] font-bold text-white">
         Nhớ mật khẩu rồi?{" "}
-        <Link href="/login" className="font-semibold text-[#ae4700]">
-          Quay lại đăng nhập
+        <Link href="/login" className="italic text-[#18a6c6] hover:underline">
+          Đăng nhập
         </Link>
       </p>
     </>
