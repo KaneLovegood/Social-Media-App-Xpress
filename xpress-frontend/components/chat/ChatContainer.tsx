@@ -112,6 +112,9 @@ export default function ChatContainer({
   );
   const [replyTo, setReplyTo] = useState<ReplyPreview | undefined>(undefined);
   const [typingText, setTypingText] = useState("");
+  const [typingSenderId, setTypingSenderId] = useState<string | undefined>(
+    undefined,
+  );
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] =
     useState<ChatMessage | null>(null);
@@ -539,6 +542,7 @@ export default function ChatContainer({
     setGroupDetails: setGroupDetailsByRoom,
     setPresenceByUser,
     setTypingText,
+    setTypingSenderId,
     setIncomingCall,
     groupCallRoomId,
     groupCallMode,
@@ -561,6 +565,20 @@ export default function ChatContainer({
       behavior: "smooth",
     });
   }, [activeMessages]);
+
+  // Ensure typing indicator is visible (scroll to bottom) when someone else is typing
+  useEffect(() => {
+    const listElement = listRef.current;
+    if (!listElement) return;
+    if (!typingText) return;
+    // Only auto-scroll for typing events from others
+    if (typingSenderId && typingSenderId === currentUserId) return;
+
+    listElement.scrollTo({
+      top: listElement.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [typingText, typingSenderId, currentUserId]);
 
   const handleSend = (content: string, options?: SendMessageOptions) => {
     if (!socketRef.current || !effectiveActiveRoomId) return;
@@ -841,18 +859,50 @@ export default function ChatContainer({
 
   const handleLeaveGroup = async () => {
     if (!activeRoom || activeRoom.roomType !== "GROUP") return;
+    try {
+      await leaveGroup(activeRoom.id);
+    } catch (error) {
+      // Nếu server trả lỗi (ví dụ 500 khi backend xử lý dissolve), không để app crash.
+      // Log và báo cho người dùng, nhưng vẫn refresh UI để phản ánh trạng thái hiện tại.
+      // eslint-disable-next-line no-console
+      console.error("leaveGroup error:", error);
+      if (typeof window !== "undefined") {
+        const msg = error instanceof Error ? error.message : "Không thể rời nhóm";
+        try {
+          window.alert(msg);
+        } catch {}
+      }
+    } finally {
+      await reloadRooms();
+      setActiveRoomId("");
+    }
+  };
 
-    await leaveGroup(activeRoom.id);
+  // Dùng cho admin: API leave đã được gọi bên trong transferGroupAdmin
+  // Handler này chỉ cần refresh UI
+  const handleAdminLeaveGroup = async () => {
     await reloadRooms();
     setActiveRoomId("");
   };
 
   const handleDissolveGroup = async () => {
     if (!activeRoom || activeRoom.roomType !== "GROUP") return;
-
-    await dissolveGroup(activeRoom.id);
-    await reloadRooms();
-    setActiveRoomId("");
+    try {
+      await dissolveGroup(activeRoom.id);
+    } catch (error) {
+      // Log và hiển thị lỗi, nhưng đảm bảo UI refresh
+      // eslint-disable-next-line no-console
+      console.error("dissolveGroup error:", error);
+      if (typeof window !== "undefined") {
+        const msg = error instanceof Error ? error.message : "Không thể giải tán nhóm";
+        try {
+          window.alert(msg);
+        } catch {}
+      }
+    } finally {
+      await reloadRooms();
+      setActiveRoomId("");
+    }
   };
 
   const handleGroupDetailsChange = useCallback(
@@ -933,6 +983,7 @@ export default function ChatContainer({
 
     setReplyTo(undefined);
     setTypingText("");
+    setTypingSenderId("");
   }, [activeRoom]);
 
   const handleAcceptGroupCall = () => {
@@ -1003,10 +1054,13 @@ export default function ChatContainer({
               }}
             />
           ) : (
-            <ChatContent
+              <ChatContent
               peerName={peerName}
               orderTitle={orderTitle}
               typingText={typingText}
+              typingSenderId={
+                activeRoom?.roomType === "GROUP" ? typingSenderId : peerUserId
+              }
               isPeerOnline={isPeerOnline}
               isGroup={activeRoom?.roomType === "GROUP"}
               activeMessages={activeMessages}
@@ -1045,8 +1099,9 @@ export default function ChatContainer({
             room={activeRoom}
             groupDetails={activeGroupDetails}
             currentUserId={currentUserId}
-            onLeaveGroup={handleLeaveGroup}
-            onDissolveGroup={handleDissolveGroup}
+            onLeaveGroup={() => { void handleLeaveGroup(); }}
+            onAdminLeaveGroup={() => { void handleAdminLeaveGroup(); }}
+            onDissolveGroup={() => { void handleDissolveGroup(); }}
             onOpenCreateGroup={handleCreateGroup}
             onDeleteChatHistory={handleDeleteChatHistory}
             onGroupDetailsChange={handleGroupDetailsChange}

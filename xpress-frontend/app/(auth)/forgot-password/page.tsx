@@ -4,7 +4,7 @@ import ForgotPasswordClient from "./ForgotPasswordClient";
 export default function ForgotPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center px-4 py-8 text-sm text-slate-600">
+      <div className="flex min-h-screen items-center justify-center px-4 py-8 text-sm font-bold text-white">
         Đang tải trang Quên mật khẩu...
       </div>
     }>
