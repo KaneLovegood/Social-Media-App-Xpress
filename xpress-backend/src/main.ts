@@ -26,6 +26,7 @@ const corsOriginList: (string | RegExp)[] = [
   'https://new-technology-xpress-fe.onrender.com',
   'https://xpress-ten-ashen.vercel.app',
   'https://xpress-sandy.vercel.app',
+  'https://xpress-s5va.vercel.app',
   /\.devtunnels\.ms$/,
   /^http:\/\/10\.0\.2\.2(:\d+)?$/,
   /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/,
