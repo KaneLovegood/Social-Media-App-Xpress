@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Resend } from 'resend';
+import { createTransport } from 'nodemailer';
 import { EmailOtpPurpose } from './interfaces/email-otp.interface';
 
 type OtpEmailTemplate = {
@@ -8,22 +8,44 @@ type OtpEmailTemplate = {
   html: string;
 };
 
-export type OtpDeliveryChannel = 'resend' | 'console';
+type SmtpTransportOptions = {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+};
+
+type SmtpMailOptions = {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+};
+
+type MailTransporter = {
+  sendMail: (options: SmtpMailOptions) => Promise<unknown>;
+};
 
 @Injectable()
 export class EmailOtpService {
   private readonly logger = new Logger(EmailOtpService.name);
-  private resendClient: Resend | null = null;
-  private resendApiKey: string | null = null;
 
   async sendOtpEmail(
     toEmail: string,
     code: string,
     purpose: EmailOtpPurpose,
-  ): Promise<OtpDeliveryChannel> {
-    const apiKey = process.env.RESEND_API_KEY;
+  ): Promise<'smtp' | 'console'> {
+    const host = process.env.SMTP_HOST;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const port = Number(process.env.SMTP_PORT ?? 587);
     const fromEmail =
-      process.env.MAIL_FROM_EMAIL ?? process.env.RESEND_FROM_EMAIL;
+      process.env.MAIL_FROM_EMAIL ?? process.env.SMTP_FROM_EMAIL ?? user;
     const fromName =
       process.env.MAIL_FROM_NAME ?? process.env.MAIL_BRAND_NAME ?? 'Xpress';
     const replyTo = process.env.MAIL_REPLY_TO;
@@ -31,7 +53,6 @@ export class EmailOtpService {
     const supportUrl = process.env.MAIL_SUPPORT_URL ?? '';
     const otpExpireMinutes = Number(process.env.MAIL_OTP_EXPIRE_MINUTES ?? 10);
     const locale = process.env.MAIL_LOCALE ?? 'vi';
-
     const template = this.buildOtpTemplate({
       code,
       purpose,
@@ -41,47 +62,44 @@ export class EmailOtpService {
       locale,
     });
 
-    if (!apiKey || !fromEmail) {
+    if (!host || !user || !pass || !fromEmail) {
       const isProduction = process.env.NODE_ENV === 'production';
       if (isProduction) {
         this.logger.warn(
-          `Resend chua cau hinh day du (RESEND_API_KEY / MAIL_FROM_EMAIL). Bo qua gui OTP email cho ${toEmail} (${purpose}).`,
+          `SMTP chua cau hinh day du. Bo qua gui OTP email cho ${toEmail} (${purpose}).`,
         );
       } else {
         this.logger.warn(
-          `Resend chua cau hinh day du. OTP cho ${toEmail} (${purpose}): ${code}`,
+          `SMTP chua cau hinh day du. OTP cho ${toEmail} (${purpose}): ${code}`,
         );
       }
       return 'console';
     }
 
-    const client = this.getResendClient(apiKey);
+    const createMailer = createTransport as unknown as (
+      options: SmtpTransportOptions,
+    ) => MailTransporter;
+    const transporter = createMailer({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user,
+        pass,
+      },
+    });
 
-    const { error } = await client.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: [toEmail],
+    const mailOptions: SmtpMailOptions = {
+      from: `"${fromName}" <${fromEmail}>`,
+      to: toEmail,
       subject: template.subject,
       text: template.text,
       html: template.html,
       ...(replyTo ? { replyTo } : {}),
-    });
+    };
+    await transporter.sendMail(mailOptions);
 
-    if (error) {
-      this.logger.error(
-        `Resend gui OTP that bai cho ${toEmail} (${purpose}): ${error.name} - ${error.message}`,
-      );
-      throw new Error(`Resend send failed: ${error.message}`);
-    }
-
-    return 'resend';
-  }
-
-  private getResendClient(apiKey: string): Resend {
-    if (!this.resendClient || this.resendApiKey !== apiKey) {
-      this.resendClient = new Resend(apiKey);
-      this.resendApiKey = apiKey;
-    }
-    return this.resendClient;
+    return 'smtp';
   }
 
   private buildOtpTemplate(params: {
