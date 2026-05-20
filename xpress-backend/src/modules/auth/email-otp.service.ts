@@ -48,6 +48,23 @@ type SmtpConfig = {
   pass: string;
 };
 
+type BrevoSendInput = {
+  apiKey: string;
+  fromEmail: string;
+  fromName: string;
+  toEmail: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyToEmail?: string;
+  replyToName?: string;
+};
+
+type MailChannel = 'brevo' | 'smtp' | 'console';
+
+const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_TIMEOUT_MS = 15_000;
+
 @Injectable()
 export class EmailOtpService {
   private readonly logger = new Logger(EmailOtpService.name);
@@ -59,7 +76,145 @@ export class EmailOtpService {
     toEmail: string,
     code: string,
     purpose: EmailOtpPurpose,
-  ): Promise<'smtp' | 'console'> {
+  ): Promise<MailChannel> {
+    const fromName =
+      process.env.MAIL_FROM_NAME ?? process.env.MAIL_BRAND_NAME ?? 'Xpress';
+    const brandName = process.env.MAIL_BRAND_NAME ?? fromName;
+    const supportUrl = process.env.MAIL_SUPPORT_URL ?? '';
+    const otpExpireMinutes = Number(process.env.MAIL_OTP_EXPIRE_MINUTES ?? 10);
+    const locale = process.env.MAIL_LOCALE ?? 'vi';
+    const replyToEmail = process.env.MAIL_REPLY_TO;
+    const replyToName = process.env.MAIL_REPLY_TO_NAME;
+
+    const template = this.buildOtpTemplate({
+      code,
+      purpose,
+      brandName,
+      supportUrl,
+      otpExpireMinutes,
+      locale,
+    });
+
+    const providerOverride = (process.env.MAIL_PROVIDER ?? '').toLowerCase();
+    const brevoApiKey = process.env.BREVO_API_KEY?.trim();
+    const brevoFromEmail =
+      process.env.BREVO_SENDER_EMAIL ??
+      process.env.MAIL_FROM_EMAIL ??
+      process.env.SMTP_FROM_EMAIL;
+    const brevoFromName = process.env.BREVO_SENDER_NAME ?? fromName;
+
+    const useBrevo =
+      providerOverride === 'brevo' ||
+      (providerOverride === '' && !!brevoApiKey);
+
+    if (useBrevo) {
+      if (!brevoApiKey) {
+        this.logger.warn(
+          `MAIL_PROVIDER=brevo nhung BREVO_API_KEY chua co. Bo qua gui OTP cho ${toEmail} (${purpose}).`,
+        );
+        return this.consoleFallback(toEmail, code, purpose);
+      }
+      if (!brevoFromEmail) {
+        this.logger.warn(
+          `Brevo can BREVO_SENDER_EMAIL hoac MAIL_FROM_EMAIL (sender da verify). Bo qua gui OTP cho ${toEmail}.`,
+        );
+        return this.consoleFallback(toEmail, code, purpose);
+      }
+
+      await this.sendViaBrevo({
+        apiKey: brevoApiKey,
+        fromEmail: brevoFromEmail,
+        fromName: brevoFromName,
+        toEmail,
+        subject: template.subject,
+        text: template.text,
+        html: template.html,
+        replyToEmail,
+        replyToName,
+      });
+      return 'brevo';
+    }
+
+    return this.sendViaSmtp({
+      toEmail,
+      code,
+      purpose,
+      template,
+      fromName,
+      replyTo: replyToEmail,
+    });
+  }
+
+  private async sendViaBrevo(input: BrevoSendInput): Promise<void> {
+    const body: Record<string, unknown> = {
+      sender: { name: input.fromName, email: input.fromEmail },
+      to: [{ email: input.toEmail }],
+      subject: input.subject,
+      htmlContent: input.html,
+      textContent: input.text,
+    };
+    if (input.replyToEmail) {
+      body.replyTo = input.replyToName
+        ? { email: input.replyToEmail, name: input.replyToName }
+        : { email: input.replyToEmail };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), BREVO_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(BREVO_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'api-key': input.apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
+      const isAbort = e.name === 'AbortError';
+      this.logger.error(
+        `Brevo request failed (network) to=${input.toEmail} ` +
+          `abort=${isAbort} msg=${e.message ?? String(err)}`,
+      );
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      const rawText = await response.text().catch(() => '');
+      let parsedCode: string | undefined;
+      let parsedMessage: string | undefined;
+      try {
+        const json = JSON.parse(rawText) as { code?: string; message?: string };
+        parsedCode = json.code;
+        parsedMessage = json.message;
+      } catch {
+        /* not JSON */
+      }
+      this.logger.error(
+        `Brevo sendMail failed status=${response.status} to=${input.toEmail} ` +
+          `code=${parsedCode ?? 'UNKNOWN'} msg=${parsedMessage ?? rawText.slice(0, 300)}`,
+      );
+      throw new Error(
+        `Brevo email send failed (${response.status} ${parsedCode ?? ''}). ${parsedMessage ?? ''}`.trim(),
+      );
+    }
+  }
+
+  private async sendViaSmtp(args: {
+    toEmail: string;
+    code: string;
+    purpose: EmailOtpPurpose;
+    template: OtpEmailTemplate;
+    fromName: string;
+    replyTo?: string;
+  }): Promise<MailChannel> {
     const host = process.env.SMTP_HOST;
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
@@ -70,45 +225,19 @@ export class EmailOtpService {
       secureEnv != null ? secureEnv.toLowerCase() === 'true' : port === 465;
     const fromEmail =
       process.env.MAIL_FROM_EMAIL ?? process.env.SMTP_FROM_EMAIL ?? user;
-    const fromName =
-      process.env.MAIL_FROM_NAME ?? process.env.MAIL_BRAND_NAME ?? 'Xpress';
-    const replyTo = process.env.MAIL_REPLY_TO;
-    const brandName = process.env.MAIL_BRAND_NAME ?? fromName;
-    const supportUrl = process.env.MAIL_SUPPORT_URL ?? '';
-    const otpExpireMinutes = Number(process.env.MAIL_OTP_EXPIRE_MINUTES ?? 10);
-    const locale = process.env.MAIL_LOCALE ?? 'vi';
-    const template = this.buildOtpTemplate({
-      code,
-      purpose,
-      brandName,
-      supportUrl,
-      otpExpireMinutes,
-      locale,
-    });
 
     if (!host || !user || !pass || !fromEmail) {
-      const isProduction = process.env.NODE_ENV === 'production';
-      if (isProduction) {
-        this.logger.warn(
-          `SMTP chua cau hinh day du. Bo qua gui OTP email cho ${toEmail} (${purpose}).`,
-        );
-      } else {
-        this.logger.warn(
-          `SMTP chua cau hinh day du. OTP cho ${toEmail} (${purpose}): ${code}`,
-        );
-      }
-      return 'console';
+      return this.consoleFallback(args.toEmail, args.code, args.purpose);
     }
 
     const transporter = this.getTransporter({ host, port, secure, user, pass });
-
     const mailOptions: SmtpMailOptions = {
-      from: `"${fromName}" <${fromEmail}>`,
-      to: toEmail,
-      subject: template.subject,
-      text: template.text,
-      html: template.html,
-      ...(replyTo ? { replyTo } : {}),
+      from: `"${args.fromName}" <${fromEmail}>`,
+      to: args.toEmail,
+      subject: args.template.subject,
+      text: args.template.text,
+      html: args.template.html,
+      ...(args.replyTo ? { replyTo: args.replyTo } : {}),
     };
 
     try {
@@ -121,17 +250,34 @@ export class EmailOtpService {
           `code=${e.code ?? 'UNKNOWN'} cmd=${e.command ?? 'N/A'} ` +
           `msg=${e.message ?? String(err)}`,
       );
-
       this.disposeTransporter();
 
       if (e.code === 'ETIMEDOUT' || e.code === 'ECONNECTION') {
         this.logger.error(
-          'Mat ket noi SMTP. Tren Render/Heroku, port 587 thuong bi chan. ' +
-            'Hay dat SMTP_PORT=465 va SMTP_SECURE=true (SMTPS) thay vi 587 (STARTTLS).',
+          'Mat ket noi SMTP. Render Free chan moi outbound SMTP. ' +
+            'Hay cau hinh BREVO_API_KEY de gui qua HTTPS thay vi SMTP.',
         );
       }
       throw err;
     }
+  }
+
+  private consoleFallback(
+    toEmail: string,
+    code: string,
+    purpose: EmailOtpPurpose,
+  ): MailChannel {
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      this.logger.warn(
+        `Mail provider chua cau hinh day du. Bo qua gui OTP email cho ${toEmail} (${purpose}).`,
+      );
+    } else {
+      this.logger.warn(
+        `Mail provider chua cau hinh day du. OTP cho ${toEmail} (${purpose}): ${code}`,
+      );
+    }
+    return 'console';
   }
 
   private getTransporter(cfg: SmtpConfig): MailTransporter {
