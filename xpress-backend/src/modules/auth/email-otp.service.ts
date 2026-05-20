@@ -16,6 +16,13 @@ type SmtpTransportOptions = {
     user: string;
     pass: string;
   };
+  pool?: boolean;
+  maxConnections?: number;
+  maxMessages?: number;
+  connectionTimeout?: number;
+  greetingTimeout?: number;
+  socketTimeout?: number;
+  tls?: { rejectUnauthorized?: boolean; servername?: string };
 };
 
 type SmtpMailOptions = {
@@ -29,11 +36,24 @@ type SmtpMailOptions = {
 
 type MailTransporter = {
   sendMail: (options: SmtpMailOptions) => Promise<unknown>;
+  verify?: () => Promise<true>;
+  close?: () => void;
+};
+
+type SmtpConfig = {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
 };
 
 @Injectable()
 export class EmailOtpService {
   private readonly logger = new Logger(EmailOtpService.name);
+  private transporter: MailTransporter | null = null;
+  private transporterKey: string | null = null;
+  private verifyPromise: Promise<void> | null = null;
 
   async sendOtpEmail(
     toEmail: string,
@@ -43,7 +63,11 @@ export class EmailOtpService {
     const host = process.env.SMTP_HOST;
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
-    const port = Number(process.env.SMTP_PORT ?? 587);
+    const envPort = Number(process.env.SMTP_PORT ?? 587);
+    const port = Number.isFinite(envPort) && envPort > 0 ? envPort : 587;
+    const secureEnv = process.env.SMTP_SECURE;
+    const secure =
+      secureEnv != null ? secureEnv.toLowerCase() === 'true' : port === 465;
     const fromEmail =
       process.env.MAIL_FROM_EMAIL ?? process.env.SMTP_FROM_EMAIL ?? user;
     const fromName =
@@ -76,18 +100,7 @@ export class EmailOtpService {
       return 'console';
     }
 
-    const createMailer = createTransport as unknown as (
-      options: SmtpTransportOptions,
-    ) => MailTransporter;
-    const transporter = createMailer({
-      host,
-      port,
-      secure: port === 465,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    const transporter = this.getTransporter({ host, port, secure, user, pass });
 
     const mailOptions: SmtpMailOptions = {
       from: `"${fromName}" <${fromEmail}>`,
@@ -97,9 +110,87 @@ export class EmailOtpService {
       html: template.html,
       ...(replyTo ? { replyTo } : {}),
     };
-    await transporter.sendMail(mailOptions);
 
-    return 'smtp';
+    try {
+      await transporter.sendMail(mailOptions);
+      return 'smtp';
+    } catch (err) {
+      const e = err as { code?: string; command?: string; message?: string };
+      this.logger.error(
+        `SMTP sendMail failed host=${host} port=${port} secure=${secure} ` +
+          `code=${e.code ?? 'UNKNOWN'} cmd=${e.command ?? 'N/A'} ` +
+          `msg=${e.message ?? String(err)}`,
+      );
+
+      this.disposeTransporter();
+
+      if (e.code === 'ETIMEDOUT' || e.code === 'ECONNECTION') {
+        this.logger.error(
+          'Mat ket noi SMTP. Tren Render/Heroku, port 587 thuong bi chan. ' +
+            'Hay dat SMTP_PORT=465 va SMTP_SECURE=true (SMTPS) thay vi 587 (STARTTLS).',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private getTransporter(cfg: SmtpConfig): MailTransporter {
+    const key = `${cfg.host}:${cfg.port}:${cfg.secure}:${cfg.user}`;
+    if (this.transporter && this.transporterKey === key) {
+      return this.transporter;
+    }
+    this.disposeTransporter();
+
+    const createMailer = createTransport as unknown as (
+      options: SmtpTransportOptions,
+    ) => MailTransporter;
+
+    this.transporter = createMailer({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+      tls: { servername: cfg.host },
+    });
+    this.transporterKey = key;
+
+    if (typeof this.transporter.verify === 'function') {
+      this.verifyPromise = this.transporter
+        .verify()
+        .then(() => {
+          this.logger.log(
+            `SMTP transport ready (host=${cfg.host} port=${cfg.port} secure=${cfg.secure}).`,
+          );
+        })
+        .catch((err: unknown) => {
+          const e = err as { code?: string; message?: string };
+          this.logger.warn(
+            `SMTP verify failed host=${cfg.host} port=${cfg.port} secure=${cfg.secure} ` +
+              `code=${e.code ?? 'UNKNOWN'} msg=${e.message ?? String(err)}`,
+          );
+        });
+    }
+
+    return this.transporter;
+  }
+
+  private disposeTransporter(): void {
+    if (this.transporter && typeof this.transporter.close === 'function') {
+      try {
+        this.transporter.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.transporter = null;
+    this.transporterKey = null;
+    this.verifyPromise = null;
   }
 
   private buildOtpTemplate(params: {
