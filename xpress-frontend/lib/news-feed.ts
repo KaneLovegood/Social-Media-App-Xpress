@@ -151,6 +151,15 @@ export async function xoaBinhLuan(postId: string, commentId: string) {
   });
 }
 
+export async function layDanhSachBinhLuan(postId: string, cursor?: string, limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+
+  return api<{ items: BinhLuanBanTin[]; nextCursor: string | null }>(`/bai-viet/${postId}/binh-luan?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
 export async function chiaSeBaiViet(
   postId: string,
   payload?: { noiDung?: string; cheDoRiengTu?: CheDoRiengTu },

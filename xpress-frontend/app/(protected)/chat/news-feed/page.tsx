@@ -4,11 +4,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import ChatAppRail from '@/components/chat/ChatAppRail';
 import {
   BaiVietBanTin,
+  BinhLuanBanTin,
   boThichBaiViet,
   capNhatBaiViet,
   chiaSeBaiViet,
   CheDoRiengTu,
   layDanhSachBanTin,
+  layDanhSachBinhLuan,
   taoBaiViet,
   themBinhLuan,
   thichBaiViet,
@@ -19,6 +21,7 @@ import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
 import { getPresignedUrl, uploadFileToS3 } from '@/lib/chat-upload';
 import NewsFeedLocationPicker from '@/components/chat/NewsFeedLocationPicker';
 import { createFeedSocket } from '@/lib/realtime/socket-client';
+import { toast } from 'sonner';
 import { FEED_EVENTS } from '@/lib/realtime/events';
 import {
   Bell,
@@ -148,6 +151,7 @@ export default function NewsFeedPage() {
   const [dangTaiThem, setDangTaiThem] = useState(false);
   const [dangDangBai, setDangDangBai] = useState(false);
   const [loi, setLoi] = useState('');
+  const [tienTrinhUpload, setTienTrinhUpload] = useState<number | null>(null);
 
   const [noiDung, setNoiDung] = useState('');
   const [viTri, setViTri] = useState('');
@@ -167,6 +171,10 @@ export default function NewsFeedPage() {
   const [baiVietChoXoa, setBaiVietChoXoa] = useState<BaiVietBanTin | null>(null);
   const [dangXoaBaiViet, setDangXoaBaiViet] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const timeoutsThich = useRef<Record<string, NodeJS.Timeout>>({});
+  const [dangPhanHoi, setDangPhanHoi] = useState<Record<string, BinhLuanBanTin | null>>({});
+  const [baiVietChoHienThi, setBaiVietChoHienThi] = useState<BaiVietBanTin[]>([]);
+  const feedContainerRef = useRef<HTMLDivElement>(null);
 
   const nhanCamXucDaChon = useMemo(
     () => DANH_SACH_CAM_XUC.find((item) => item.ma === maCamXucDaChon)?.nhan,
@@ -227,14 +235,24 @@ export default function NewsFeedPage() {
       const socket = createFeedSocket(token);
 
       const onPostCreated = (payload: BaiVietBanTin) => {
-        setDanhSachBaiViet((prev) => [
-          payload,
-          ...prev.filter((item) => item.maBaiViet !== payload.maBaiViet),
-        ]);
+        if (payload.maNguoiDung === currentUserId) {
+          setDanhSachBaiViet((prev) => [
+            payload,
+            ...prev.filter((item) => item.maBaiViet !== payload.maBaiViet),
+          ]);
+        } else {
+          setBaiVietChoHienThi((prev) => {
+            const existed = prev.some((item) => item.maBaiViet === payload.maBaiViet);
+            return existed ? prev : [payload, ...prev];
+          });
+        }
       };
 
       const onPostUpdated = (payload: BaiVietBanTin) => {
         setDanhSachBaiViet((prev) =>
+          prev.map((item) => (item.maBaiViet === payload.maBaiViet ? payload : item)),
+        );
+        setBaiVietChoHienThi((prev) =>
           prev.map((item) => (item.maBaiViet === payload.maBaiViet ? payload : item)),
         );
       };
@@ -243,12 +261,20 @@ export default function NewsFeedPage() {
         setDanhSachBaiViet((prev) =>
           prev.filter((item) => item.maBaiViet !== payload.maBaiViet),
         );
+        setBaiVietChoHienThi((prev) =>
+          prev.filter((item) => item.maBaiViet !== payload.maBaiViet),
+        );
       };
 
       const onReactionUpdated = (payload: {
         maBaiViet: string;
         daThich: boolean;
         soLuotThich: number;
+        maNguoiDungTacGia?: string;
+        nguoiTuongTac?: {
+          maNguoiDung: string;
+          tenNguoiDung: string;
+        };
       }) => {
         setDanhSachBaiViet((prev) =>
           prev.map((item) =>
@@ -260,6 +286,15 @@ export default function NewsFeedPage() {
               : item,
           ),
         );
+
+        if (
+          payload.maNguoiDungTacGia === currentUserId &&
+          payload.nguoiTuongTac &&
+          payload.nguoiTuongTac.maNguoiDung !== currentUserId &&
+          payload.daThich
+        ) {
+          toast.success(`${payload.nguoiTuongTac.tenNguoiDung} đã thích bài viết của bạn!`);
+        }
       };
 
       const onCommentCreated = (payload: {
@@ -335,12 +370,27 @@ export default function NewsFeedPage() {
     };
   }, []);
 
-  const uploadDanhSachFile = async (files: File[]) => {
+  const uploadDanhSachFile = async (
+    files: File[],
+    startIndex: number,
+    totalFiles: number,
+    loadedBytesMap: { current: Record<string, number> },
+    totalBytes: number,
+  ) => {
     const urls: string[] = [];
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileKey = `${file.name}-${file.size}-${startIndex + i}`;
       const presigned = await getPresignedUrl(file.name, file.type, file.size);
-      await uploadFileToS3(presigned.uploadUrl, file);
+      await uploadFileToS3(presigned.uploadUrl, file, (percent) => {
+        const loaded = Math.round((percent / 100) * file.size);
+        loadedBytesMap.current[fileKey] = loaded;
+        const totalLoaded = Object.values(loadedBytesMap.current).reduce((a, b) => a + b, 0);
+        const overallPercent = Math.min(99, Math.round((totalLoaded / totalBytes) * 100));
+        setTienTrinhUpload(overallPercent);
+      });
+      loadedBytesMap.current[fileKey] = file.size;
       urls.push(presigned.publicUrl);
     }
 
@@ -372,10 +422,22 @@ export default function NewsFeedPage() {
     let daThemBaiTam = false;
 
     try {
+      const allFiles = [...anhDaChon, ...videoDaChon];
+      const totalBytes = allFiles.reduce((sum, f) => sum + f.size, 0);
+      const loadedBytesMap = { current: {} as Record<string, number> };
+
+      if (totalBytes > 0) {
+        setTienTrinhUpload(0);
+      }
+
       const [danhSachAnh, danhSachVideo] = await Promise.all([
-        uploadDanhSachFile(anhDaChon),
-        uploadDanhSachFile(videoDaChon),
+        uploadDanhSachFile(anhDaChon, 0, allFiles.length, loadedBytesMap, totalBytes),
+        uploadDanhSachFile(videoDaChon, anhDaChon.length, allFiles.length, loadedBytesMap, totalBytes),
       ]);
+
+      if (totalBytes > 0) {
+        setTienTrinhUpload(100);
+      }
 
       const thoiDiem = new Date().toISOString();
       maTam = `temp-post-${crypto.randomUUID()}`;
@@ -444,10 +506,12 @@ export default function NewsFeedPage() {
       setLoi(error instanceof Error ? error.message : 'Đăng bài thất bại');
     } finally {
       setDangDangBai(false);
+      setTienTrinhUpload(null);
     }
   };
 
-  const onThich = async (post: BaiVietBanTin) => {
+  const onThich = (post: BaiVietBanTin) => {
+    const trangThaiMoiDaThich = !post.daThich;
     const trangThaiCu = {
       daThich: post.daThich,
       soLuotThich: post.soLuotThich,
@@ -458,48 +522,59 @@ export default function NewsFeedPage() {
         item.maBaiViet === post.maBaiViet
           ? {
               ...item,
-              daThich: !item.daThich,
-              soLuotThich: Math.max(0, item.soLuotThich + (item.daThich ? -1 : 1)),
+              daThich: trangThaiMoiDaThich,
+              soLuotThich: Math.max(0, item.soLuotThich + (post.daThich ? -1 : 1)),
             }
           : item,
       ),
     );
 
-    try {
-      const result = trangThaiCu.daThich
-        ? await boThichBaiViet(post.maBaiViet)
-        : await thichBaiViet(post.maBaiViet);
-
-      setDanhSachBaiViet((prev) =>
-        prev.map((item) =>
-          item.maBaiViet === post.maBaiViet
-            ? {
-                ...item,
-                daThich: result.daThich,
-                soLuotThich: result.soLuotThich,
-              }
-            : item,
-        ),
-      );
-    } catch (error) {
-      setDanhSachBaiViet((prev) =>
-        prev.map((item) =>
-          item.maBaiViet === post.maBaiViet
-            ? {
-                ...item,
-                daThich: trangThaiCu.daThich,
-                soLuotThich: trangThaiCu.soLuotThich,
-              }
-            : item,
-        ),
-      );
-      setLoi(error instanceof Error ? error.message : 'Không cập nhật được lượt thích');
+    if (timeoutsThich.current[post.maBaiViet]) {
+      clearTimeout(timeoutsThich.current[post.maBaiViet]);
     }
+
+    timeoutsThich.current[post.maBaiViet] = setTimeout(async () => {
+      try {
+        const result = trangThaiMoiDaThich
+          ? await thichBaiViet(post.maBaiViet)
+          : await boThichBaiViet(post.maBaiViet);
+
+        setDanhSachBaiViet((prev) =>
+          prev.map((item) =>
+            item.maBaiViet === post.maBaiViet
+              ? {
+                  ...item,
+                  daThich: result.daThich,
+                  soLuotThich: result.soLuotThich,
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        setDanhSachBaiViet((prev) =>
+          prev.map((item) =>
+            item.maBaiViet === post.maBaiViet
+              ? {
+                  ...item,
+                  daThich: trangThaiCu.daThich,
+                  soLuotThich: trangThaiCu.soLuotThich,
+                }
+              : item,
+          ),
+        );
+        setLoi(error instanceof Error ? error.message : 'Không cập nhật được lượt thích');
+      } finally {
+        delete timeoutsThich.current[post.maBaiViet];
+      }
+    }, 300);
   };
 
   const onThemBinhLuan = async (maBaiViet: string) => {
     const noiDungBinhLuan = (binhLuanNhap[maBaiViet] ?? '').trim();
     if (!noiDungBinhLuan) return;
+
+    const parentComment = dangPhanHoi[maBaiViet];
+    const parentId = parentComment?.maBinhLuan || null;
 
     const noiDungNhapCu = binhLuanNhap[maBaiViet] ?? '';
     const thoiDiem = new Date().toISOString();
@@ -509,7 +584,7 @@ export default function NewsFeedPage() {
       maBaiViet,
       maNguoiDung: currentUserId,
       noiDung: noiDungBinhLuan,
-      maBinhLuanCha: null,
+      maBinhLuanCha: parentId,
       thoiGianTao: thoiDiem,
       thoiGianCapNhat: thoiDiem,
       tacGia: currentUser
@@ -522,6 +597,8 @@ export default function NewsFeedPage() {
     };
 
     setBinhLuanNhap((prev) => ({ ...prev, [maBaiViet]: '' }));
+    setDangPhanHoi((prev) => ({ ...prev, [maBaiViet]: null }));
+
     setDanhSachBaiViet((prev) =>
       prev.map((item) =>
         item.maBaiViet === maBaiViet
@@ -535,7 +612,7 @@ export default function NewsFeedPage() {
     );
 
     try {
-      const binhLuanMoi = await themBinhLuan(maBaiViet, noiDungBinhLuan);
+      const binhLuanMoi = await themBinhLuan(maBaiViet, noiDungBinhLuan, parentId || undefined);
       setDanhSachBaiViet((prev) =>
         prev.map((item) => {
           if (item.maBaiViet !== maBaiViet) return item;
@@ -557,21 +634,41 @@ export default function NewsFeedPage() {
         }),
       );
     } catch (error) {
+      setBinhLuanNhap((prev) => ({ ...prev, [maBaiViet]: noiDungNhapCu }));
+      if (parentComment) {
+        setDangPhanHoi((prev) => ({ ...prev, [maBaiViet]: parentComment }));
+      }
       setDanhSachBaiViet((prev) =>
         prev.map((item) => {
           if (item.maBaiViet !== maBaiViet) return item;
-          const coTam = item.danhSachBinhLuan.some((binhLuan) => binhLuan.maBinhLuan === maTam);
           return {
             ...item,
-            soBinhLuan: coTam ? Math.max(0, item.soBinhLuan - 1) : item.soBinhLuan,
+            soBinhLuan: Math.max(0, item.soBinhLuan - 1),
             danhSachBinhLuan: item.danhSachBinhLuan.filter(
               (binhLuan) => binhLuan.maBinhLuan !== maTam,
             ),
           };
         }),
       );
-      setBinhLuanNhap((prev) => ({ ...prev, [maBaiViet]: noiDungNhapCu }));
       setLoi(error instanceof Error ? error.message : 'Thêm bình luận thất bại');
+    }
+  };
+
+  const onTaiBinhLuan = async (maBaiViet: string) => {
+    try {
+      const response = await layDanhSachBinhLuan(maBaiViet);
+      setDanhSachBaiViet((prev) =>
+        prev.map((item) =>
+          item.maBaiViet === maBaiViet
+            ? {
+                ...item,
+                danhSachBinhLuan: response.items,
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setLoi(error instanceof Error ? error.message : 'Tải danh sách bình luận thất bại');
     }
   };
 
@@ -870,7 +967,28 @@ export default function NewsFeedPage() {
       </header>
 
       <div className="relative z-10 flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:pb-6 lg:px-10">
+        {baiVietChoHienThi.length > 0 ? (
+          <div className="fixed bottom-6 left-1/2 z-30 -translate-x-1/2">
+            <button
+              type="button"
+              onClick={() => {
+                setDanhSachBaiViet((prev) => {
+                  const combined = [...baiVietChoHienThi, ...prev];
+                  return combined.filter(
+                    (item, idx, self) => self.findIndex((p) => p.maBaiViet === item.maBaiViet) === idx,
+                  );
+                });
+                setBaiVietChoHienThi([]);
+                feedContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center gap-2 rounded-full bg-[#1d59df] px-5 py-2.5 text-xs font-bold text-white shadow-[0_12px_30px_rgba(29,89,223,0.4)] transition-all hover:scale-105 hover:bg-[#184ec6] active:scale-95 animate-bounce"
+            >
+              Có bài viết mới ({baiVietChoHienThi.length}) ↑
+            </button>
+          </div>
+        ) : null}
+
+        <main ref={feedContainerRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:pb-6 lg:px-10">
           <div className="mx-auto w-full max-w-3xl space-y-6">
             <div className="rounded-2xl border border-[#dbe5f7] bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5d6a88]">Bảng tin hôm nay</p>
@@ -895,6 +1013,21 @@ export default function NewsFeedPage() {
                   ) : null}
                 </div>
               </div>
+
+              {tienTrinhUpload !== null ? (
+                <div className="mt-4 border-t border-[#e8ecf5] pt-3">
+                  <div className="flex items-center justify-between text-xs font-semibold text-[#1d59df]">
+                    <span>Đang tải lên media...</span>
+                    <span>{tienTrinhUpload}%</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#e8f0ff]">
+                    <div
+                      className="h-full bg-linear-to-r from-[#005eff] to-[#00aaff] transition-all duration-150 ease-out"
+                      style={{ width: `${tienTrinhUpload}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e8ecf5] pt-3.5">
                 <div className="flex flex-wrap items-center gap-1">
@@ -1159,32 +1292,133 @@ export default function NewsFeedPage() {
                   </button>
                 </div>
 
-                <div className="space-y-2 bg-[#f8fbff] p-3">
-                  {baiViet.danhSachBinhLuan.map((binhLuan) => (
-                    <div key={binhLuan.maBinhLuan} className="rounded-xl border border-[#e5ebfa] bg-white p-2.5 shadow-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-[#2d416f]">
-                          {binhLuan.tacGia?.tenNguoiDung ?? 'Người dùng'}
-                        </span>
-                        <span className="text-[11px] text-[#8a94b3]">
-                          {dinhDangThoiGian(binhLuan.thoiGianTao)}
-                        </span>
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#1d2742]">{binhLuan.noiDung}</p>
-                      {binhLuan.maNguoiDung === currentUserId ? (
-                        <button
-                          type="button"
-                          onClick={() => void onXoaBinhLuan(baiViet.maBaiViet, binhLuan.maBinhLuan)}
-                          className="mt-1 text-[11px] font-semibold text-[#be2a3b] hover:underline"
-                        >
-                          Xóa bình luận
-                        </button>
-                      ) : null}
+                <div className="space-y-3 bg-[#f8fbff] p-3 rounded-b-2xl">
+                  {baiViet.soBinhLuan > 10 &&
+                  baiViet.danhSachBinhLuan.length < baiViet.soBinhLuan ? (
+                    <button
+                      type="button"
+                      onClick={() => void onTaiBinhLuan(baiViet.maBaiViet)}
+                      className="text-xs font-semibold text-[#1d59df] hover:underline pb-1 block"
+                    >
+                      Xem thêm {baiViet.soBinhLuan - baiViet.danhSachBinhLuan.length} bình luận
+                    </button>
+                  ) : null}
+                  {baiViet.danhSachBinhLuan
+                    .filter((binhLuan) => !binhLuan.maBinhLuanCha)
+                    .map((binhLuan) => {
+                      const phanHoi = baiViet.danhSachBinhLuan.filter(
+                        (reply) => reply.maBinhLuanCha === binhLuan.maBinhLuan,
+                      );
+
+                      return (
+                        <div key={binhLuan.maBinhLuan} className="space-y-2">
+                          <div className="rounded-xl border border-[#e5ebfa] bg-white p-2.5 shadow-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-[#2d416f]">
+                                {binhLuan.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                              </span>
+                              <span className="text-[11px] text-[#8a94b3]">
+                                {dinhDangThoiGian(binhLuan.thoiGianTao)}
+                              </span>
+                            </div>
+                            <p className="mt-1 whitespace-pre-wrap text-sm text-[#1d2742]">{binhLuan.noiDung}</p>
+                            <div className="mt-1 flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDangPhanHoi((prev) => ({
+                                    ...prev,
+                                    [baiViet.maBaiViet]: binhLuan,
+                                  }));
+                                  const inputEl = document.getElementById(`input-binh-luan-${baiViet.maBaiViet}`);
+                                  if (inputEl) inputEl.focus();
+                                }}
+                                className="text-[11px] font-semibold text-[#1d59df] hover:underline"
+                              >
+                                Phản hồi
+                              </button>
+                              {binhLuan.maNguoiDung === currentUserId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void onXoaBinhLuan(baiViet.maBaiViet, binhLuan.maBinhLuan)}
+                                  className="text-[11px] font-semibold text-[#be2a3b] hover:underline"
+                                >
+                                  Xóa
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {/* Child comments (indented) */}
+                          {phanHoi.length > 0 ? (
+                            <div className="ml-8 pl-3.5 border-l-2 border-[#dbe5f7] space-y-2">
+                              {phanHoi.map((reply) => (
+                                <div key={reply.maBinhLuan} className="rounded-xl border border-[#e5ebfa] bg-white/70 p-2.5 shadow-xs">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-semibold text-[#2d416f]">
+                                      {reply.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                                    </span>
+                                    <span className="text-[11px] text-[#8a94b3]">
+                                      {dinhDangThoiGian(reply.thoiGianTao)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#1d2742]">{reply.noiDung}</p>
+                                  <div className="mt-1 flex items-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDangPhanHoi((prev) => ({
+                                          ...prev,
+                                          [baiViet.maBaiViet]: binhLuan,
+                                        }));
+                                        const inputEl = document.getElementById(`input-binh-luan-${baiViet.maBaiViet}`);
+                                        if (inputEl) inputEl.focus();
+                                      }}
+                                      className="text-[11px] font-semibold text-[#1d59df] hover:underline"
+                                    >
+                                      Phản hồi
+                                    </button>
+                                    {reply.maNguoiDung === currentUserId ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void onXoaBinhLuan(baiViet.maBaiViet, reply.maBinhLuan)}
+                                        className="text-[11px] font-semibold text-[#be2a3b] hover:underline"
+                                      >
+                                        Xóa
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+
+                  {dangPhanHoi[baiViet.maBaiViet] ? (
+                    <div className="flex items-center justify-between bg-[#eef3fe] px-3 py-1.5 rounded-lg text-xs font-medium text-[#1d59df]">
+                      <span>
+                        Đang phản hồi <strong>{dangPhanHoi[baiViet.maBaiViet]?.tacGia?.tenNguoiDung ?? 'Người dùng'}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDangPhanHoi((prev) => ({
+                            ...prev,
+                            [baiViet.maBaiViet]: null,
+                          }))
+                        }
+                        className="font-bold text-[#be2a3b] hover:underline"
+                      >
+                        Hủy
+                      </button>
                     </div>
-                  ))}
+                  ) : null}
 
                   <div className="mt-1 flex items-center gap-2">
                     <input
+                      id={`input-binh-luan-${baiViet.maBaiViet}`}
                       value={binhLuanNhap[baiViet.maBaiViet] ?? ''}
                       onChange={(event) =>
                         setBinhLuanNhap((prev) => ({
@@ -1192,7 +1426,11 @@ export default function NewsFeedPage() {
                           [baiViet.maBaiViet]: event.target.value,
                         }))
                       }
-                      placeholder="Thêm bình luận..."
+                      placeholder={
+                        dangPhanHoi[baiViet.maBaiViet]
+                          ? `Viết phản hồi cho ${dangPhanHoi[baiViet.maBaiViet]?.tacGia?.tenNguoiDung ?? 'Người dùng'}...`
+                          : 'Thêm bình luận...'
+                      }
                       className="h-9 w-full rounded-lg border border-[#d7dff5] bg-white px-3 text-sm text-[#263049] outline-none transition-colors focus:border-[#4f7cff]"
                     />
                     <button

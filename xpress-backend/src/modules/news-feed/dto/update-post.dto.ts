@@ -20,7 +20,7 @@ export class UpdatePostDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(8)
+  @ArrayMaxSize(9)
   @IsString({ each: true })
   danhSachAnh?: string[];
 

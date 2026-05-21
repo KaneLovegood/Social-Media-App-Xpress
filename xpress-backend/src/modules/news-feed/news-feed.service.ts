@@ -206,14 +206,26 @@ export class NewsFeedService {
     }
 
     const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    let likeCount = Number(post.likeCount ?? 0);
     if (!alreadyLiked) {
       await this.newsFeedRepository.createLike(postId, actorUserId);
-      const likeCount = await this.newsFeedRepository.updateLikeCount(postId, 1);
-      return { daThich: true, soLuotThich: likeCount };
+      likeCount = await this.newsFeedRepository.updateLikeCount(postId, 1);
     }
 
-    const likeCount = Number(post.likeCount ?? 0);
-    return { daThich: true, soLuotThich: likeCount };
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
+    return {
+      daThich: true,
+      soLuotThich: likeCount,
+      postUserId: post.userId,
+      nguoiTuongTac: actor
+        ? {
+            maNguoiDung: actor.userId,
+            tenNguoiDung: actor.name,
+            anhDaiDien: actor.avatarUrl,
+          }
+        : null,
+    };
   }
 
   async boThichBaiViet(actorUserId: string, postId: string) {
@@ -223,14 +235,26 @@ export class NewsFeedService {
     }
 
     const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    let likeCount = Number(post.likeCount ?? 0);
     if (alreadyLiked) {
       await this.newsFeedRepository.deleteLike(postId, actorUserId);
-      const likeCount = await this.newsFeedRepository.updateLikeCount(postId, -1);
-      return { daThich: false, soLuotThich: Math.max(0, likeCount) };
+      likeCount = await this.newsFeedRepository.updateLikeCount(postId, -1);
     }
 
-    const likeCount = Number(post.likeCount ?? 0);
-    return { daThich: false, soLuotThich: likeCount };
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
+    return {
+      daThich: false,
+      soLuotThich: Math.max(0, likeCount),
+      postUserId: post.userId,
+      nguoiTuongTac: actor
+        ? {
+            maNguoiDung: actor.userId,
+            tenNguoiDung: actor.name,
+            anhDaiDien: actor.avatarUrl,
+          }
+        : null,
+    };
   }
 
   async themBinhLuan(
@@ -345,11 +369,21 @@ export class NewsFeedService {
     const [author, likedByActor, comments] = await Promise.all([
       this.loadAuthor(item.userId),
       this.newsFeedRepository.hasLike(item.postId, actorUserId),
-      this.newsFeedRepository.listComments(item.postId, 20),
+      this.newsFeedRepository.listComments(item.postId, 100),
     ]);
 
+    // Sort comments chronologically (oldest first)
+    const sortedComments = [...comments].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    let commentsToReturn = sortedComments;
+    if (sortedComments.length > 10) {
+      commentsToReturn = sortedComments.slice(-5);
+    }
+
     const viewComments = await Promise.all(
-      comments.map((comment) => this.toCommentView(comment)),
+      commentsToReturn.map((comment) => this.toCommentView(comment)),
     );
 
     return {
@@ -370,6 +404,39 @@ export class NewsFeedService {
       author,
       isLikedByMe: likedByActor,
       comments: viewComments,
+    };
+  }
+
+  async layDanhSachBinhLuan(
+    actorUserId: string,
+    postId: string,
+    limit = 20,
+    cursor?: string,
+  ) {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet khong ton tai');
+    }
+
+    const allowedAuthorIds = await this.getAllowedAuthorIds(actorUserId);
+    if (!this.canViewPost(actorUserId, post, allowedAuthorIds)) {
+      throw new ForbiddenException('Ban khong co quyen xem binh luan cua bai viet nay');
+    }
+
+    const page = await this.newsFeedRepository.listCommentsPage(postId, limit, cursor);
+
+    // Sort chronologically (oldest first)
+    const sortedComments = [...page.items].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    const items = await Promise.all(
+      sortedComments.map((comment) => this.toCommentView(comment)),
+    );
+
+    return {
+      items: items.map((comment) => this.toBinhLuanView(comment)),
+      nextCursor: page.nextCursor,
     };
   }
 

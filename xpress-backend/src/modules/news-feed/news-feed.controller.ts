@@ -88,8 +88,17 @@ export class NewsFeedController {
       this.getUserId(req),
       postId,
     );
-    this.newsFeedGateway.emitReactionUpdated({ maBaiViet: postId, ...result });
-    return result;
+    this.newsFeedGateway.emitReactionUpdated({
+      maBaiViet: postId,
+      daThich: result.daThich,
+      soLuotThich: result.soLuotThich,
+      maNguoiDungTacGia: result.postUserId,
+      nguoiTuongTac: result.nguoiTuongTac,
+    });
+    return {
+      daThich: result.daThich,
+      soLuotThich: result.soLuotThich,
+    };
   }
 
   @Delete('bai-viet/:postId/thich')
@@ -101,8 +110,32 @@ export class NewsFeedController {
       this.getUserId(req),
       postId,
     );
-    this.newsFeedGateway.emitReactionUpdated({ maBaiViet: postId, ...result });
-    return result;
+    this.newsFeedGateway.emitReactionUpdated({
+      maBaiViet: postId,
+      daThich: result.daThich,
+      soLuotThich: result.soLuotThich,
+      maNguoiDungTacGia: result.postUserId,
+      nguoiTuongTac: result.nguoiTuongTac,
+    });
+    return {
+      daThich: result.daThich,
+      soLuotThich: result.soLuotThich,
+    };
+  }
+
+  @Get('bai-viet/:postId/binh-luan')
+  async layDanhSachBinhLuan(
+    @Req() req: AuthenticatedRequest,
+    @Param('postId') postId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.newsFeedService.layDanhSachBinhLuan(
+      this.getUserId(req),
+      postId,
+      limit ? Number(limit) : undefined,
+      cursor,
+    );
   }
 
   @Post('bai-viet/:postId/binh-luan')
