@@ -12,7 +12,7 @@ import {
 import type { Request } from 'express';
 import { BlockUserDto } from './dto/block-user.dto';
 import { ListFriendsDto } from './dto/list-friends.dto';
-import { SearchUserByPhoneDto } from './dto/search-user-by-phone.dto';
+import { SearchUserDto } from './dto/search-user.dto';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { SocialService } from './social.service';
 
@@ -30,12 +30,12 @@ interface AuthenticatedRequest extends Request {
 export class SocialController {
   constructor(private readonly socialService: SocialService) {}
 
-  @Get('users/search-by-email')
-  searchByEmail(
+  @Get('users/search')
+  searchUsers(
     @Req() req: AuthenticatedRequest,
-    @Query() query: SearchUserByPhoneDto,
+    @Query() query: SearchUserDto,
   ) {
-    return this.socialService.searchUsersByEmail(this.getUserId(req), query);
+    return this.socialService.searchUsers(this.getUserId(req), query);
   }
 
   @Post('friends/requests')

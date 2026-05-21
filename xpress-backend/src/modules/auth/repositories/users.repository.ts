@@ -108,6 +108,51 @@ export class UsersRepository {
     };
   }
 
+  async searchUsers(
+    actorUserId: string,
+    searchQuery: string,
+    limit = 20,
+    cursor?: string,
+  ): Promise<PaginatedUsers> {
+    const trimmedQuery = searchQuery.trim();
+    const lowercasedQuery = trimmedQuery.toLowerCase();
+    const items: UserEntity[] = [];
+    let nextKey = this.decodeCursor(cursor);
+
+    do {
+      const remaining = Math.max(limit - items.length, 1);
+      const result = await this.ddbDocClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression: 'entityType = :entityType AND userId <> :actorUserId',
+          ExpressionAttributeValues: {
+            ':entityType': 'USER',
+            ':actorUserId': actorUserId,
+          },
+          Limit: remaining,
+          ExclusiveStartKey: nextKey,
+        }),
+      );
+
+      if (result.Items?.length) {
+        const filtered = (result.Items as UserEntity[]).filter((user) => {
+          const nameMatches = user.name.toLowerCase().includes(lowercasedQuery);
+          const emailMatches = user.email.toLowerCase().includes(lowercasedQuery);
+          const idMatches = user.userId === trimmedQuery;
+          return nameMatches || emailMatches || idMatches;
+        });
+        items.push(...filtered);
+      }
+
+      nextKey = result.LastEvaluatedKey;
+    } while (items.length < limit && nextKey);
+
+    return {
+      items: items.slice(0, limit),
+      nextCursor: this.encodeCursor(nextKey),
+    };
+  }
+
   async updateRefreshToken(
     userId: string,
     refreshTokenHash: string,

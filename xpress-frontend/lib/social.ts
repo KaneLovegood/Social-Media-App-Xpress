@@ -42,12 +42,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export async function searchUsersByEmail(email: string, cursor?: string) {
-  const params = new URLSearchParams({ email, limit: '10' });
+export async function searchUsers(query: string, cursor?: string) {
+  const params = new URLSearchParams({ query, limit: '10' });
   if (cursor) params.set('cursor', cursor);
 
   return api<Paginated<SearchUserItem>>(
-    `/social/users/search-by-email?${params.toString()}`,
+    `/social/users/search?${params.toString()}`,
     { method: 'GET' },
   );
 }

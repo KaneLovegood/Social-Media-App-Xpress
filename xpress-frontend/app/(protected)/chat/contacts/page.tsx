@@ -3,9 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { TextAlignJustify } from 'lucide-react';
+import { toast } from 'sonner';
 import ChatAppRail from '@/components/chat/ChatAppRail';
 import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
-import { CHAT_EVENTS } from '@/lib/realtime/events';
+import { CHAT_EVENTS, SOCIAL_EVENTS } from '@/lib/realtime/events';
 import { createChatSocket } from '@/lib/realtime/socket-client';
 import { PresencePayload } from '@/lib/realtime/types';
 import {
@@ -15,7 +16,7 @@ import {
   fetchIncomingRequests,
   rejectFriendRequest,
   SearchUserItem,
-  searchUsersByEmail,
+  searchUsers,
   sendFriendRequest,
   SocialUser,
   unblockUser,
@@ -58,7 +59,7 @@ export default function ContactsPage() {
   const router = useRouter();
   const currentUser = getStoredUser();
   const [activeTab, setActiveTab] = useState<TabKey>('friends');
-  const [emailQuery, setEmailQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchUserItem[]>([]);
   const [searchCursor, setSearchCursor] = useState<string | null>(null);
   const [friends, setFriends] = useState<SocialUser[]>([]);
@@ -68,9 +69,10 @@ export default function ContactsPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [unfriendTarget, setUnfriendTarget] = useState<SocialUser | null>(null);
 
-  const normalizedEmail = emailQuery.replace(/\s+/g, '').trim().toLowerCase();
-  const canSearch = normalizedEmail.length >= 4;
+  const trimmedQuery = searchQuery.trim();
+  const canSearch = trimmedQuery.length >= 3;
 
   const loadInitial = async () => {
     const [friendsPage, requestsPage] = await Promise.all([
@@ -98,21 +100,21 @@ export default function ContactsPage() {
 
       const socket = createChatSocket(token);
       const onPresence = (payload: PresencePayload) => {
-        setFriends((prev) =>
+        setFriends((prev: SocialUser[]) =>
           prev.map((item) =>
             item.userId === payload.userId
               ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
               : item,
           ),
         );
-        setRequests((prev) =>
+        setRequests((prev: SocialUser[]) =>
           prev.map((item) =>
             item.userId === payload.userId
               ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
               : item,
           ),
         );
-        setSearchResults((prev) =>
+        setSearchResults((prev: SearchUserItem[]) =>
           prev.map((item) =>
             item.userId === payload.userId
               ? { ...item, isOnline: payload.isOnline, lastSeenAt: payload.lastSeenAt }
@@ -121,9 +123,38 @@ export default function ContactsPage() {
         );
       };
 
+      const onRequestReceived = (payload: any) => {
+        setRequests((prev: SocialUser[]) => {
+          if (prev.some((item) => item.userId === payload.userId)) return prev;
+          return [payload, ...prev];
+        });
+        toast.info(`${payload.name} đã gửi lời mời kết bạn.`);
+      };
+
+      const onRequestAccepted = (payload: any) => {
+        setRequests((prev: SocialUser[]) => prev.filter((item) => item.userId !== payload.userId));
+        setFriends((prev: SocialUser[]) => {
+          if (prev.some((item) => item.userId === payload.userId)) return prev;
+          return [payload, ...prev];
+        });
+        toast.success(`${payload.name} đã chấp nhận lời mời kết bạn.`);
+      };
+
+      const onUnfriended = (payload: { userId: string }) => {
+        setFriends((prev: SocialUser[]) => prev.filter((item) => item.userId !== payload.userId));
+        setRequests((prev: SocialUser[]) => prev.filter((item) => item.userId !== payload.userId));
+      };
+
       socket.on(CHAT_EVENTS.PRESENCE, onPresence);
+      socket.on(SOCIAL_EVENTS.REQUEST_RECEIVED, onRequestReceived);
+      socket.on(SOCIAL_EVENTS.REQUEST_ACCEPTED, onRequestAccepted);
+      socket.on(SOCIAL_EVENTS.UNFRIENDED, onUnfriended);
+
       socketCleanup = () => {
         socket.off(CHAT_EVENTS.PRESENCE, onPresence);
+        socket.off(SOCIAL_EVENTS.REQUEST_RECEIVED, onRequestReceived);
+        socket.off(SOCIAL_EVENTS.REQUEST_ACCEPTED, onRequestAccepted);
+        socket.off(SOCIAL_EVENTS.UNFRIENDED, onUnfriended);
         socket.disconnect();
       };
     });
@@ -144,7 +175,7 @@ export default function ContactsPage() {
     setLoading(true);
     setError('');
     try {
-      const page = await searchUsersByEmail(normalizedEmail);
+      const page = await searchUsers(trimmedQuery);
       setSearchResults(page.items);
       setSearchCursor(page.nextCursor);
     } catch (e) {
@@ -190,13 +221,13 @@ export default function ContactsPage() {
 
   const renderSearchResults = () => {
     if (searchResults.length === 0) {
-      if (!normalizedEmail || !canSearch || loading) {
+      if (!trimmedQuery || !canSearch || loading) {
         return null;
       }
 
       return (
         <p className="mt-2 px-2 text-xs text-[#727687]">
-          Không tìm thấy tài khoản phù hợp với email này.
+          Không tìm thấy tài khoản phù hợp.
         </p>
       );
     }
@@ -236,8 +267,12 @@ export default function ContactsPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        void runAction(async () => {
-                          await unfriend(user.userId);
+                        setUnfriendTarget({
+                          userId: user.userId,
+                          name: user.name,
+                          email: user.email,
+                          isOnline: user.isOnline,
+                          lastSeenAt: user.lastSeenAt,
                         })
                       }
                       className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-semibold"
@@ -280,7 +315,7 @@ export default function ContactsPage() {
             type="button"
             onClick={() =>
               void (async () => {
-                const page = await searchUsersByEmail(normalizedEmail, searchCursor);
+                const page = await searchUsers(trimmedQuery, searchCursor);
                 setSearchResults((prev) => [...prev, ...page.items]);
                 setSearchCursor(page.nextCursor);
               })()
@@ -305,9 +340,9 @@ export default function ContactsPage() {
           <div className="px-4 pb-4">
             <form className="relative flex items-center gap-2" onSubmit={onSearch}>
               <input
-                value={emailQuery}
-                onChange={(event) => setEmailQuery(event.target.value)}
-                placeholder="Tìm theo email"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Tìm theo email, tên, ID"
                 className="h-10 w-full rounded-lg border-none bg-[#e1e2e4] px-3 text-sm outline-none"
               />
               <button
@@ -318,9 +353,9 @@ export default function ContactsPage() {
                 Tìm
               </button>
             </form>
-            {!canSearch && normalizedEmail ? (
+            {!canSearch && trimmedQuery ? (
               <p className="mt-2 px-2 text-xs text-[#727687]">
-                Nhập ít nhất 4 ký tự email để tìm kiếm.
+                Nhập ít nhất 3 ký tự để tìm kiếm.
               </p>
             ) : null}
 
@@ -395,9 +430,9 @@ export default function ContactsPage() {
           <div className="border-b border-[#c2c6d8]/40 bg-[#f8f9fb] px-4 py-3 lg:hidden">
             <form className="flex items-center gap-2" onSubmit={onSearch}>
               <input
-                value={emailQuery}
-                onChange={(event) => setEmailQuery(event.target.value)}
-                placeholder="Tìm theo email"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Tìm theo email, tên, ID"
                 className="h-10 w-full rounded-lg border-none bg-[#e1e2e4] px-3 text-sm outline-none"
               />
               <button
@@ -408,9 +443,9 @@ export default function ContactsPage() {
                 Tìm
               </button>
             </form>
-            {!canSearch && normalizedEmail ? (
+            {!canSearch && trimmedQuery ? (
               <p className="mt-2 px-2 text-xs text-[#727687]">
-                Nhập ít nhất 4 ký tự email để tìm kiếm.
+                Nhập ít nhất 3 ký tự để tìm kiếm.
               </p>
             ) : null}
             {renderSearchResults()}
@@ -466,11 +501,7 @@ export default function ContactsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            void runAction(async () => {
-                              await unfriend(user.userId);
-                            })
-                          }
+                          onClick={() => setUnfriendTarget(user)}
                           className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700"
                         >
                           Hủy kết bạn
@@ -545,6 +576,44 @@ export default function ContactsPage() {
           />
         </>
       ) : null}
+
+      {unfriendTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+            <div className="px-6 py-6 text-center">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Hủy kết bạn
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Bạn có chắc chắn muốn hủy kết bạn với <strong>{unfriendTarget.name}</strong>?
+              </p>
+            </div>
+
+            <div className="flex gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setUnfriendTarget(null)}
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = unfriendTarget;
+                  setUnfriendTarget(null);
+                  void runAction(async () => {
+                    await unfriend(target.userId);
+                  });
+                }}
+                className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

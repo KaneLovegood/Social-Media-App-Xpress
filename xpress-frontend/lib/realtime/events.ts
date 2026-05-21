@@ -44,3 +44,9 @@ export const FEED_EVENTS = {
   COMMENT_CREATED: 'feed:comment:created',
   COMMENT_DELETED: 'feed:comment:deleted',
 } as const;
+
+export const SOCIAL_EVENTS = {
+  REQUEST_RECEIVED: "friend:request_received",
+  REQUEST_ACCEPTED: "friend:request_accepted",
+  UNFRIENDED: "friend:unfriended",
+} as const;

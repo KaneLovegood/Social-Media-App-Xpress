@@ -35,3 +35,9 @@ export const CALL_EVENTS = {
   END: 'call:end',
   INCOMING: 'call:incoming',
 } as const;
+
+export const SOCIAL_EVENTS = {
+  REQUEST_RECEIVED: 'friend:request_received',
+  REQUEST_ACCEPTED: 'friend:request_accepted',
+  UNFRIENDED: 'friend:unfriended',
+} as const;
