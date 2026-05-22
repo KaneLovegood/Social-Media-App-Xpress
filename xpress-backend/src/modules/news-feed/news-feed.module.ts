@@ -11,6 +11,6 @@ import { NewsFeedRepository } from './repositories/news-feed.repository';
   imports: [DynamoDbModule, AuthModule, SocialModule],
   controllers: [NewsFeedController],
   providers: [NewsFeedService, NewsFeedRepository, NewsFeedGateway],
-  exports: [NewsFeedService],
+  exports: [NewsFeedService, NewsFeedGateway],
 })
 export class NewsFeedModule {}

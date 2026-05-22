@@ -40,6 +40,7 @@ export interface BaiVietBanTin {
   tacGia: TacGiaBanTin | null;
   daThich: boolean;
   danhSachBinhLuan: BinhLuanBanTin[];
+  baiVietGoc?: BaiVietBanTin;
 }
 
 interface DanhSachBanTin {
@@ -170,5 +171,25 @@ export async function chiaSeBaiViet(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function layChiTietBaiViet(postId: string) {
+  return api<BaiVietBanTin>(`/bai-viet/${postId}`, {
+    method: 'GET',
+  });
+}
+
+export async function chiaSeQuaChat(payload: {
+  postId: string;
+  roomIds: string[];
+  noiDung?: string;
+}) {
+  return api<any>('/chat/share-post', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
 }

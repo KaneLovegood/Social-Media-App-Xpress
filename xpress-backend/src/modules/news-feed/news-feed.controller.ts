@@ -168,6 +168,14 @@ export class NewsFeedController {
     return result;
   }
 
+  @Get('bai-viet/:postId')
+  async layChiTietBaiViet(
+    @Req() req: AuthenticatedRequest,
+    @Param('postId') postId: string,
+  ) {
+    return this.newsFeedService.layChiTietBaiViet(this.getUserId(req), postId);
+  }
+
   @Post('bai-viet/:postId/chia-se')
   async chiaSeBaiViet(
     @Req() req: AuthenticatedRequest,
@@ -180,6 +188,17 @@ export class NewsFeedController {
       dto,
     );
     this.newsFeedGateway.emitPostCreated(post);
+
+    try {
+      const origPostUpdated = await this.newsFeedService.layChiTietBaiViet(
+        this.getUserId(req),
+        postId,
+      );
+      this.newsFeedGateway.emitPostUpdated(origPostUpdated);
+    } catch (error) {
+      // Ignore
+    }
+
     return post;
   }
 

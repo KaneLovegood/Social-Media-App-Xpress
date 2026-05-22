@@ -26,6 +26,8 @@ import { ChatRoomSummary } from './interfaces/chat-room-summary.interface';
 import { MessageEntity } from './interfaces/message.interface';
 import { ChatCallService } from './services/chat-call.service';
 import { MessagesRepository } from './repositories/messages.repository';
+import { GroupRoomsRepository } from './repositories/group-rooms.repository';
+import { NewsFeedService } from '../news-feed/news-feed.service';
 import {
   ChatRoomService,
   GroupRoomMutationResult,
@@ -39,6 +41,8 @@ export class ChatService {
     private readonly socialService: SocialService,
     private readonly chatCallService: ChatCallService,
     private readonly chatRoomService: ChatRoomService,
+    private readonly groupRoomsRepository: GroupRoomsRepository,
+    private readonly newsFeedService: NewsFeedService,
   ) {}
 
   registerConnection(userId: string, socketId: string): boolean {
@@ -296,11 +300,28 @@ export class ChatService {
     return this.chatRoomService.getChatRoomsForUser(userId);
   }
 
+  async decorateMessage(userId: string, message: MessageEntity): Promise<MessageEntity> {
+    if (message.messageType === 'SHARE_POST' && message.sharedPostId) {
+      try {
+        const post = await this.newsFeedService.layChiTietBaiViet(userId, message.sharedPostId);
+        message.sharedPost = post;
+      } catch (error) {
+        message.sharedPost = null;
+      }
+    }
+    return message;
+  }
+
+  async decorateMessages(userId: string, messages: MessageEntity[]): Promise<MessageEntity[]> {
+    return Promise.all(messages.map(msg => this.decorateMessage(userId, msg)));
+  }
+
   async getMessagesForRoom(
     userId: string,
     roomId: string,
   ): Promise<MessageEntity[]> {
-    return this.chatRoomService.getMessagesForRoom(userId, roomId);
+    const messages = await this.chatRoomService.getMessagesForRoom(userId, roomId);
+    return this.decorateMessages(userId, messages);
   }
 
   async deleteChatHistory(
@@ -396,5 +417,83 @@ export class ChatService {
   private toConversationId(userA: string, userB: string): string {
     const [first, second] = [userA, userB].sort();
     return `${first}:${second}`;
+  }
+
+  async sharePost(
+    senderId: string,
+    dto: { postId: string; roomIds: string[]; noiDung?: string },
+  ): Promise<MessageEntity[]> {
+    const originalPost = await this.newsFeedService.layChiTietBaiViet(senderId, dto.postId);
+
+    if (originalPost.cheDoRiengTu === 'friends') {
+      const authorId = originalPost.maNguoiDung;
+      const friendsOfAuthor = await this.socialService.listAllFriendUsers(authorId);
+      const friendsOfAuthorSet = new Set(friendsOfAuthor.map(f => f.userId));
+      friendsOfAuthorSet.add(authorId);
+
+      for (const roomId of dto.roomIds) {
+        let memberIds: string[] = [];
+        if (roomId.includes(':')) {
+          memberIds = roomId.split(':');
+        } else {
+          const members = await this.groupRoomsRepository.listMembers(roomId);
+          memberIds = members.map(m => m.userId);
+        }
+
+        for (const memberId of memberIds) {
+          if (memberId !== senderId && !friendsOfAuthorSet.has(memberId)) {
+            throw new ForbiddenException(
+              'Thành viên trong phòng chat không phải là bạn bè của tác giả bài viết gốc'
+            );
+          }
+        }
+      }
+    }
+
+    const messages: MessageEntity[] = [];
+
+    for (const roomId of dto.roomIds) {
+      const now = new Date().toISOString();
+      const messageId = randomUUID();
+      const isPrivate = roomId.includes(':');
+      const receiverId = isPrivate ? roomId.split(':').find(id => id !== senderId)! : roomId;
+
+      const item: MessageEntity = {
+        PK: `MESSAGE#${messageId}`,
+        SK: `MESSAGE#${messageId}`,
+        GSI1PK: `CONVERSATION#${roomId}`,
+        GSI1SK: `${now}#${messageId}`,
+        entityType: 'MESSAGE',
+        messageId,
+        conversationId: roomId,
+        roomId,
+        roomType: isPrivate ? 'PRIVATE' : 'GROUP',
+        senderId,
+        receiverId,
+        content: dto.noiDung || '',
+        messageType: 'SHARE_POST',
+        sharedPostId: dto.postId,
+        isDeleted: false,
+        isRecalled: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await this.messagesRepository.createMessage(item);
+
+      if (!isPrivate) {
+        await this.groupRoomsRepository.updateRoomMeta(roomId, {
+          lastMessageAt: now,
+          lastMessagePreview: dto.noiDung || 'Đã chia sẻ một bài viết',
+        });
+      }
+
+      await this.newsFeedService.tangLuotChiaSe(dto.postId);
+
+      const decorated = await this.decorateMessage(senderId, item);
+      messages.push(decorated);
+    }
+
+    return messages;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ChatAppRail from '@/components/chat/ChatAppRail';
 import {
   BaiVietBanTin,
@@ -16,7 +17,12 @@ import {
   thichBaiViet,
   xoaBaiViet,
   xoaBinhLuan,
+  chiaSeQuaChat,
+  layChiTietBaiViet,
 } from '@/lib/news-feed';
+import { fetchFriends, SocialUser } from '@/lib/social';
+import { fetchChatRooms, ChatRoomSummary } from '@/lib/chat-rooms';
+import { toPrivateRoomId } from '@/lib/chat-utils';
 import { getStoredUser, getValidAccessToken } from '@/lib/auth-client';
 import { getPresignedUrl, uploadFileToS3 } from '@/lib/chat-upload';
 import NewsFeedLocationPicker from '@/components/chat/NewsFeedLocationPicker';
@@ -142,6 +148,10 @@ function LazyVideo({ src }: { src: string }) {
 }
 
 export default function NewsFeedPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryPostId = searchParams.get('postId');
+
   const currentUser = getStoredUser();
   const currentUserId = currentUser?.userId ?? '';
 
@@ -165,9 +175,28 @@ export default function NewsFeedPage() {
   const [baiVietDangSua, setBaiVietDangSua] = useState<BaiVietBanTin | null>(null);
   const [noiDungSua, setNoiDungSua] = useState('');
   const [dangLuuSuaBaiViet, setDangLuuSuaBaiViet] = useState(false);
+  
+  // Timeline Share
   const [baiVietDangChiaSe, setBaiVietDangChiaSe] = useState<BaiVietBanTin | null>(null);
   const [ghiChuChiaSe, setGhiChuChiaSe] = useState('');
   const [dangChiaSeBaiViet, setDangChiaSeBaiViet] = useState(false);
+  const [maBaiVietDangMoMenuChiaSe, setMaBaiVietDangMoMenuChiaSe] = useState<string | null>(null);
+  
+  // Chat Share
+  const [baiVietDangGuiQuaChat, setBaiVietDangGuiQuaChat] = useState<BaiVietBanTin | null>(null);
+  const [danhSachPhongChat, setDanhSachPhongChat] = useState<ChatRoomSummary[]>([]);
+  const [tuKhoaTimKiemPhongChat, setTuKhoaTimKiemPhongChat] = useState('');
+  const [phongChatDaChon, setPhongChatDaChon] = useState<string[]>([]);
+  const [ghiChuGuiQuaChat, setGhiChuGuiQuaChat] = useState('');
+  const [dangGuiQuaChat, setDangGuiQuaChat] = useState(false);
+
+  // Social
+  const [danhSachBanBe, setDanhSachBanBe] = useState<SocialUser[]>([]);
+
+  // Deep Link & Highlight
+  const [postIdLamNoiBat, setPostIdLamNoiBat] = useState<string | null>(null);
+  const scrolledPostIdsRef = useRef<Record<string, boolean>>({});
+
   const [baiVietChoXoa, setBaiVietChoXoa] = useState<BaiVietBanTin | null>(null);
   const [dangXoaBaiViet, setDangXoaBaiViet] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
@@ -181,6 +210,36 @@ export default function NewsFeedPage() {
     [maCamXucDaChon],
   );
 
+  const allShareableTargets = useMemo(() => {
+    const friendsWithNoRooms = danhSachBanBe.filter(
+      (friend) => !danhSachPhongChat.some((room) => room.roomType === 'PRIVATE' && room.peerUserId === friend.userId)
+    );
+
+    const syntheticRoomsFromFriends: ChatRoomSummary[] = friendsWithNoRooms.map((friend) => ({
+      id: toPrivateRoomId(currentUserId, friend.userId),
+      roomType: 'PRIVATE',
+      title: friend.name,
+      peerUserId: friend.userId,
+      peerName: friend.name,
+      preview: friend.email,
+      lastMessageAt: friend.lastSeenAt || '',
+      age: '',
+      unreadCount: 0,
+      isPeerOnline: friend.isOnline,
+    }));
+
+    return [...danhSachPhongChat, ...syntheticRoomsFromFriends];
+  }, [danhSachPhongChat, danhSachBanBe, currentUserId]);
+
+  const filteredTargets = useMemo(() => {
+    const keyword = tuKhoaTimKiemPhongChat.trim().toLowerCase();
+    if (!keyword) return allShareableTargets;
+    return allShareableTargets.filter((item) =>
+      item.title.toLowerCase().includes(keyword) ||
+      (item.preview && item.preview.toLowerCase().includes(keyword))
+    );
+  }, [allShareableTargets, tuKhoaTimKiemPhongChat]);
+
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
@@ -189,6 +248,9 @@ export default function NewsFeedPage() {
       }
       if (!target?.closest('[data-emotion-picker]')) {
         setMoBangCamXuc(false);
+      }
+      if (!target?.closest('[data-share-menu]')) {
+        setMaBaiVietDangMoMenuChiaSe(null);
       }
     };
 
@@ -226,6 +288,56 @@ export default function NewsFeedPage() {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const friendsPage = await fetchFriends();
+        setDanhSachBanBe(friendsPage.items);
+      } catch (error) {
+        console.error('Lỗi khi tải danh sách bạn bè:', error);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!queryPostId) return;
+    if (scrolledPostIdsRef.current[queryPostId]) return;
+
+    const scrollAndHighlight = (id: string) => {
+      scrolledPostIdsRef.current[id] = true;
+      setPostIdLamNoiBat(id);
+      setTimeout(() => {
+        const element = document.getElementById(`post-${id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+
+      // Remove highlight after 4 seconds
+      setTimeout(() => {
+        setPostIdLamNoiBat(null);
+      }, 4000);
+    };
+
+    const exists = danhSachBaiViet.some((post) => post.maBaiViet === queryPostId);
+    if (exists) {
+      scrollAndHighlight(queryPostId);
+    } else {
+      void (async () => {
+        try {
+          const postDetail = await layChiTietBaiViet(queryPostId);
+          setDanhSachBaiViet((prev) => {
+            if (prev.some((p) => p.maBaiViet === postDetail.maBaiViet)) return prev;
+            return [postDetail, ...prev];
+          });
+          scrollAndHighlight(queryPostId);
+        } catch (err) {
+          console.error('Không tải được bài viết liên kết sâu:', err);
+        }
+      })();
+    }
+  }, [queryPostId, danhSachBaiViet]);
+
+  useEffect(() => {
     let cancelled = false;
     let cleanup: (() => void) | undefined;
 
@@ -245,12 +357,24 @@ export default function NewsFeedPage() {
             const existed = prev.some((item) => item.maBaiViet === payload.maBaiViet);
             return existed ? prev : [payload, ...prev];
           });
+
+          if (payload.maBaiVietGoc && payload.baiVietGoc && payload.baiVietGoc.maNguoiDung === currentUserId) {
+            toast.success(`${payload.tacGia?.tenNguoiDung ?? 'Ai đó'} đã chia sẻ bài viết của bạn!`);
+          }
         }
       };
 
       const onPostUpdated = (payload: BaiVietBanTin) => {
         setDanhSachBaiViet((prev) =>
-          prev.map((item) => (item.maBaiViet === payload.maBaiViet ? payload : item)),
+          prev.map((item) => {
+            if (item.maBaiViet === payload.maBaiViet) {
+              if (item.maNguoiDung === currentUserId && payload.soLuotChiaSe > item.soLuotChiaSe) {
+                toast.success('Bài viết của bạn đã được chia sẻ!');
+              }
+              return payload;
+            }
+            return item;
+          }),
         );
         setBaiVietChoHienThi((prev) =>
           prev.map((item) => (item.maBaiViet === payload.maBaiViet ? payload : item)),
@@ -889,6 +1013,50 @@ export default function NewsFeedPage() {
     }
   };
 
+  const checkQuyenChiaSe = (post: BaiVietBanTin) => {
+    if (post.cheDoRiengTu === 'private') return false;
+    if (post.maBaiVietGoc) return false;
+    if (post.cheDoRiengTu === 'friends') {
+      if (post.maNguoiDung === currentUserId) return true;
+      const isFriend = danhSachBanBe.some((friend) => friend.userId === post.maNguoiDung);
+      return isFriend;
+    }
+    return true;
+  };
+
+  const moModalGuiQuaChat = async (post: BaiVietBanTin) => {
+    setBaiVietDangGuiQuaChat(post);
+    setPhongChatDaChon([]);
+    setGhiChuGuiQuaChat('');
+    setTuKhoaTimKiemPhongChat('');
+    try {
+      const rooms = await fetchChatRooms();
+      setDanhSachPhongChat(rooms);
+    } catch (error) {
+      toast.error('Không tải được danh sách phòng chat');
+    }
+  };
+
+  const onGuiQuaChat = async () => {
+    if (!baiVietDangGuiQuaChat || phongChatDaChon.length === 0) return;
+    setDangGuiQuaChat(true);
+    try {
+      await chiaSeQuaChat({
+        postId: baiVietDangGuiQuaChat.maBaiViet,
+        roomIds: phongChatDaChon,
+        noiDung: ghiChuGuiQuaChat,
+      });
+      toast.success('Đã chia sẻ bài viết qua tin nhắn chat!');
+      setBaiVietDangGuiQuaChat(null);
+      setPhongChatDaChon([]);
+      setGhiChuGuiQuaChat('');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gửi qua chat thất bại');
+    } finally {
+      setDangGuiQuaChat(false);
+    }
+  };
+
   const onTaiThem = async () => {
     if (!conTroTiepTheo) return;
     setDangTaiThem(true);
@@ -1139,7 +1307,12 @@ export default function NewsFeedPage() {
             {danhSachBaiViet.map((baiViet) => (
               <article
                 key={baiViet.maBaiViet}
-                className="overflow-hidden rounded-2xl border border-[#dce4f3] bg-white shadow-[0_10px_24px_rgba(34,66,124,0.08)] transition-all hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(34,66,124,0.14)]"
+                id={`post-${baiViet.maBaiViet}`}
+                className={`overflow-hidden rounded-2xl border bg-white shadow-[0_10px_24px_rgba(34,66,124,0.08)] transition-all duration-500 hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(34,66,124,0.14)] ${
+                  postIdLamNoiBat === baiViet.maBaiViet
+                    ? 'ring-4 ring-[#1d59df] ring-offset-2 scale-[1.01] border-[#1d59df]'
+                    : 'border-[#dce4f3]'
+                }`}
               >
                 <div className="flex items-center justify-between p-4 pb-3">
                   <div className="flex min-w-0 items-center gap-3">
@@ -1231,6 +1404,83 @@ export default function NewsFeedPage() {
                   </div>
                 ) : null}
 
+                {/* original post / shared post preview card */}
+                {baiViet.maBaiVietGoc && (
+                  <div className="mx-4 mb-4">
+                    {baiViet.daXoa || !baiViet.baiVietGoc ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm font-semibold text-red-700">
+                        Bài viết gốc đã bị xóa hoặc không còn tồn tại
+                      </div>
+                    ) : (
+                      <div
+                        onClick={(event) => {
+                          const target = event.target as HTMLElement;
+                          if (target.closest('[data-author-link]')) {
+                            return;
+                          }
+                          router.push(`/chat/news-feed?postId=${baiViet.maBaiVietGoc}`);
+                        }}
+                        className="cursor-pointer rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-4 transition-all hover:bg-[#f1f5f9]"
+                      >
+                        <div className="flex items-center gap-3 mb-3">
+                          <Avatar
+                            tenNguoiDung={baiViet.baiVietGoc.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                            anhDaiDien={baiViet.baiVietGoc.tacGia?.anhDaiDien}
+                          />
+                          <div>
+                            <h3
+                              data-author-link
+                              className="text-xs font-bold text-[#1e293b] hover:underline"
+                            >
+                              {baiViet.baiVietGoc.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                            </h3>
+                            <p className="text-[10px] text-[#64748b]">
+                              {dinhDangThoiGian(baiViet.baiVietGoc.thoiGianTao)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {baiViet.baiVietGoc.noiDung && (
+                          <p className="text-sm leading-relaxed text-[#334155] whitespace-pre-wrap mb-3">
+                            {baiViet.baiVietGoc.noiDung}
+                          </p>
+                        )}
+
+                        {baiViet.baiVietGoc.viTri && (
+                          <div className="mb-3">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-[#eef4ff] px-2.5 py-0.5 text-[10px] font-semibold text-[#3158b9]">
+                              <MapPin size={12} />
+                              <span>{baiViet.baiVietGoc.viTri}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {baiViet.baiVietGoc.danhSachAnh && baiViet.baiVietGoc.danhSachAnh.length > 0 && (
+                          <div className={`grid gap-1 mb-2 ${baiViet.baiVietGoc.danhSachAnh.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                            {baiViet.baiVietGoc.danhSachAnh.map((anh) => (
+                              <img
+                                key={anh}
+                                src={anh}
+                                alt="Ảnh bài viết gốc"
+                                loading="lazy"
+                                className="h-48 w-full object-cover rounded-lg"
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {baiViet.baiVietGoc.danhSachVideo && baiViet.baiVietGoc.danhSachVideo.length > 0 && (
+                          <div className="space-y-2">
+                            {baiViet.baiVietGoc.danhSachVideo.map((video) => (
+                              <LazyVideo key={video} src={video} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {baiViet.danhSachAnh.length > 0 ? (
                   <div className={`grid gap-1 ${baiViet.danhSachAnh.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                     {baiViet.danhSachAnh.map((anh) => (
@@ -1282,14 +1532,51 @@ export default function NewsFeedPage() {
                     Bình luận
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => moModalChiaSe(baiViet)}
-                    className="flex items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium text-[#4f5870] transition-colors hover:bg-[#eef2fa]"
-                  >
-                    <Share2 size={16} />
-                    Chia sẻ
-                  </button>
+                  <div className="relative" data-share-menu>
+                    <button
+                      type="button"
+                      disabled={!checkQuyenChiaSe(baiViet)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setMaBaiVietDangMoMenuChiaSe((prev) =>
+                          prev === baiViet.maBaiViet ? null : baiViet.maBaiViet
+                        );
+                      }}
+                      className={`flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-medium transition-colors ${
+                        !checkQuyenChiaSe(baiViet)
+                          ? 'cursor-not-allowed opacity-40 text-[#a0a8c0]'
+                          : 'text-[#4f5870] hover:bg-[#eef2fa]'
+                      }`}
+                    >
+                      <Share2 size={16} />
+                      Chia sẻ
+                    </button>
+
+                    {maBaiVietDangMoMenuChiaSe === baiViet.maBaiViet && (
+                      <div className="absolute bottom-full left-1/2 z-20 mb-1 w-52 -translate-x-1/2 overflow-hidden rounded-xl border border-[#dce4f3] bg-white p-1 shadow-[0_10px_24px_rgba(34,66,124,0.14)]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMaBaiVietDangMoMenuChiaSe(null);
+                            moModalChiaSe(baiViet);
+                          }}
+                          className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-[#2f3a56] transition-colors hover:bg-[#eef2fa]"
+                        >
+                          Chia sẻ lên dòng thời gian
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMaBaiVietDangMoMenuChiaSe(null);
+                            moModalGuiQuaChat(baiViet);
+                          }}
+                          className="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-[#2f3a56] transition-colors hover:bg-[#eef2fa]"
+                        >
+                          Gửi qua tin nhắn chat
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3 bg-[#f8fbff] p-3 rounded-b-2xl">
@@ -1637,6 +1924,166 @@ export default function NewsFeedPage() {
                 className="rounded-lg bg-[#be2a3b] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#a52333] disabled:opacity-60"
               >
                 {dangXoaBaiViet ? 'Đang xóa...' : 'Xóa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {baiVietDangGuiQuaChat ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6 backdrop-blur-[2px]">
+          <div className="flex h-[min(88vh,760px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.24)]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Gửi qua tin nhắn chat</h2>
+                <p className="text-xs text-slate-500">Chọn cuộc hội thoại hoặc bạn bè để chia sẻ bài viết này.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBaiVietDangGuiQuaChat(null);
+                  setPhongChatDaChon([]);
+                  setGhiChuGuiQuaChat('');
+                }}
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Đóng chia sẻ"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M6 6 18 18" />
+                  <path d="M18 6 6 18" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="rounded-xl border border-slate-300 px-4 py-2.5 focus-within:border-[#0068ff] focus-within:ring-1 focus-within:ring-[#0068ff]">
+                <input
+                  value={tuKhoaTimKiemPhongChat}
+                  onChange={(event) => setTuKhoaTimKiemPhongChat(event.target.value)}
+                  type="text"
+                  placeholder="Tìm kiếm cuộc hội thoại hoặc bạn bè..."
+                  className="w-full border-none bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+
+            {/* Content & List */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {/* Preview of Shared Post */}
+              <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+                <div className="flex items-center gap-3 mb-2">
+                  <Avatar
+                    tenNguoiDung={baiVietDangGuiQuaChat.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                    anhDaiDien={baiVietDangGuiQuaChat.tacGia?.anhDaiDien}
+                  />
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">
+                      {baiVietDangGuiQuaChat.tacGia?.tenNguoiDung ?? 'Người dùng'}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {dinhDangThoiGian(baiVietDangGuiQuaChat.thoiGianTao)}
+                    </p>
+                  </div>
+                </div>
+                <p className="line-clamp-2 text-sm text-slate-600">
+                  {baiVietDangGuiQuaChat.noiDung || (baiVietDangGuiQuaChat.danhSachAnh?.length ? '[Hình ảnh]' : '[Bài viết]')}
+                </p>
+              </div>
+
+              {/* Message Note Input */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Viết lời nhắn kèm theo (tùy chọn)</label>
+                <textarea
+                  value={ghiChuGuiQuaChat}
+                  onChange={(event) => setGhiChuGuiQuaChat(event.target.value)}
+                  rows={2}
+                  placeholder="Nhập tin nhắn..."
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#0068ff] focus:bg-white transition"
+                />
+              </div>
+
+              {/* Shareable Targets List */}
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-slate-500 pb-1">Đề xuất</p>
+                <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto border border-slate-100 rounded-xl">
+                  {filteredTargets.map((target) => {
+                    const checked = phongChatDaChon.includes(target.id);
+                    const initials = target.title.trim().slice(0, 2).toUpperCase() || '?';
+
+                    return (
+                      <button
+                        key={target.id}
+                        type="button"
+                        onClick={() => {
+                          setPhongChatDaChon((prev) =>
+                            prev.includes(target.id)
+                              ? prev.filter((id) => id !== target.id)
+                              : [...prev, target.id]
+                          );
+                        }}
+                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${
+                          checked ? 'bg-[#e8f1ff]' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-300 bg-white">
+                          <span
+                            className={`h-3 w-3 rounded-sm ${checked ? 'bg-[#0068ff]' : 'bg-transparent'}`}
+                          />
+                        </span>
+                        {target.avatarUrl ? (
+                          <img
+                            src={target.avatarUrl}
+                            alt={target.title}
+                            className="h-10 w-10 rounded-full object-cover shrink-0"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
+                            {initials}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-900">{target.title}</p>
+                          <p className="truncate text-xs text-slate-500">
+                            {target.roomType === 'GROUP'
+                              ? `${target.memberCount ?? 0} thành viên`
+                              : target.preview || 'Bạn bè'}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {filteredTargets.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-slate-400">
+                      Không tìm thấy kết quả nào.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex gap-3 border-t border-slate-200 bg-white px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setBaiVietDangGuiQuaChat(null);
+                  setPhongChatDaChon([]);
+                  setGhiChuGuiQuaChat('');
+                }}
+                className="flex-1 rounded-lg border border-slate-200 py-2.5 font-medium text-slate-700 transition hover:bg-slate-50 text-sm"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={phongChatDaChon.length === 0 || dangGuiQuaChat}
+                onClick={onGuiQuaChat}
+                className="flex-1 rounded-lg bg-[#0068ff] py-2.5 font-medium text-white transition hover:bg-[#0057d6] disabled:cursor-not-allowed disabled:bg-slate-300 text-sm flex items-center justify-center gap-2"
+              >
+                {dangGuiQuaChat ? 'Đang gửi...' : `Gửi (${phongChatDaChon.length})`}
               </button>
             </div>
           </div>

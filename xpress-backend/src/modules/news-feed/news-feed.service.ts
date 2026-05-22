@@ -329,6 +329,19 @@ export class NewsFeedService {
       throw new ForbiddenException('Ban khong the chia se bai viet nay');
     }
 
+    if (originalPost.sharedFromPostId) {
+      throw new BadRequestException('Khong the chia se lai bai viet da duoc chia se (gioi han 2 cap)');
+    }
+
+    if (originalPost.visibility === 'private') {
+      throw new ForbiddenException('Khong the chia se bai viet o che do rieng tu');
+    }
+
+    let visibility = dto.cheDoRiengTu ?? 'friends';
+    if (originalPost.visibility === 'friends') {
+      visibility = 'friends';
+    }
+
     const content = (dto.noiDung ?? '').trim();
     const location = (dto.viTri ?? '').trim();
     const now = new Date().toISOString();
@@ -346,7 +359,7 @@ export class NewsFeedService {
       location,
       imageUrls: [],
       videoUrls: [],
-      visibility: dto.cheDoRiengTu ?? 'friends',
+      visibility,
       sharedFromPostId: originalPost.postId,
       isDeleted: false,
       likeCount: 0,
@@ -362,9 +375,35 @@ export class NewsFeedService {
     return this.toBaiVietView(await this.toFeedPostView(actorUserId, sharedPost));
   }
 
+  async layChiTietBaiViet(actorUserId: string, postId: string): Promise<BaiVietView> {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet da bi xoa');
+    }
+
+    const allowedAuthorIds = await this.getAllowedAuthorIds(actorUserId);
+    if (!this.canViewPost(actorUserId, post, allowedAuthorIds)) {
+      throw new ForbiddenException('Ban khong co quyen xem bai viet nay');
+    }
+
+    const feedPostView = await this.toFeedPostView(actorUserId, post);
+    return this.toBaiVietView(feedPostView);
+  }
+
+  async tangLuotChiaSe(postId: string): Promise<PostEntity> {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet khong ton tai');
+    }
+    const newShareCount = await this.newsFeedRepository.addShareCount(postId);
+    post.shareCount = newShareCount;
+    return post;
+  }
+
   private async toFeedPostView(
     actorUserId: string,
     item: PostEntity,
+    depth = 0,
   ): Promise<FeedPostView> {
     const [author, likedByActor, comments] = await Promise.all([
       this.loadAuthor(item.userId),
@@ -386,6 +425,14 @@ export class NewsFeedService {
       commentsToReturn.map((comment) => this.toCommentView(comment)),
     );
 
+    let originalPost: FeedPostView | undefined = undefined;
+    if (item.sharedFromPostId && depth === 0) {
+      const origPostEntity = await this.newsFeedRepository.getPost(item.sharedFromPostId);
+      if (origPostEntity) {
+        originalPost = await this.toFeedPostView(actorUserId, origPostEntity, 1);
+      }
+    }
+
     return {
       postId: item.postId,
       userId: item.userId,
@@ -404,6 +451,7 @@ export class NewsFeedService {
       author,
       isLikedByMe: likedByActor,
       comments: viewComments,
+      originalPost,
     };
   }
 
@@ -510,6 +558,7 @@ export class NewsFeedService {
       tacGia: this.toTacGiaView(item.author),
       daThich: item.isLikedByMe,
       danhSachBinhLuan: item.comments.map((comment) => this.toBinhLuanView(comment)),
+      baiVietGoc: item.originalPost ? this.toBaiVietView(item.originalPost) : undefined,
     };
   }
 

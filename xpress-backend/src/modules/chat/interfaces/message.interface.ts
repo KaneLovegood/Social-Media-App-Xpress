@@ -11,7 +11,8 @@ export type MessageType =
   | 'IMAGE'
   | 'FILE'
   | 'VIDEO'
-  | 'SYSTEM';
+  | 'SYSTEM'
+  | 'SHARE_POST';
 
 export type CallLogOutcome =
   | 'self_cancelled'
@@ -40,6 +41,8 @@ export interface MessageEntity {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  sharedPostId?: string;
+  sharedPost?: any;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
