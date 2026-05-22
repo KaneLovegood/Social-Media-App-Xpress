@@ -13,6 +13,7 @@ interface ChatAppRailProps {
   onLogout?: () => void;
   mobileOpen?: boolean;
   onRequestClose?: () => void;
+  contactsBadgeCount?: number;
 }
 
 const NAV_ITEMS = [
@@ -50,6 +51,7 @@ export default function ChatAppRail({
   onLogout,
   mobileOpen = false,
   onRequestClose,
+  contactsBadgeCount,
 }: ChatAppRailProps) {
   const railPositionClass = mobileOpen
     ? "fixed left-0 top-0 z-50 flex md:hidden"
@@ -84,13 +86,18 @@ export default function ChatAppRail({
             onClick={onRequestClose}
             className={`${
               index !== 0 ? "mt-3" : ""
-            } rounded-lg p-3 ${
+            } rounded-lg p-3 relative ${
               isActive
                 ? "bg-linear-to-br from-[#0052cc] to-[#0068ff] text-white"
                 : "text-zinc-500 hover:bg-[#e1e2e4]"
             }`}
           >
             <Icon className="h-5 w-5" />
+            {key === "contacts" && contactsBadgeCount !== undefined && contactsBadgeCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-[#e7e8ea]">
+                {contactsBadgeCount}
+              </span>
+            )}
           </Link>
         );
       })}

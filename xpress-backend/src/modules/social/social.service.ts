@@ -280,6 +280,109 @@ export class SocialService {
     };
   }
 
+  async listOutgoingRequests(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listFriendsByStatus(
+      actorUserId,
+      'PENDING_SENT',
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        const presence = this.presenceService.getPresence(user.userId);
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          isOnline: presence.isOnline,
+          lastSeenAt: presence.lastSeenAt,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async cancelFriendRequest(actorUserId: string, targetUserId: string) {
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      targetUserId,
+    );
+    if (relation?.status !== 'PENDING_SENT') {
+      throw new NotFoundException('Khong tim thay yeu cau ket ban');
+    }
+
+    await this.socialRepository.removeFriendPair(actorUserId, targetUserId);
+
+    try {
+      const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+      transportService.emitToUser(targetUserId, SOCIAL_EVENTS.REQUEST_CANCELLED, {
+        userId: actorUserId,
+      });
+    } catch (err) {
+      // ignore
+    }
+
+    return { success: true };
+  }
+
+  async listBlockedUsers(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listBlockedUsers(
+      actorUserId,
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async restoreFriendRequest(actorUserId: string, requesterUserId: string) {
+    await this.ensureUserExists(requesterUserId);
+
+    await this.socialRepository.saveFriendPair(
+      requesterUserId,
+      actorUserId,
+      'PENDING_SENT',
+      'PENDING_RECEIVED',
+    );
+
+    const requesterUser = await this.usersRepository.findByUserId(requesterUserId);
+    if (requesterUser) {
+      try {
+        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const presenceRequester = this.presenceService.getPresence(requesterUserId);
+        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.REQUEST_RECEIVED, {
+          userId: requesterUserId,
+          name: requesterUser.name,
+          email: requesterUser.email,
+          isOnline: presenceRequester.isOnline,
+          lastSeenAt: presenceRequester.lastSeenAt,
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    return { success: true };
+  }
+
   async listAllFriendUsers(actorUserId: string): Promise<ChatFriendUser[]> {
     const relationItems = [] as Array<{
       targetUserId: string;

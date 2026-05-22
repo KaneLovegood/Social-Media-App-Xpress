@@ -92,6 +92,38 @@ export class SocialController {
     return this.socialService.listIncomingRequests(this.getUserId(req), query);
   }
 
+  @Get('friends/requests/outgoing')
+  listOutgoing(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListFriendsDto,
+  ) {
+    return this.socialService.listOutgoingRequests(this.getUserId(req), query);
+  }
+
+  @Delete('friends/requests/:targetUserId/cancel')
+  cancelRequest(
+    @Req() req: AuthenticatedRequest,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.socialService.cancelFriendRequest(this.getUserId(req), targetUserId);
+  }
+
+  @Get('blocks')
+  listBlocked(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListFriendsDto,
+  ) {
+    return this.socialService.listBlockedUsers(this.getUserId(req), query);
+  }
+
+  @Post('friends/requests/:requesterUserId/restore')
+  restoreRequest(
+    @Req() req: AuthenticatedRequest,
+    @Param('requesterUserId') requesterUserId: string,
+  ) {
+    return this.socialService.restoreFriendRequest(this.getUserId(req), requesterUserId);
+  }
+
   @Post('blocks')
   block(@Req() req: AuthenticatedRequest, @Body() dto: BlockUserDto) {
     return this.socialService.blockUser(this.getUserId(req), dto);

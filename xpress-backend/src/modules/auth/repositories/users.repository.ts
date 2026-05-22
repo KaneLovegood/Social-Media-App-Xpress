@@ -136,8 +136,8 @@ export class UsersRepository {
 
       if (result.Items?.length) {
         const filtered = (result.Items as UserEntity[]).filter((user) => {
-          const nameMatches = user.name.toLowerCase().includes(lowercasedQuery);
-          const emailMatches = user.email.toLowerCase().includes(lowercasedQuery);
+          const nameMatches = (user.name || '').toLowerCase().includes(lowercasedQuery);
+          const emailMatches = (user.email || '').toLowerCase().includes(lowercasedQuery);
           const idMatches = user.userId === trimmedQuery;
           return nameMatches || emailMatches || idMatches;
         });

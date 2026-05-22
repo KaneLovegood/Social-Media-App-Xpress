@@ -112,3 +112,36 @@ export async function unblockUser(targetUserId: string) {
     method: 'DELETE',
   });
 }
+
+export async function fetchOutgoingRequests(cursor?: string) {
+  const params = new URLSearchParams({ limit: '10' });
+  if (cursor) params.set('cursor', cursor);
+
+  return api<Paginated<SocialUser>>(
+    `/social/friends/requests/outgoing?${params.toString()}`,
+    { method: 'GET' },
+  );
+}
+
+export async function cancelFriendRequest(targetUserId: string) {
+  return api<{ success: boolean }>(
+    `/social/friends/requests/${targetUserId}/cancel`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function fetchBlockedUsers(cursor?: string) {
+  const params = new URLSearchParams({ limit: '10' });
+  if (cursor) params.set('cursor', cursor);
+
+  return api<Paginated<SocialUser>>(`/social/blocks?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
+export async function restoreFriendRequest(requesterUserId: string) {
+  return api<{ success: boolean }>(
+    `/social/friends/requests/${requesterUserId}/restore`,
+    { method: 'POST' },
+  );
+}

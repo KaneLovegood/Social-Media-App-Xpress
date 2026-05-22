@@ -48,5 +48,6 @@ export const FEED_EVENTS = {
 export const SOCIAL_EVENTS = {
   REQUEST_RECEIVED: "friend:request_received",
   REQUEST_ACCEPTED: "friend:request_accepted",
+  REQUEST_CANCELLED: "friend:request_cancelled",
   UNFRIENDED: "friend:unfriended",
 } as const;

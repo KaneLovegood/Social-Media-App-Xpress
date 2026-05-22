@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { UsersRepository } from '../../auth/repositories/users.repository';
@@ -37,6 +39,7 @@ export class ChatRoomService {
     private readonly groupRoomsRepository: GroupRoomsRepository,
     private readonly usersRepository: UsersRepository,
     private readonly presenceService: PresenceService,
+    @Inject(forwardRef(() => SocialService))
     private readonly socialService: SocialService,
   ) {}
 
