@@ -89,6 +89,7 @@ export interface FeedPostView {
   author: FeedAuthor | null;
   isLikedByMe: boolean;
   comments: FeedCommentView[];
+  originalPost?: FeedPostView;
 }
 
 export interface BanTinTacGiaView {
@@ -126,4 +127,5 @@ export interface BaiVietView {
   tacGia: BanTinTacGiaView | null;
   daThich: boolean;
   danhSachBinhLuan: BinhLuanView[];
+  baiVietGoc?: BaiVietView;
 }

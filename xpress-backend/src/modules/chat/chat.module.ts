@@ -4,6 +4,7 @@ import { PresenceModule } from '../../common/presence/presence.module';
 import { AuthModule } from '../auth/auth.module';
 import { SocialModule } from '../social/social.module';
 import { StorageModule } from '../storage/storage.module';
+import { NewsFeedModule } from '../news-feed/news-feed.module';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
@@ -21,6 +22,7 @@ import { AgoraService } from './services/agora.service';
     SocialModule,
     PresenceModule,
     StorageModule,
+    NewsFeedModule,
   ],
   controllers: [ChatController],
   providers: [

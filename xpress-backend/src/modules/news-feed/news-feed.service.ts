@@ -206,14 +206,26 @@ export class NewsFeedService {
     }
 
     const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    let likeCount = Number(post.likeCount ?? 0);
     if (!alreadyLiked) {
       await this.newsFeedRepository.createLike(postId, actorUserId);
-      const likeCount = await this.newsFeedRepository.updateLikeCount(postId, 1);
-      return { daThich: true, soLuotThich: likeCount };
+      likeCount = await this.newsFeedRepository.updateLikeCount(postId, 1);
     }
 
-    const likeCount = Number(post.likeCount ?? 0);
-    return { daThich: true, soLuotThich: likeCount };
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
+    return {
+      daThich: true,
+      soLuotThich: likeCount,
+      postUserId: post.userId,
+      nguoiTuongTac: actor
+        ? {
+            maNguoiDung: actor.userId,
+            tenNguoiDung: actor.name,
+            anhDaiDien: actor.avatarUrl,
+          }
+        : null,
+    };
   }
 
   async boThichBaiViet(actorUserId: string, postId: string) {
@@ -223,14 +235,26 @@ export class NewsFeedService {
     }
 
     const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    let likeCount = Number(post.likeCount ?? 0);
     if (alreadyLiked) {
       await this.newsFeedRepository.deleteLike(postId, actorUserId);
-      const likeCount = await this.newsFeedRepository.updateLikeCount(postId, -1);
-      return { daThich: false, soLuotThich: Math.max(0, likeCount) };
+      likeCount = await this.newsFeedRepository.updateLikeCount(postId, -1);
     }
 
-    const likeCount = Number(post.likeCount ?? 0);
-    return { daThich: false, soLuotThich: likeCount };
+    const actor = await this.usersRepository.findByUserId(actorUserId);
+
+    return {
+      daThich: false,
+      soLuotThich: Math.max(0, likeCount),
+      postUserId: post.userId,
+      nguoiTuongTac: actor
+        ? {
+            maNguoiDung: actor.userId,
+            tenNguoiDung: actor.name,
+            anhDaiDien: actor.avatarUrl,
+          }
+        : null,
+    };
   }
 
   async themBinhLuan(
@@ -305,6 +329,19 @@ export class NewsFeedService {
       throw new ForbiddenException('Ban khong the chia se bai viet nay');
     }
 
+    if (originalPost.sharedFromPostId) {
+      throw new BadRequestException('Khong the chia se lai bai viet da duoc chia se (gioi han 2 cap)');
+    }
+
+    if (originalPost.visibility === 'private') {
+      throw new ForbiddenException('Khong the chia se bai viet o che do rieng tu');
+    }
+
+    let visibility = dto.cheDoRiengTu ?? 'friends';
+    if (originalPost.visibility === 'friends') {
+      visibility = 'friends';
+    }
+
     const content = (dto.noiDung ?? '').trim();
     const location = (dto.viTri ?? '').trim();
     const now = new Date().toISOString();
@@ -322,7 +359,7 @@ export class NewsFeedService {
       location,
       imageUrls: [],
       videoUrls: [],
-      visibility: dto.cheDoRiengTu ?? 'friends',
+      visibility,
       sharedFromPostId: originalPost.postId,
       isDeleted: false,
       likeCount: 0,
@@ -338,19 +375,63 @@ export class NewsFeedService {
     return this.toBaiVietView(await this.toFeedPostView(actorUserId, sharedPost));
   }
 
+  async layChiTietBaiViet(actorUserId: string, postId: string): Promise<BaiVietView> {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet da bi xoa');
+    }
+
+    const allowedAuthorIds = await this.getAllowedAuthorIds(actorUserId);
+    if (!this.canViewPost(actorUserId, post, allowedAuthorIds)) {
+      throw new ForbiddenException('Ban khong co quyen xem bai viet nay');
+    }
+
+    const feedPostView = await this.toFeedPostView(actorUserId, post);
+    return this.toBaiVietView(feedPostView);
+  }
+
+  async tangLuotChiaSe(postId: string): Promise<PostEntity> {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet khong ton tai');
+    }
+    const newShareCount = await this.newsFeedRepository.addShareCount(postId);
+    post.shareCount = newShareCount;
+    return post;
+  }
+
   private async toFeedPostView(
     actorUserId: string,
     item: PostEntity,
+    depth = 0,
   ): Promise<FeedPostView> {
     const [author, likedByActor, comments] = await Promise.all([
       this.loadAuthor(item.userId),
       this.newsFeedRepository.hasLike(item.postId, actorUserId),
-      this.newsFeedRepository.listComments(item.postId, 20),
+      this.newsFeedRepository.listComments(item.postId, 100),
     ]);
 
-    const viewComments = await Promise.all(
-      comments.map((comment) => this.toCommentView(comment)),
+    // Sort comments chronologically (oldest first)
+    const sortedComments = [...comments].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
+
+    let commentsToReturn = sortedComments;
+    if (sortedComments.length > 10) {
+      commentsToReturn = sortedComments.slice(-5);
+    }
+
+    const viewComments = await Promise.all(
+      commentsToReturn.map((comment) => this.toCommentView(comment)),
+    );
+
+    let originalPost: FeedPostView | undefined = undefined;
+    if (item.sharedFromPostId && depth === 0) {
+      const origPostEntity = await this.newsFeedRepository.getPost(item.sharedFromPostId);
+      if (origPostEntity) {
+        originalPost = await this.toFeedPostView(actorUserId, origPostEntity, 1);
+      }
+    }
 
     return {
       postId: item.postId,
@@ -370,6 +451,40 @@ export class NewsFeedService {
       author,
       isLikedByMe: likedByActor,
       comments: viewComments,
+      originalPost,
+    };
+  }
+
+  async layDanhSachBinhLuan(
+    actorUserId: string,
+    postId: string,
+    limit = 20,
+    cursor?: string,
+  ) {
+    const post = await this.requirePost(postId);
+    if (post.isDeleted) {
+      throw new NotFoundException('Bai viet khong ton tai');
+    }
+
+    const allowedAuthorIds = await this.getAllowedAuthorIds(actorUserId);
+    if (!this.canViewPost(actorUserId, post, allowedAuthorIds)) {
+      throw new ForbiddenException('Ban khong co quyen xem binh luan cua bai viet nay');
+    }
+
+    const page = await this.newsFeedRepository.listCommentsPage(postId, limit, cursor);
+
+    // Sort chronologically (oldest first)
+    const sortedComments = [...page.items].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    const items = await Promise.all(
+      sortedComments.map((comment) => this.toCommentView(comment)),
+    );
+
+    return {
+      items: items.map((comment) => this.toBinhLuanView(comment)),
+      nextCursor: page.nextCursor,
     };
   }
 
@@ -443,6 +558,7 @@ export class NewsFeedService {
       tacGia: this.toTacGiaView(item.author),
       daThich: item.isLikedByMe,
       danhSachBinhLuan: item.comments.map((comment) => this.toBinhLuanView(comment)),
+      baiVietGoc: item.originalPost ? this.toBaiVietView(item.originalPost) : undefined,
     };
   }
 

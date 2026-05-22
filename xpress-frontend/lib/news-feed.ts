@@ -40,6 +40,7 @@ export interface BaiVietBanTin {
   tacGia: TacGiaBanTin | null;
   daThich: boolean;
   danhSachBinhLuan: BinhLuanBanTin[];
+  baiVietGoc?: BaiVietBanTin;
 }
 
 interface DanhSachBanTin {
@@ -151,6 +152,15 @@ export async function xoaBinhLuan(postId: string, commentId: string) {
   });
 }
 
+export async function layDanhSachBinhLuan(postId: string, cursor?: string, limit = 100) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+
+  return api<{ items: BinhLuanBanTin[]; nextCursor: string | null }>(`/bai-viet/${postId}/binh-luan?${params.toString()}`, {
+    method: 'GET',
+  });
+}
+
 export async function chiaSeBaiViet(
   postId: string,
   payload?: { noiDung?: string; cheDoRiengTu?: CheDoRiengTu },
@@ -161,5 +171,25 @@ export async function chiaSeBaiViet(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload ?? {}),
+  });
+}
+
+export async function layChiTietBaiViet(postId: string) {
+  return api<BaiVietBanTin>(`/bai-viet/${postId}`, {
+    method: 'GET',
+  });
+}
+
+export async function chiaSeQuaChat(payload: {
+  postId: string;
+  roomIds: string[];
+  noiDung?: string;
+}) {
+  return api<any>('/chat/share-post', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
 }

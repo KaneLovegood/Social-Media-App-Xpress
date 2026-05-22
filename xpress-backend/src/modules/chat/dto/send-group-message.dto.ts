@@ -18,8 +18,12 @@ export class SendGroupMessageDto {
   content?: string;
 
   @IsOptional()
-  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'VIDEO', 'CALL_LOG'])
-  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO' | 'CALL_LOG';
+  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'VIDEO', 'CALL_LOG', 'SHARE_POST'])
+  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO' | 'CALL_LOG' | 'SHARE_POST';
+
+  @IsOptional()
+  @IsString()
+  sharedPostId?: string;
 
   @IsOptional()
   @IsString()

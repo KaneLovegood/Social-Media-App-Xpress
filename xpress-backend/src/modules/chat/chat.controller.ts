@@ -21,6 +21,8 @@ import { ChatService } from './chat.service';
 import { StorageService } from '../storage/storage.service';
 import { AgoraService } from './services/agora.service';
 import { Query } from '@nestjs/common';
+import { NewsFeedGateway } from '../news-feed/news-feed.gateway';
+import { NewsFeedService } from '../news-feed/news-feed.service';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -39,6 +41,8 @@ export class ChatController {
     private readonly presenceService: PresenceService,
     private readonly storageService: StorageService,
     private readonly agoraService: AgoraService,
+    private readonly newsFeedGateway: NewsFeedGateway,
+    private readonly newsFeedService: NewsFeedService,
   ) {}
 
   @Get('rooms')
@@ -387,5 +391,34 @@ export class ChatController {
     }
 
     return this.agoraService.generateRtcToken(channelName, actorUserId);
+  }
+
+  @Post('share-post')
+  async sharePost(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: { postId: string; roomIds: string[]; noiDung?: string },
+  ): Promise<unknown> {
+    const actorUserId = request.user?.userId;
+    if (!actorUserId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    const messages = await this.chatService.sharePost(actorUserId, dto);
+
+    for (const msg of messages) {
+      this.chatGateway.emitMessage(msg);
+    }
+
+    try {
+      const origPostUpdated = await this.newsFeedService.layChiTietBaiViet(
+        actorUserId,
+        dto.postId,
+      );
+      this.newsFeedGateway.emitPostUpdated(origPostUpdated);
+    } catch (error) {
+      // Ignore
+    }
+
+    return messages;
   }
 }

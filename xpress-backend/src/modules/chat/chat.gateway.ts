@@ -520,6 +520,22 @@ export class ChatGateway
     );
   }
 
+  emitMessage(message: any): void {
+    if (message.roomType === 'GROUP') {
+      this.transportService.emitToGroup(
+        message.roomId ?? message.conversationId,
+        CHAT_EVENTS.GROUP_MESSAGE,
+        message,
+      );
+    } else {
+      this.transportService.emitToUsers(
+        [message.senderId, message.receiverId],
+        CHAT_EVENTS.MESSAGE,
+        message,
+      );
+    }
+  }
+
   private getUserId(client: Socket): string {
     const userId = client.data.userId as string | undefined;
     if (!userId) {
