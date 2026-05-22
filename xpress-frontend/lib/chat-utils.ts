@@ -71,5 +71,9 @@ export function toMessagePreview(message: ChatMessage): string {
     return 'Đã gửi một tệp';
   }
 
+  if (message.messageType === 'SHARE_POST') {
+    return 'Đã chia sẻ một bài viết';
+  }
+
   return message.content;
 }

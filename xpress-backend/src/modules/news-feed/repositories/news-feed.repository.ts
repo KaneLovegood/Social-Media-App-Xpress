@@ -344,6 +344,33 @@ export class NewsFeedRepository {
     return (result.Items as PostCommentEntity[]) ?? [];
   }
 
+  async listCommentsPage(
+    postId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<{ items: PostCommentEntity[]; nextCursor: string | null }> {
+    const result = await this.ddbDocClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        FilterExpression: 'entityType = :entityType',
+        ExpressionAttributeValues: {
+          ':pk': `POST#${postId}`,
+          ':sk': 'COMMENT#',
+          ':entityType': 'POST_COMMENT',
+        },
+        ScanIndexForward: true,
+        Limit: limit,
+        ExclusiveStartKey: this.decodeCursor(cursor),
+      }),
+    );
+
+    return {
+      items: (result.Items as PostCommentEntity[]) ?? [],
+      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+    };
+  }
+
   async updateCommentCount(postId: string, delta: 1 | -1): Promise<number> {
     const result = await this.ddbDocClient.send(
       new UpdateCommand({

@@ -11,7 +11,8 @@ export type MessageType =
   | "IMAGE"
   | "FILE"
   | "VIDEO"
-  | "SYSTEM";
+  | "SYSTEM"
+  | "SHARE_POST";
 
 export interface CallLogPayload {
   mode: "voice" | "video";
@@ -30,6 +31,8 @@ export interface ChatMessage {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  sharedPostId?: string;
+  sharedPost?: any;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
