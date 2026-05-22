@@ -132,6 +132,32 @@ export class SocialRepository {
     };
   }
 
+  async listBlockedUsers(
+    ownerUserId: string,
+    limit = 20,
+    cursor?: string,
+  ): Promise<{ items: BlockEntity[]; nextCursor: string | null }> {
+    const result = await this.ddbDocClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        FilterExpression: 'entityType = :entityType',
+        ExpressionAttributeValues: {
+          ':pk': `USER#${ownerUserId}`,
+          ':sk': 'BLOCK#',
+          ':entityType': 'BLOCK',
+        },
+        Limit: limit,
+        ExclusiveStartKey: this.decodeCursor(cursor),
+      }),
+    );
+
+    return {
+      items: (result.Items as BlockEntity[]) ?? [],
+      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+    };
+  }
+
   async setBlocked(ownerUserId: string, targetUserId: string): Promise<void> {
     const block: BlockEntity = {
       PK: `USER#${ownerUserId}`,

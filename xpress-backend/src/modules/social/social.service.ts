@@ -4,14 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PresenceService } from '../../common/presence/presence.service';
 import { UserEntity } from '../auth/interfaces/user.interface';
 import { UsersRepository } from '../auth/repositories/users.repository';
 import { BlockUserDto } from './dto/block-user.dto';
 import { ListFriendsDto } from './dto/list-friends.dto';
-import { SearchUserByPhoneDto } from './dto/search-user-by-phone.dto';
+import { SearchUserDto } from './dto/search-user.dto';
 import { SendFriendRequestDto } from './dto/send-friend-request.dto';
 import { SocialRepository } from './repositories/social.repository';
+import { ChatGatewayTransportService } from '../chat/services/chat-gateway-transport.service';
+import { SOCIAL_EVENTS } from '../chat/constants/events';
 
 export interface ChatFriendUser {
   userId: string;
@@ -26,49 +29,55 @@ export class SocialService {
     private readonly usersRepository: UsersRepository,
     private readonly socialRepository: SocialRepository,
     private readonly presenceService: PresenceService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
-  async searchUsersByEmail(actorUserId: string, dto: SearchUserByPhoneDto) {
-    const query = this.usersRepository.normalizeEmail(dto.email);
-    if (!query) {
+  async searchUsers(actorUserId: string, dto: SearchUserDto) {
+    if (!dto.query || !dto.query.trim()) {
       return { items: [], nextCursor: null };
     }
 
-    const result = await this.usersRepository.searchByEmail(
+    const result = await this.usersRepository.searchUsers(
       actorUserId,
-      query,
+      dto.query,
       dto.limit ?? 20,
       dto.cursor,
     );
 
-    const items = await Promise.all(
-      result.items.map(async (user) => {
-        const relation = await this.socialRepository.getFriend(
-          actorUserId,
-          user.userId,
-        );
-        const blockedByMe = await this.socialRepository.isBlocked(
-          actorUserId,
-          user.userId,
-        );
-        const blockedMe = await this.socialRepository.isBlocked(
-          user.userId,
-          actorUserId,
-        );
-        const presence = this.presenceService.getPresence(user.userId);
+    const items = (
+      await Promise.all(
+        result.items.map(async (user) => {
+          const blockedMe = await this.socialRepository.isBlocked(
+            user.userId,
+            actorUserId,
+          );
+          if (blockedMe) {
+            return null;
+          }
 
-        return {
-          userId: user.userId,
-          name: user.name,
-          email: user.email,
-          friendStatus: relation?.status ?? 'NONE',
-          isOnline: presence.isOnline,
-          lastSeenAt: presence.lastSeenAt,
-          blockedByMe,
-          blockedMe,
-        };
-      }),
-    );
+          const relation = await this.socialRepository.getFriend(
+            actorUserId,
+            user.userId,
+          );
+          const blockedByMe = await this.socialRepository.isBlocked(
+            actorUserId,
+            user.userId,
+          );
+          const presence = this.presenceService.getPresence(user.userId);
+
+          return {
+            userId: user.userId,
+            name: user.name,
+            email: user.email,
+            friendStatus: relation?.status ?? 'NONE',
+            isOnline: presence.isOnline,
+            lastSeenAt: presence.lastSeenAt,
+            blockedByMe,
+            blockedMe,
+          };
+        }),
+      )
+    ).filter((item): item is NonNullable<typeof item> => item !== null);
 
     return {
       items,
@@ -112,6 +121,23 @@ export class SocialService {
       'PENDING_RECEIVED',
     );
 
+    const actorUser = await this.usersRepository.findByUserId(actorUserId);
+    if (actorUser) {
+      try {
+        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const presenceActor = this.presenceService.getPresence(actorUserId);
+        transportService.emitToUser(dto.targetUserId, SOCIAL_EVENTS.REQUEST_RECEIVED, {
+          userId: actorUserId,
+          name: actorUser.name,
+          email: actorUser.email,
+          isOnline: presenceActor.isOnline,
+          lastSeenAt: presenceActor.lastSeenAt,
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
+
     return { success: true };
   }
 
@@ -130,6 +156,37 @@ export class SocialService {
       'FRIEND',
       'FRIEND',
     );
+
+    const [actorUser, requesterUser] = await Promise.all([
+      this.usersRepository.findByUserId(actorUserId),
+      this.usersRepository.findByUserId(requesterUserId),
+    ]);
+
+    if (actorUser && requesterUser) {
+      try {
+        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const presenceActor = this.presenceService.getPresence(actorUserId);
+        const presenceRequester = this.presenceService.getPresence(requesterUserId);
+
+        transportService.emitToUser(requesterUserId, SOCIAL_EVENTS.REQUEST_ACCEPTED, {
+          userId: actorUserId,
+          name: actorUser.name,
+          email: actorUser.email,
+          isOnline: presenceActor.isOnline,
+          lastSeenAt: presenceActor.lastSeenAt,
+        });
+
+        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.REQUEST_ACCEPTED, {
+          userId: requesterUserId,
+          name: requesterUser.name,
+          email: requesterUser.email,
+          isOnline: presenceRequester.isOnline,
+          lastSeenAt: presenceRequester.lastSeenAt,
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
 
     return { success: true };
   }
@@ -157,6 +214,15 @@ export class SocialService {
     }
 
     await this.socialRepository.removeFriendPair(actorUserId, friendUserId);
+
+    try {
+      const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+      transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: friendUserId });
+      transportService.emitToUser(friendUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: actorUserId });
+    } catch (err) {
+      // ignore
+    }
+
     return { success: true };
   }
 
@@ -214,6 +280,109 @@ export class SocialService {
     };
   }
 
+  async listOutgoingRequests(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listFriendsByStatus(
+      actorUserId,
+      'PENDING_SENT',
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        const presence = this.presenceService.getPresence(user.userId);
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          isOnline: presence.isOnline,
+          lastSeenAt: presence.lastSeenAt,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async cancelFriendRequest(actorUserId: string, targetUserId: string) {
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      targetUserId,
+    );
+    if (relation?.status !== 'PENDING_SENT') {
+      throw new NotFoundException('Khong tim thay yeu cau ket ban');
+    }
+
+    await this.socialRepository.removeFriendPair(actorUserId, targetUserId);
+
+    try {
+      const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+      transportService.emitToUser(targetUserId, SOCIAL_EVENTS.REQUEST_CANCELLED, {
+        userId: actorUserId,
+      });
+    } catch (err) {
+      // ignore
+    }
+
+    return { success: true };
+  }
+
+  async listBlockedUsers(actorUserId: string, dto: ListFriendsDto) {
+    const page = await this.socialRepository.listBlockedUsers(
+      actorUserId,
+      dto.limit ?? 20,
+      dto.cursor,
+    );
+
+    const users = await this.loadUsers(
+      page.items.map((item) => item.targetUserId),
+    );
+
+    return {
+      items: users.map((user) => {
+        return {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+        };
+      }),
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async restoreFriendRequest(actorUserId: string, requesterUserId: string) {
+    await this.ensureUserExists(requesterUserId);
+
+    await this.socialRepository.saveFriendPair(
+      requesterUserId,
+      actorUserId,
+      'PENDING_SENT',
+      'PENDING_RECEIVED',
+    );
+
+    const requesterUser = await this.usersRepository.findByUserId(requesterUserId);
+    if (requesterUser) {
+      try {
+        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const presenceRequester = this.presenceService.getPresence(requesterUserId);
+        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.REQUEST_RECEIVED, {
+          userId: requesterUserId,
+          name: requesterUser.name,
+          email: requesterUser.email,
+          isOnline: presenceRequester.isOnline,
+          lastSeenAt: presenceRequester.lastSeenAt,
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    return { success: true };
+  }
+
   async listAllFriendUsers(actorUserId: string): Promise<ChatFriendUser[]> {
     const relationItems = [] as Array<{
       targetUserId: string;
@@ -269,8 +438,25 @@ export class SocialService {
     }
 
     await this.ensureUserExists(dto.targetUserId);
+
+    const relation = await this.socialRepository.getFriend(
+      actorUserId,
+      dto.targetUserId,
+    );
+    const wasFriends = relation?.status === 'FRIEND';
+
     await this.socialRepository.setBlocked(actorUserId, dto.targetUserId);
     await this.socialRepository.removeFriendPair(actorUserId, dto.targetUserId);
+
+    if (wasFriends) {
+      try {
+        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: dto.targetUserId });
+        transportService.emitToUser(dto.targetUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: actorUserId });
+      } catch (err) {
+        // ignore
+      }
+    }
 
     return { success: true };
   }
