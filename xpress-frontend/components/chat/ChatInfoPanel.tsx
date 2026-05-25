@@ -12,6 +12,7 @@ import {
   removeGroupMember,
   transferGroupAdmin,
 } from "@/lib/chat-groups";
+import { ChatMessage } from "@/lib/realtime/types";
 import TransferAdminAndLeaveModal from "./modal/TransferAdminAndLeaveModal";
 import AddGroupMemberModal from "./modal/AddGroupMemberModal";
 import MediaGalleryModal from "./modal/MediaGalleryModal";
@@ -23,6 +24,10 @@ interface ChatInfoPanelProps {
   room: ChatRoomSummary | null;
   groupDetails: GroupRoomDetails | null;
   currentUserId: string;
+  starredMessages?: ChatMessage[];
+  onUnmarkMessage?: (roomId: string, messageId: string) => void;
+  senderNameById?: Record<string, string>;
+  senderAvatarById?: Record<string, string>;
   onLeaveGroup: () => void;
   onAdminLeaveGroup?: () => void;
   onDissolveGroup: () => void;
@@ -186,6 +191,10 @@ export default function ChatInfoPanel({
   room,
   groupDetails,
   currentUserId,
+  starredMessages = [],
+  onUnmarkMessage,
+  senderNameById = {},
+  senderAvatarById = {},
   onLeaveGroup,
   onAdminLeaveGroup,
   onDissolveGroup,
@@ -218,12 +227,10 @@ export default function ChatInfoPanel({
   >([]);
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
 
-  
   useEffect(() => {
     setIsConversationPinned(false);
   }, [room?.id]);
 
-  
   useEffect(() => {
     if (room?.id) {
       void loadMediaAndFiles();
@@ -424,7 +431,6 @@ export default function ChatInfoPanel({
   const handleTransferAdminAndLeave = async (newAdminUserId: string) => {
     if (!groupDetails) return;
     await transferGroupAdmin(groupDetails.roomId, newAdminUserId);
-    // Gọi callback chỉ refresh UI, không gọi API leave thêm lần nữa
     (onAdminLeaveGroup ?? onLeaveGroup)();
   };
 
@@ -442,6 +448,19 @@ export default function ChatInfoPanel({
       );
     } finally {
       setMemberActionLoadingUserId(null);
+    }
+  };
+
+  const handleScrollToMessage = (messageId: string) => {
+    const element = document.getElementById(`msg-${messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      // Premium highlight effect
+      element.classList.add("bg-amber-100/50", "border", "border-amber-200", "rounded-2xl", "shadow-sm");
+      setTimeout(() => {
+        element.classList.remove("bg-amber-100/50", "border", "border-amber-200", "rounded-2xl", "shadow-sm");
+      }, 2500);
     }
   };
 
@@ -626,6 +645,62 @@ export default function ChatInfoPanel({
                 </div>
               ) : null}
 
+              {/* Starred Messages Section Card */}
+              {starredMessages && starredMessages.length > 0 ? (
+                <SectionCard title="Tin nhắn đã đánh dấu">
+                  <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-auto-hide">
+                    {starredMessages.map((msg) => {
+                      const name = senderNameById[msg.senderId] ?? (msg.senderId === currentUserId ? "Bạn" : room.title);
+                      const avatar = senderAvatarById[msg.senderId] ?? "";
+                      return (
+                        <div
+                          key={msg.messageId}
+                          onClick={() => handleScrollToMessage(msg.messageId)}
+                          className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white p-2.5 transition hover:border-sky-400 hover:shadow-xs cursor-pointer group"
+                        >
+                          {avatar ? (
+                            <img
+                              src={avatar}
+                              alt={name}
+                              className="h-7 w-7 rounded-full object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#d7dfec] text-xs font-semibold text-[#2f4268] shrink-0">
+                              {(name || "?").trim().charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 truncate">{name}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onUnmarkMessage?.(room.id, msg.messageId);
+                                }}
+                                className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded-full hover:bg-slate-100"
+                                title="Bỏ đánh dấu"
+                              >
+                                <Icon name="xmark" size="sm" />
+                              </button>
+                            </div>
+                            <p className="text-xs text-slate-600 truncate mt-0.5">
+                              {msg.content || "[Hình ảnh/Tệp/Video]"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SectionCard>
+              ) : (
+                <SectionCard title="Tin nhắn đã đánh dấu">
+                  <div className="py-4 text-center">
+                    <Icon name="star" className="mx-auto mb-1 text-slate-300" />
+                    <p className="text-xs text-slate-400">Chưa có tin nhắn đánh dấu</p>
+                  </div>
+                </SectionCard>
+              )}
+
               <SectionCard
                 title="Ảnh & Video"
                 action={{
@@ -747,7 +822,6 @@ export default function ChatInfoPanel({
                   );
 
                   if (otherMembers.length === 0) {
-                    // Admin is the only member — call dissolveGroup to remove the group
                     return (
                       <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
                         <h3 className="flex items-center gap-2 text-sm font-semibold text-orange-700">
@@ -768,7 +842,6 @@ export default function ChatInfoPanel({
                     );
                   }
 
-                  // There are other members — require transfer before leaving
                   return (
                     <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
                       <h3 className="flex items-center gap-2 text-sm font-semibold text-orange-700">
