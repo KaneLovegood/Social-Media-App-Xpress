@@ -8,6 +8,7 @@ interface IncomingGroupCallModalProps {
   participantCount: number;
   onAccept: () => void;
   onDecline: () => void;
+  suppress?: boolean;
 }
 
 export default function IncomingGroupCallModal({
@@ -18,8 +19,9 @@ export default function IncomingGroupCallModal({
   participantCount,
   onAccept,
   onDecline,
+  suppress = false,
 }: IncomingGroupCallModalProps) {
-  if (!isOpen) return null;
+  if (!isOpen || suppress) return null;
 
   const callTypeLabel =
     callMode === "voice" ? "Cuộc gọi nhóm thoại" : "Cuộc gọi nhóm video";

@@ -62,12 +62,27 @@ interface SocketHandlerProps {
   setActiveRoomId?: (roomId: string) => void;
   groupCallRoomId?: string;
   groupCallMode?: CallMode;
+  groupCallHostUserId?: string;
   pendingGroupCall?: PendingGroupCallState | null;
+  rejoinableGroupCall?: {
+    roomId: string;
+    callMode: "voice" | "video";
+    callHostUserId: string;
+  } | null;
   setGroupCallRoomId: (roomId: string) => void;
   setGroupCallMode: (mode: CallMode) => void;
   setGroupCallDirection: (dir: CallDirection) => void;
   setGroupCallHostUserId: (userId: string) => void;
   setPendingGroupCall: (call: PendingGroupCallState | null) => void;
+  setRejoinableGroupCall: (
+    call:
+      | {
+          roomId: string;
+          callMode: "voice" | "video";
+          callHostUserId: string;
+        }
+      | null,
+  ) => void;
   setCallMode: (mode: CallMode) => void;
   setCallDirection: (dir: CallDirection) => void;
 }
@@ -93,6 +108,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
     setGroupCallDirection,
     setGroupCallHostUserId,
     setPendingGroupCall,
+    setRejoinableGroupCall,
     setCallMode,
     setCallDirection,
   } = props;
@@ -263,6 +279,11 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
   const onGroupCallStarted = useCallback(
     async (payload: GroupCallStartedPayload) => {
+      // Debug: trace start events and local rejoinable state
+      try {
+        // eslint-disable-next-line no-console
+        console.debug("GROUP_CALL_STARTED received", { payload, rejoinable: props.rejoinableGroupCall });
+      } catch {}
       try {
         await ensureGroupDetails(payload.roomId);
       } catch {}
@@ -284,6 +305,11 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         return;
       }
 
+      if (props.rejoinableGroupCall?.roomId === payload.roomId) {
+        // If we have a local rejoinable record for this room, ignore incoming starts.
+        return;
+      }
+
       setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
@@ -295,6 +321,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       ensureGroupDetails,
       props.groupCallRoomId,
       props.pendingGroupCall,
+      props.rejoinableGroupCall,
       setGroupCallRoomId,
       setGroupCallMode,
       setGroupCallDirection,
@@ -305,7 +332,15 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
   const onGroupCallEnded = useCallback(
     (payload: GroupCallEndPayload) => {
-      if (props.groupCallRoomId !== payload.roomId && (props.pendingGroupCall?.roomId !== payload.roomId)) return;
+      try {
+        // eslint-disable-next-line no-console
+        console.debug("GROUP_CALL_END received", { payload, rejoinable: props.rejoinableGroupCall });
+      } catch {}
+      const isActiveCallRoom = props.groupCallRoomId === payload.roomId;
+      const isPendingCallRoom = props.pendingGroupCall?.roomId === payload.roomId;
+      const isRejoinableCallRoom = props.rejoinableGroupCall?.roomId === payload.roomId;
+
+      if (!isActiveCallRoom && !isPendingCallRoom && !isRejoinableCallRoom) return;
 
       if (payload.callLogMessage) {
         const callLogMessage = payload.callLogMessage;
@@ -348,6 +383,18 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         return;
       }
 
+      if (!payload.endForAll && payload.senderId === currentUserId) {
+        setRejoinableGroupCall({
+          roomId: payload.roomId,
+          callMode: payload.callMode ?? "voice",
+          callHostUserId: props.groupCallHostUserId || currentUserId,
+        });
+      }
+
+      if (payload.endForAll) {
+        setRejoinableGroupCall(null);
+      }
+
       setGroupCallRoomId("");
       setGroupCallMode(null);
       setGroupCallDirection(null);
@@ -358,6 +405,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       currentUserId,
       props.groupCallRoomId,
       props.pendingGroupCall,
+      props.rejoinableGroupCall,
       effectiveActiveRoomId,
       setGroupDetails,
       setGroupCallRoomId,
@@ -367,6 +415,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       setMessages,
       setRooms,
       setPendingGroupCall,
+      setRejoinableGroupCall,
     ],
   );
 

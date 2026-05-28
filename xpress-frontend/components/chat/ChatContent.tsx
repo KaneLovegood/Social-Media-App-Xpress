@@ -7,6 +7,12 @@ import MessageInput, { SendMessageOptions } from "./MessageInput";
 import MessageList from "./MessageList";
 import ImageViewerModal from "./modal/ImageViewerModal";
 
+interface RejoinableGroupCall {
+  roomId: string;
+  callMode: "voice" | "video";
+  callHostUserId: string;
+}
+
 interface ChatContentProps {
   peerName: string;
   orderTitle: string;
@@ -28,6 +34,8 @@ interface ChatContentProps {
   onSend: (content: string, options?: SendMessageOptions) => void;
   onTyping: (isTyping: boolean) => void;
   typingSenderId?: string;
+  rejoinableGroupCall?: RejoinableGroupCall | null;
+  onResumeGroupCall?: () => void;
   onReply: (preview: ReplyPreview) => void;
   onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
@@ -61,6 +69,8 @@ export default function ChatContent({
   onSend,
   onTyping,
   typingSenderId,
+  rejoinableGroupCall,
+  onResumeGroupCall,
   onReply,
   onForward,
   onRecall,
@@ -93,6 +103,26 @@ export default function ChatContent({
       />
 
       <div className="flex min-h-0 flex-1 flex-col">
+        {isGroup && rejoinableGroupCall ? (
+          <div className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm md:mx-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Cuộc họp vẫn còn người tham gia</p>
+                <p className="text-xs text-amber-800">
+                  Bạn đã rời cuộc họp này. Có thể tham gia lại ngay nếu muốn.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onResumeGroupCall}
+                className="inline-flex h-10 items-center justify-center rounded-full bg-amber-600 px-4 text-sm font-semibold text-white transition hover:bg-amber-500"
+              >
+                Tham gia lại
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <MessageList
           messages={activeMessages}
           currentUserId={currentUserId}

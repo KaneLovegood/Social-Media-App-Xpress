@@ -23,6 +23,7 @@ interface GroupCallComponentProps {
   groupDetails: GroupRoomDetails;
   callMode: CallMode;
   callDirection: "incoming" | "outgoing";
+  onLeave: () => void;
   onClose: () => void;
 }
 
@@ -60,36 +61,69 @@ function StreamVideo({
   className?: string;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
-
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
 
-    element.srcObject = stream;
-    if (stream) {
-      void element.play().catch(() => {
-        // Autoplay can lag one tick; the next render or user interaction can retry.
-      });
-    }
-  }, [stream]);
+    let mounted = true;
+    let attempt = 0;
 
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !stream) return;
-
-    const handleTrackChange = () => {
-      element.srcObject = stream;
-      void element.play().catch(() => {
-        // Retry is handled by the next stream update.
-      });
+    const tryPlay = async () => {
+      if (!mounted) return;
+      try {
+        await element.play();
+      } catch {
+        attempt += 1;
+        if (attempt <= 5) {
+          window.setTimeout(tryPlay, 200 * attempt);
+        }
+      }
     };
 
-    stream.addEventListener("addtrack", handleTrackChange);
-    stream.addEventListener("removetrack", handleTrackChange);
+    element.srcObject = stream;
+
+    if (stream) {
+      // If metadata is available, play right away; otherwise wait for loadedmetadata.
+      const onLoaded = () => {
+        void tryPlay();
+      };
+
+      element.addEventListener("loadedmetadata", onLoaded);
+
+      // Try immediately too; often works in modern browsers.
+      void tryPlay();
+
+      const handleTrackChange = () => {
+        element.srcObject = stream;
+        attempt = 0;
+        void tryPlay();
+      };
+
+      stream.addEventListener("addtrack", handleTrackChange);
+      stream.addEventListener("removetrack", handleTrackChange);
+
+      // If srcObject gets detached elsewhere, ensure we re-assign on visibility change.
+      const handleVisibility = () => {
+        if (document.visibilityState === "visible") {
+          element.srcObject = stream;
+          attempt = 0;
+          void tryPlay();
+        }
+      };
+
+      document.addEventListener("visibilitychange", handleVisibility);
+
+      return () => {
+        mounted = false;
+        element.removeEventListener("loadedmetadata", onLoaded);
+        stream.removeEventListener("addtrack", handleTrackChange);
+        stream.removeEventListener("removetrack", handleTrackChange);
+        document.removeEventListener("visibilitychange", handleVisibility);
+      };
+    }
 
     return () => {
-      stream.removeEventListener("addtrack", handleTrackChange);
-      stream.removeEventListener("removetrack", handleTrackChange);
+      mounted = false;
     };
   }, [stream]);
 
@@ -107,6 +141,7 @@ export default function GroupCallComponent({
   groupDetails,
   callMode,
   callDirection,
+  onLeave,
   onClose,
 }: GroupCallComponentProps) {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -120,6 +155,7 @@ export default function GroupCallComponent({
   );
   const retryOfferTimersRef = useRef<Map<string, number>>(new Map());
   const remoteStreamsRef = useRef<RemoteStreamState[]>([]);
+  const inCallMemberIdsRef = useRef<string[]>([]);
   const remoteMediaStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const startedRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
@@ -206,6 +242,10 @@ export default function GroupCallComponent({
   useEffect(() => {
     remoteStreamsRef.current = remoteStreams;
   }, [remoteStreams]);
+
+  useEffect(() => {
+    inCallMemberIdsRef.current = inCallMemberIds;
+  }, [inCallMemberIds]);
 
   useEffect(() => {
     setInCallMemberIds((prev) => {
@@ -306,7 +346,11 @@ export default function GroupCallComponent({
       setIsActive(false);
 
       if (notifyRoom) {
-        onClose();
+        if (endForAll) {
+          onClose();
+        } else {
+          onLeave();
+        }
       }
     },
     [
@@ -684,6 +728,12 @@ export default function GroupCallComponent({
       }
 
       stopConference(false);
+
+      if (!payload.endForAll && payload.senderId === currentUserId) {
+        onLeave();
+        return;
+      }
+
       onClose();
     };
 
@@ -786,7 +836,11 @@ export default function GroupCallComponent({
   };
 
   const handleEnd = () => {
-    stopConference(true, "left", false);
+    const othersInCall = inCallMemberIdsRef.current.filter(
+      (userId) => userId !== currentUserId,
+    ).length;
+    const shouldEndForAll = othersInCall === 0;
+    stopConference(true, shouldEndForAll ? "ended" : "left", shouldEndForAll);
   };
 
   return (

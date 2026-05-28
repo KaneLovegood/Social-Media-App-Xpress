@@ -26,6 +26,7 @@ export const CHAT_EVENTS = {
   GROUP_CALL_ANSWER: 'chat:group:call:answer',
   GROUP_CALL_ICE: 'chat:group:call:ice',
   GROUP_CALL_END: 'chat:group:call:end',
+  GROUP_CALL_LIMIT_REACHED: 'chat:group:call:limit_reached',
   ERROR: 'chat:error',
 } as const;
 

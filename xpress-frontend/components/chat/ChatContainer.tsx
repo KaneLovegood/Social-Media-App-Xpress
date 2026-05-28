@@ -92,6 +92,8 @@ export default function ChatContainer({
     setGroupCallHostUserId,
     pendingGroupCall,
     setPendingGroupCall,
+    rejoinableGroupCall,
+    setRejoinableGroupCall,
   } = useCallState();
 
   // Room management state
@@ -227,6 +229,11 @@ export default function ChatContainer({
   const activeGroupCallDetails = groupCallRoomId
     ? (groupDetailsByRoom[groupCallRoomId] ?? null)
     : null;
+  const activeRejoinableGroupCall =
+    activeRoom?.roomType === "GROUP" &&
+    rejoinableGroupCall?.roomId === activeRoom.id
+      ? rejoinableGroupCall
+      : null;
   const peerUserId =
     activeRoom?.roomType === "GROUP" ? "" : (activeRoom?.peerUserId ?? "");
   const peerName = activeRoom?.peerName ?? "User";
@@ -547,11 +554,13 @@ export default function ChatContainer({
     groupCallRoomId,
     groupCallMode,
     pendingGroupCall,
+    rejoinableGroupCall,
     setGroupCallRoomId,
     setGroupCallMode,
     setGroupCallDirection,
     setGroupCallHostUserId,
     setPendingGroupCall,
+    setRejoinableGroupCall,
     setCallMode,
     setCallDirection,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -730,7 +739,7 @@ export default function ChatContainer({
   };
 
   const startGroupCall = useCallback(
-    async (mode: "voice" | "video") => {
+    async (mode: "voice" | "video", hostUserId = currentUserId) => {
       if (
         !socketRef.current ||
         !activeRoom ||
@@ -754,7 +763,8 @@ export default function ChatContainer({
       setGroupCallRoomId(activeRoom.id);
       setGroupCallMode(mode);
       setGroupCallDirection("outgoing");
-      setGroupCallHostUserId(currentUserId);
+      setRejoinableGroupCall(null);
+      setGroupCallHostUserId(hostUserId);
 
       socketRef.current.emit(CHAT_EVENTS.GROUP_CALL_START, {
         roomId: activeRoom.id,
@@ -769,11 +779,29 @@ export default function ChatContainer({
       groupCallRoomId,
       currentUserId,
       setGroupCallHostUserId,
+      setRejoinableGroupCall,
     ],
   );
 
+  const resumeGroupCall = useCallback(() => {
+    if (!activeRejoinableGroupCall) return;
+
+    // Defensive: clear any pending incoming modal and clear rejoinable flag
+    setPendingGroupCall(null);
+    setRejoinableGroupCall(null);
+
+    void startGroupCall(
+      activeRejoinableGroupCall.callMode,
+      activeRejoinableGroupCall.callHostUserId,
+    );
+  }, [activeRejoinableGroupCall, startGroupCall]);
+
   const handleOpenVoiceCall = () => {
     if (activeRoom?.roomType === "GROUP") {
+      if (activeRejoinableGroupCall) {
+        resumeGroupCall();
+        return;
+      }
       void startGroupCall("voice");
       return;
     }
@@ -783,6 +811,10 @@ export default function ChatContainer({
 
   const handleOpenVideoCall = () => {
     if (activeRoom?.roomType === "GROUP") {
+      if (activeRejoinableGroupCall) {
+        resumeGroupCall();
+        return;
+      }
       void startGroupCall("video");
       return;
     }
@@ -993,6 +1025,7 @@ export default function ChatContainer({
     setGroupCallMode(pendingGroupCall.callMode);
     setGroupCallDirection("incoming");
     setGroupCallHostUserId(pendingGroupCall.senderId);
+    setRejoinableGroupCall(null);
     setPendingGroupCall(null);
   };
 
@@ -1077,6 +1110,8 @@ export default function ChatContainer({
               onOpenInfo={() => setIsMobileInfoOpen(true)}
               onOpenVoiceCall={handleOpenVoiceCall}
               onOpenVideoCall={handleOpenVideoCall}
+              rejoinableGroupCall={activeRejoinableGroupCall}
+              onResumeGroupCall={resumeGroupCall}
               onClearReply={() => setReplyTo(undefined)}
               onSend={handleSend}
               onTyping={handleTyping}
@@ -1168,7 +1203,11 @@ export default function ChatContainer({
       />
 
       <IncomingGroupCallModal
-        isOpen={pendingGroupCall !== null}
+        isOpen={
+          pendingGroupCall !== null &&
+          !(rejoinableGroupCall && rejoinableGroupCall.roomId === pendingGroupCall?.roomId)
+        }
+        suppress={!!(rejoinableGroupCall && rejoinableGroupCall.roomId === pendingGroupCall?.roomId)}
         roomTitle={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.title ??
@@ -1203,7 +1242,21 @@ export default function ChatContainer({
           callMode={groupCallMode}
           callDirection={groupCallDirection ?? "incoming"}
           callHostUserId={groupCallHostUserId}
+          onLeave={() => {
+            setRejoinableGroupCall({
+              roomId: groupCallRoomId,
+              callMode: groupCallMode,
+              callHostUserId: groupCallHostUserId,
+            });
+            // clear any pending incoming invite for this room to avoid modal
+            setPendingGroupCall(null);
+            setGroupCallRoomId("");
+            setGroupCallMode(null);
+            setGroupCallDirection(null);
+            setGroupCallHostUserId("");
+          }}
           onClose={() => {
+            setRejoinableGroupCall(null);
             setGroupCallRoomId("");
             setGroupCallMode(null);
             setGroupCallDirection(null);

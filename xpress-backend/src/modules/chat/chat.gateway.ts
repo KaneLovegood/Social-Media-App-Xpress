@@ -49,6 +49,8 @@ export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(ChatGateway.name);
+  private readonly maxGroupCallParticipants = 5;
+  private readonly activeGroupCallParticipants = new Map<string, Set<string>>();
 
   constructor(
     private readonly chatService: ChatService,
@@ -87,6 +89,13 @@ export class ChatGateway
   handleDisconnect(client: Socket): void {
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
+
+    for (const [roomId, participants] of this.activeGroupCallParticipants.entries()) {
+      participants.delete(userId);
+      if (participants.size === 0) {
+        this.activeGroupCallParticipants.delete(roomId);
+      }
+    }
 
     const becameOffline = this.transportService.handleDisconnect(
       userId,
@@ -310,6 +319,27 @@ export class ChatGateway
     const userId = this.getUserId(client);
     await this.chatService.ensureGroupMembership(userId, payload.roomId);
 
+    const participants =
+      this.activeGroupCallParticipants.get(payload.roomId) ?? new Set<string>();
+
+    const isAlreadyInCall = participants.has(userId);
+    if (!isAlreadyInCall && participants.size >= this.maxGroupCallParticipants) {
+      this.transportService.emitToUser(
+        userId,
+        CHAT_EVENTS.GROUP_CALL_LIMIT_REACHED,
+        {
+          roomId: payload.roomId,
+          callMode: payload.callMode,
+          maxParticipants: this.maxGroupCallParticipants,
+          message: `Cuoc goi nhom tam thoi gioi han toi da ${this.maxGroupCallParticipants} nguoi.`,
+        },
+      );
+      return;
+    }
+
+    participants.add(userId);
+    this.activeGroupCallParticipants.set(payload.roomId, participants);
+
     this.transportService.emitToGroup(
       payload.roomId,
       CHAT_EVENTS.GROUP_CALL_STARTED,
@@ -408,6 +438,12 @@ export class ChatGateway
     const endForAll = payload.endForAll ?? false;
 
     if (!endForAll) {
+      const participants = this.activeGroupCallParticipants.get(payload.roomId);
+      participants?.delete(userId);
+      if (participants && participants.size === 0) {
+        this.activeGroupCallParticipants.delete(payload.roomId);
+      }
+
       const callLogMessage = await this.chatService.createGroupCallLeaveSystemMessage(
         userId,
         payload.roomId,
@@ -437,6 +473,9 @@ export class ChatGateway
 
     const outcome =
       payload.reason === 'cancelled' ? 'self_cancelled' : 'connected_ended';
+
+    this.activeGroupCallParticipants.delete(payload.roomId);
+
     const callLogMessage = await this.chatService.createGroupCallLogMessage(
       userId,
       payload.roomId,

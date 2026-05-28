@@ -144,6 +144,13 @@ export interface GroupCallEndPayload {
   callLogMessage?: ChatMessage;
 }
 
+export interface GroupCallLimitReachedPayload {
+  roomId: string;
+  callMode?: "voice" | "video";
+  maxParticipants: number;
+  message?: string;
+}
+
 export interface ReactionPayload {
   messageId: string;
   roomId?: string;
