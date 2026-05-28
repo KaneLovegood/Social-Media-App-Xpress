@@ -7,6 +7,8 @@ interface MessageActionsMenuProps {
     isOwn: boolean;
     disabled: boolean;
     canRecall: boolean;
+    isPinned?: boolean;
+    isStarred?: boolean;
     onReply: () => void;
     onForward: () => void;
     onCopy: () => void;
@@ -22,6 +24,8 @@ export default function MessageActionsMenu({
     isOwn,
     disabled,
     canRecall,
+    isPinned,
+    isStarred,
     onReply,
     onForward,
     onCopy,
@@ -132,6 +136,8 @@ export default function MessageActionsMenu({
                     <MessageActionsPanel
                         isOwn={isOwn}
                         canRecall={canRecall}
+                        isPinned={isPinned}
+                        isStarred={isStarred}
                         onCopy={onCopy}
                         onPin={onPin}
                         onMark={onMark}

@@ -53,13 +53,32 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
       try {
         await client.join(appId, channel, token, uid);
 
-        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        let audioTrack: IMicrophoneAudioTrack | null = null;
+        let videoTrack: ICameraVideoTrack | null = null;
+
+        try {
+          const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+          audioTrack = aTrack;
+          videoTrack = vTrack;
+        } catch (mediaErr) {
+          console.warn('Failed to create both Microphone and Camera tracks. Attempting microphone only...', mediaErr);
+          try {
+            audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+          } catch (audioErr) {
+            console.error('Failed to create Microphone track as well. Recording devices may be blocked or unavailable:', audioErr);
+            throw mediaErr; // Re-throw the original error to let UI catch permission issues
+          }
+        }
 
         if (!isJoining.current) {
-          audioTrack.stop();
-          audioTrack.close();
-          videoTrack.stop();
-          videoTrack.close();
+          if (audioTrack) {
+            audioTrack.stop();
+            audioTrack.close();
+          }
+          if (videoTrack) {
+            videoTrack.stop();
+            videoTrack.close();
+          }
           await client.leave();
           return;
         }
@@ -68,7 +87,13 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
         setLocalAudioTrack(audioTrack);
         setLocalVideoTrack(videoTrack);
 
-        await client.publish([audioTrack, videoTrack]);
+        const tracksToPublish = [];
+        if (audioTrack) tracksToPublish.push(audioTrack);
+        if (videoTrack) tracksToPublish.push(videoTrack);
+
+        if (tracksToPublish.length > 0) {
+          await client.publish(tracksToPublish);
+        }
         setJoinState(true);
       } catch (error) {
         console.error('Agora join failed:', error);

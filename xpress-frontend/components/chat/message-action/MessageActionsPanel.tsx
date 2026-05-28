@@ -11,6 +11,8 @@ import {
 interface MessageActionsPanelProps {
   isOwn: boolean;
   canRecall: boolean;
+  isPinned?: boolean;
+  isStarred?: boolean;
   onCopy: () => void;
   onPin: () => void;
   onMark: () => void;
@@ -61,7 +63,7 @@ const ACTIONS: ActionItem[] = [
 ];
 
 export default function MessageActionsPanel(props: MessageActionsPanelProps) {
-  const { onClose, style, panelRef } = props;
+  const { onClose, style, panelRef, isPinned, isStarred } = props;
 
   const handleAction = (callback?: () => void) => {
     callback?.();
@@ -84,6 +86,13 @@ export default function MessageActionsPanel(props: MessageActionsPanelProps) {
         const callback = props[action.action] as (() => void) | undefined;
         const isDisabled = action.disabled?.(props);
 
+        let displayLabel = action.label;
+        if (action.action === 'onPin' && isPinned) {
+          displayLabel = 'Bỏ ghim tin nhắn';
+        } else if (action.action === 'onMark' && isStarred) {
+          displayLabel = 'Bỏ đánh dấu tin nhắn';
+        }
+
         return (
           <button
             key={action.label}
@@ -98,7 +107,7 @@ export default function MessageActionsPanel(props: MessageActionsPanelProps) {
               }`}
           >
             <action.icon className="h-4 w-4" />
-            {action.label}
+            {displayLabel}
           </button>
         );
       })}

@@ -29,6 +29,13 @@ interface MessageListProps {
   onRedial: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
   className?: string;
+
+  // New action props
+  isMultiSelectMode?: boolean;
+  selectedMessageIds?: string[];
+  onToggleSelectMessage?: (messageId: string) => void;
+  pinnedMessages?: ChatMessage[];
+  starredMessages?: ChatMessage[];
 }
 
 export default function MessageList({
@@ -54,6 +61,12 @@ export default function MessageList({
   onRedial,
   onImageClick,
   className,
+
+  isMultiSelectMode = false,
+  selectedMessageIds = [],
+  onToggleSelectMessage,
+  pinnedMessages = [],
+  starredMessages = [],
 }: MessageListProps) {
   const isEmpty = messages.length === 0;
 
@@ -78,28 +91,38 @@ export default function MessageList({
         </p>
       </li>
 
-      {messages.map((message) => (
-        <MessageItemRow
-          key={message.messageId}
-          message={message}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          peerName={peerName}
-          senderNameById={senderNameById}
-          senderAvatarById={senderAvatarById}
-          onReply={onReply}
-          onForward={onForward}
-          onRecall={onRecall}
-          onDeleteForMe={onDeleteForMe}
-          onCopy={onCopy}
-          onPin={onPin}
-          onMark={onMark}
-          onSelectMany={onSelectMany}
-          onViewDetails={onViewDetails}
-          onRedial={onRedial}
-          onImageClick={onImageClick}
-        />
-      ))}
+      {messages.map((message) => {
+        const isPinned = pinnedMessages.some((m) => m.messageId === message.messageId);
+        const isStarred = starredMessages.some((m) => m.messageId === message.messageId);
+        const isSelected = selectedMessageIds.includes(message.messageId);
+        return (
+          <MessageItemRow
+            key={message.messageId}
+            message={message}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            peerName={peerName}
+            senderNameById={senderNameById}
+            senderAvatarById={senderAvatarById}
+            isMultiSelectMode={isMultiSelectMode}
+            isSelected={isSelected}
+            onToggleSelect={onToggleSelectMessage}
+            isPinned={isPinned}
+            isStarred={isStarred}
+            onReply={onReply}
+            onForward={onForward}
+            onRecall={onRecall}
+            onDeleteForMe={onDeleteForMe}
+            onCopy={onCopy}
+            onPin={onPin}
+            onMark={onMark}
+            onSelectMany={onSelectMany}
+            onViewDetails={onViewDetails}
+            onRedial={onRedial}
+            onImageClick={onImageClick}
+          />
+        );
+      })}
 
       {typingText ? (
         <li className={`flex ${typingSenderId ? "justify-start" : "justify-center"}`}>
