@@ -408,6 +408,12 @@ export class ChatGateway
     const endForAll = payload.endForAll ?? false;
 
     if (!endForAll) {
+      const callLogMessage = await this.chatService.createGroupCallLeaveSystemMessage(
+        userId,
+        payload.roomId,
+        { mode: callMode },
+      );
+
       this.transportService.emitToGroup(
         payload.roomId,
         CHAT_EVENTS.GROUP_CALL_END,
@@ -417,7 +423,14 @@ export class ChatGateway
           callMode,
           reason: payload.reason,
           endForAll: false,
+          callLogMessage,
         },
+      );
+
+      this.transportService.emitToGroup(
+        payload.roomId,
+        CHAT_EVENTS.GROUP_MESSAGE,
+        callLogMessage,
       );
       return;
     }
@@ -439,6 +452,7 @@ export class ChatGateway
         callMode,
         reason: payload.reason,
         endForAll: true,
+        callLogMessage,
       },
     );
 

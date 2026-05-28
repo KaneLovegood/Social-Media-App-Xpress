@@ -105,6 +105,12 @@ export interface GroupCallStartedPayload {
   callMode: "voice" | "video";
 }
 
+export interface GroupCallJoinPayload {
+  senderId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+}
+
 export interface GroupCallOfferPayload {
   senderId: string;
   receiverId: string;
@@ -135,6 +141,7 @@ export interface GroupCallEndPayload {
   callMode?: "voice" | "video";
   reason?: string;
   endForAll?: boolean;
+  callLogMessage?: ChatMessage;
 }
 
 export interface ReactionPayload {

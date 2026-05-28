@@ -62,9 +62,35 @@ function StreamVideo({
   const ref = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (ref.current) {
-      ref.current.srcObject = stream;
+    const element = ref.current;
+    if (!element) return;
+
+    element.srcObject = stream;
+    if (stream) {
+      void element.play().catch(() => {
+        // Autoplay can lag one tick; the next render or user interaction can retry.
+      });
     }
+  }, [stream]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !stream) return;
+
+    const handleTrackChange = () => {
+      element.srcObject = stream;
+      void element.play().catch(() => {
+        // Retry is handled by the next stream update.
+      });
+    };
+
+    stream.addEventListener("addtrack", handleTrackChange);
+    stream.addEventListener("removetrack", handleTrackChange);
+
+    return () => {
+      stream.removeEventListener("addtrack", handleTrackChange);
+      stream.removeEventListener("removetrack", handleTrackChange);
+    };
   }, [stream]);
 
   return (
@@ -94,6 +120,7 @@ export default function GroupCallComponent({
   );
   const retryOfferTimersRef = useRef<Map<string, number>>(new Map());
   const remoteStreamsRef = useRef<RemoteStreamState[]>([]);
+  const remoteMediaStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const startedRef = useRef(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
   const [inCallMemberIds, setInCallMemberIds] = useState<string[]>(() => {
@@ -161,6 +188,8 @@ export default function GroupCallComponent({
   const videoGridColumns = useMemo(() => {
     const count = Math.max(1, videoParticipants.length);
     if (count <= 1) return 1;
+    if (count === 2) return 2;
+    if (count === 3) return 3;
     if (count <= 4) return 2;
     if (count <= 6) return 3;
     return 4;
@@ -202,6 +231,7 @@ export default function GroupCallComponent({
     (userId: string) => {
       if (!userId || userId === currentUserId) return;
 
+      remoteMediaStreamsRef.current.delete(userId);
       setInCallMemberIds((prev) => prev.filter((id) => id !== userId));
       setRemoteStreams((prev) => prev.filter((item) => item.userId !== userId));
     },
@@ -254,6 +284,7 @@ export default function GroupCallComponent({
         localVideoRef.current.srcObject = null;
       }
 
+      remoteMediaStreamsRef.current.clear();
       pendingIceCandidatesRef.current.clear();
       pendingOffersRef.current.clear();
       for (const timerId of retryOfferTimersRef.current.values()) {
@@ -330,8 +361,16 @@ export default function GroupCallComponent({
       });
 
       peer.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (!remoteStream) return;
+        const remoteStream =
+          remoteMediaStreamsRef.current.get(remoteUserId) ?? new MediaStream();
+
+        if (!remoteMediaStreamsRef.current.has(remoteUserId)) {
+          remoteMediaStreamsRef.current.set(remoteUserId, remoteStream);
+        }
+
+        if (!remoteStream.getTracks().includes(event.track)) {
+          remoteStream.addTrack(event.track);
+        }
 
         clearRetryOfferTimer(remoteUserId);
         addInCallMember(remoteUserId);
@@ -374,12 +413,12 @@ export default function GroupCallComponent({
 
   const createAndSendOffer = useCallback(
     async (remoteUserId: string, force = false) => {
-      if (!socket || !localStreamRef.current) return;
-      if (remoteUserId === currentUserId) return;
+      if (!socket || !localStreamRef.current) return false;
+      if (remoteUserId === currentUserId) return false;
 
       const shouldInitiate = currentUserId < remoteUserId;
       if (!force && !shouldInitiate) {
-        return;
+        return false;
       }
 
       const hasRemoteStream = remoteStreamsRef.current.some(
@@ -387,12 +426,20 @@ export default function GroupCallComponent({
       );
       if (hasRemoteStream) {
         clearRetryOfferTimer(remoteUserId);
-        return;
+        return true;
       }
 
       const peer = await ensurePeerConnection(remoteUserId);
       if (peer.signalingState !== "stable") {
-        return;
+        if (force) {
+          try {
+            await peer.setLocalDescription({ type: "rollback" });
+          } catch {
+            return false;
+          }
+        } else {
+          return false;
+        }
       }
 
       const offer = await peer.createOffer({ iceRestart: force });
@@ -405,6 +452,8 @@ export default function GroupCallComponent({
         callMode,
         offer,
       } satisfies GroupCallOfferPayload);
+
+      return true;
     },
     [
       callMode,
@@ -421,9 +470,15 @@ export default function GroupCallComponent({
       clearRetryOfferTimer(remoteUserId);
 
       const timerId = window.setTimeout(() => {
-        void createAndSendOffer(remoteUserId, true).catch(() => {
-          // Ignore retry errors. Another participant may have completed negotiation.
-        });
+        void createAndSendOffer(remoteUserId, true)
+          .then((sent) => {
+            if (!sent) {
+              scheduleOfferRetry(remoteUserId);
+            }
+          })
+          .catch(() => {
+            scheduleOfferRetry(remoteUserId);
+          });
       }, 3000);
 
       retryOfferTimersRef.current.set(remoteUserId, timerId);
@@ -495,8 +550,10 @@ export default function GroupCallComponent({
     await handlePendingOffers();
 
     for (const member of remoteMembers) {
-      await createAndSendOffer(member.userId);
-      scheduleOfferRetry(member.userId);
+      const sent = await createAndSendOffer(member.userId);
+      if (sent) {
+        scheduleOfferRetry(member.userId);
+      }
     }
   }, [
     callMode,
@@ -535,8 +592,10 @@ export default function GroupCallComponent({
       if (peerConnectionsRef.current.has(newJoinerId)) return;
 
       try {
-        await createAndSendOffer(newJoinerId);
-        scheduleOfferRetry(newJoinerId);
+        const sent = await createAndSendOffer(newJoinerId);
+        if (sent) {
+          scheduleOfferRetry(newJoinerId);
+        }
       } catch {
         // Ignore
       }
@@ -727,8 +786,7 @@ export default function GroupCallComponent({
   };
 
   const handleEnd = () => {
-    const isHost = currentUserId === callHostUserId;
-    stopConference(true, isHost ? "ended" : "left", isHost);
+    stopConference(true, "left", false);
   };
 
   return (
@@ -766,7 +824,7 @@ export default function GroupCallComponent({
                 videoParticipants.map((participant) => (
                   <div
                     key={participant.userId}
-                    className="relative min-h-55 overflow-hidden rounded-3xl bg-[#15213e] shadow-lg"
+                    className="relative h-full min-h-0 overflow-hidden rounded-3xl bg-[#15213e] shadow-lg"
                   >
                     {participant.stream ? (
                       <StreamVideo

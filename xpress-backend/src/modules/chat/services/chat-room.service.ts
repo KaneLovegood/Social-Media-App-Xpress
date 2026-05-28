@@ -336,9 +336,14 @@ export class ChatRoomService {
     await this.assertGroupMembership(senderId, roomId);
 
     const room = await this.getGroupRoom(roomId);
+    const actor = await this.usersRepository.findByUserId(senderId);
     const now = new Date().toISOString();
     const messageId = randomUUID();
-    const content = this.toGroupCallLogContent(payload.mode, payload.outcome);
+    const content = this.toGroupCallLogContent(
+      payload.mode,
+      payload.outcome,
+      actor?.name,
+    );
 
     const item: MessageEntity = {
       PK: `MESSAGE#${messageId}`,
@@ -361,6 +366,52 @@ export class ChatRoomService {
         actorUserId: senderId,
         initiatorUserId: senderId,
       },
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: content,
+    });
+
+    return item;
+  }
+
+  async createGroupCallLeaveSystemMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+    },
+  ): Promise<MessageEntity> {
+    await this.assertGroupMembership(senderId, roomId);
+
+    const room = await this.getGroupRoom(roomId);
+    const actor = await this.usersRepository.findByUserId(senderId);
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+    const content = `${actor?.name ?? 'Một thành viên'} đã rời khỏi cuộc gọi nhóm ${
+      payload.mode === 'video' ? 'video' : 'thoại'
+    }`;
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${room.roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: room.roomId,
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: room.roomId,
+      content,
+      messageType: 'SYSTEM',
       isDeleted: false,
       isRecalled: false,
       createdAt: now,
@@ -730,8 +781,13 @@ export class ChatRoomService {
   private toGroupCallLogContent(
     mode: 'voice' | 'video',
     outcome: CallLogOutcome,
+    actorName?: string,
   ): string {
     const modeText = mode === 'video' ? 'video' : 'thoại';
+
+    if (outcome === 'left') {
+      return `${actorName ?? 'Một thành viên'} đã rời khỏi cuộc gọi nhóm ${modeText}`;
+    }
 
     if (outcome === 'connected_ended') {
       return `Cuộc gọi nhóm ${modeText} kết thúc`;

@@ -21,6 +21,7 @@ export const CHAT_EVENTS = {
   GROUP_DISSOLVED: "chat:group:dissolved",
   GROUP_CALL_START: "chat:group:call:start",
   GROUP_CALL_STARTED: "chat:group:call:started",
+  GROUP_CALL_JOIN: "chat:group:call:join",
   GROUP_CALL_OFFER: "chat:group:call:offer",
   GROUP_CALL_ANSWER: "chat:group:call:answer",
   GROUP_CALL_ICE: "chat:group:call:ice",

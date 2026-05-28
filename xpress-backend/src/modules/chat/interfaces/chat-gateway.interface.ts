@@ -1,3 +1,5 @@
+import type { MessageEntity } from './message.interface';
+
 export interface IncomingCallPayload {
   senderId: string;
   senderName: string;
@@ -28,6 +30,11 @@ export interface GroupCallStartDto {
   callMode: 'voice' | 'video';
 }
 
+export interface GroupCallJoinDto {
+  roomId: string;
+  callMode: 'voice' | 'video';
+}
+
 export interface GroupCallSignalDto {
   roomId: string;
   receiverId: string;
@@ -42,4 +49,5 @@ export interface GroupCallEndDto {
   callMode?: 'voice' | 'video';
   reason?: string;
   endForAll?: boolean;
+  callLogMessage?: MessageEntity;
 }

@@ -17,7 +17,8 @@ export type MessageType =
 export type CallLogOutcome =
   | 'self_cancelled'
   | 'peer_cancelled'
-  | 'connected_ended';
+  | 'connected_ended'
+  | 'left';
 
 export interface CallLogPayload {
   mode: 'voice' | 'video';

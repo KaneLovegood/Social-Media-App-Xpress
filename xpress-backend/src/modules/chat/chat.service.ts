@@ -234,6 +234,21 @@ export class ChatService {
     });
   }
 
+  async createGroupCallLeaveSystemMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+      actorName?: string;
+    },
+  ): Promise<MessageEntity> {
+    return this.chatRoomService.createGroupCallLeaveSystemMessage(
+      senderId,
+      roomId,
+      payload,
+    );
+  }
+
   async deleteMessage(
     senderId: string,
     dto: DeleteMessageDto,
