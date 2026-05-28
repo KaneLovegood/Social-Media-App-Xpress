@@ -113,6 +113,12 @@ export default function ChatContent({
   } | null>(null);
 
   const [pinIndex, setPinIndex] = useState(0);
+  const showTypingIndicator = Boolean(
+    typingText && typingSenderId && typingSenderId !== currentUserId,
+  );
+  const typingLabel = typingSenderId
+    ? `${senderNameById[typingSenderId] ?? peerName} đang nhập...`
+    : typingText;
 
   const handleScrollToMessage = (messageId: string) => {
     const element = document.getElementById(`msg-${messageId}`);
@@ -274,6 +280,38 @@ export default function ChatContent({
           pinnedMessages={pinnedMessages}
           starredMessages={starredMessages}
         />
+
+        {showTypingIndicator ? (
+          <div className="px-4 pb-2 pt-1 md:px-6">
+            <div className="flex items-start gap-2 pl-1">
+              {typingSenderId ? (
+                senderAvatarById[typingSenderId] ? (
+                  <img
+                    src={senderAvatarById[typingSenderId]}
+                    alt={senderNameById[typingSenderId] ?? peerName}
+                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
+                    {(senderNameById[typingSenderId] ?? peerName)
+                      ?.charAt(0)
+                      ?.toUpperCase()}
+                  </div>
+                )
+              ) : null}
+
+              <div className="rounded-xl bg-white px-3 py-2 text-sm text-[#6b7280] shadow-sm">
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc]" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc] delay-75" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc] delay-150" />
+                  <span className="ml-2">{typingLabel}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Conditional footer rendering: normal input vs multi-select toolbar */}
         {isMultiSelectMode ? (

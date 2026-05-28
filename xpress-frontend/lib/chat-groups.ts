@@ -1,4 +1,4 @@
-import { getAccessToken } from "./auth-client";
+import { authFetch } from "./auth-client";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
@@ -34,14 +34,6 @@ export interface GroupRoomDetails {
   updatedAt: string;
   members: GroupMemberSummary[];
   currentUserRole?: "ADMIN" | "MEMBER";
-}
-
-function authHeaders() {
-  const token = getAccessToken();
-  return {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
 }
 
 function toErrorMessage(message: unknown): string {
@@ -81,11 +73,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function fetchGroupRoomDetails(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}`,
     {
       method: "GET",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -99,9 +93,11 @@ export async function createGroupRoom(payload: {
   emoji?: string;
   memberUserIds?: string[];
 }) {
-  const response = await fetch(`${API_BASE_URL}/chat/groups`, {
+  const response = await authFetch(`${API_BASE_URL}/chat/groups`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 
@@ -109,11 +105,13 @@ export async function createGroupRoom(payload: {
 }
 
 export async function addGroupMember(roomId: string, userId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/members`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ userId }),
     },
   );
@@ -122,11 +120,13 @@ export async function addGroupMember(roomId: string, userId: string) {
 }
 
 export async function removeGroupMember(roomId: string, memberUserId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/members/${encodeURIComponent(memberUserId)}`,
     {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -134,11 +134,13 @@ export async function removeGroupMember(roomId: string, memberUserId: string) {
 }
 
 export async function leaveGroup(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/leave`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -150,11 +152,13 @@ export async function transferGroupAdmin(
   newAdminUserId: string,
 ) {
   // Bước 1: Promote thành viên được chọn lên ADMIN
-  const promoteResponse = await fetch(
+  const promoteResponse = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/members/${encodeURIComponent(newAdminUserId)}/promote`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
   await parseResponse<GroupRoomDetails>(promoteResponse);
@@ -162,11 +166,13 @@ export async function transferGroupAdmin(
   // Bước 2: Rời nhóm — nếu server đã xử lý rời nhóm cùng lúc promote
   // (hoặc trả 403/404 vì role đã đổi), ta vẫn coi như thành công
   try {
-    const leaveResponse = await fetch(
+    const leaveResponse = await authFetch(
       `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/leave`,
       {
         method: "POST",
-        headers: authHeaders(),
+        headers: {
+          "Content-Type": "application/json",
+        },
       },
     );
     // Chỉ throw nếu lỗi thực sự (không phải 403/404 do role đổi)
@@ -179,11 +185,13 @@ export async function transferGroupAdmin(
 }
 
 export async function promoteGroupMember(roomId: string, memberUserId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/members/${encodeURIComponent(memberUserId)}/promote`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -191,11 +199,13 @@ export async function promoteGroupMember(roomId: string, memberUserId: string) {
 }
 
 export async function createGroupInviteLink(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/invite-link`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -207,11 +217,13 @@ export async function createGroupInviteLink(roomId: string) {
 }
 
 export async function joinGroupByInvite(inviteCode: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/group-invites/${encodeURIComponent(inviteCode)}/join`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -219,11 +231,13 @@ export async function joinGroupByInvite(inviteCode: string) {
 }
 
 export async function sendGroupMessage(roomId: string, content: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}/messages`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ content }),
     },
   );
@@ -232,11 +246,13 @@ export async function sendGroupMessage(roomId: string, content: string) {
 }
 
 export async function deleteChatHistory(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/rooms/${encodeURIComponent(roomId)}/messages`,
     {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -244,11 +260,13 @@ export async function deleteChatHistory(roomId: string) {
 }
 
 export async function dissolveGroup(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/groups/${encodeURIComponent(roomId)}`,
     {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -260,11 +278,13 @@ export async function dissolveGroup(roomId: string) {
 }
 
 export async function fetchRoomImages(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/rooms/${encodeURIComponent(roomId)}/images`,
     {
       method: "GET",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 
@@ -284,11 +304,13 @@ export async function fetchRoomImages(roomId: string) {
 }
 
 export async function fetchRoomFiles(roomId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/chat/rooms/${encodeURIComponent(roomId)}/files`,
     {
       method: "GET",
-      headers: authHeaders(),
+      headers: {
+        "Content-Type": "application/json",
+      },
     },
   );
 

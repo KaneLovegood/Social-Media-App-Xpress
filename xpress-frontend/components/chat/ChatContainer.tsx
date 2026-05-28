@@ -571,6 +571,7 @@ export default function ChatContainer({
     socket: socketRef.current,
     currentUserId,
     effectiveActiveRoomId,
+    setActiveRoomId,
     activeRoomRoomType: activeRoom?.roomType ?? null,
     peerUserId,
     roomByPeer,
@@ -632,6 +633,7 @@ export default function ChatContainer({
     if (activeRoom?.roomType === "GROUP") {
       socketRef.current.emit(CHAT_EVENTS.GROUP_SEND, {
         roomId: effectiveActiveRoomId,
+        ...(replyTo ? { replyToMessageId: replyTo.messageId } : {}),
         ...payload,
       });
       setReplyTo(undefined);

@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEnum,
   IsNumber,
+  IsUUID,
 } from 'class-validator';
 
 export class SendGroupMessageDto {
@@ -40,4 +41,8 @@ export class SendGroupMessageDto {
   @IsOptional()
   @IsString()
   mimeType?: string;
+
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string;
 }

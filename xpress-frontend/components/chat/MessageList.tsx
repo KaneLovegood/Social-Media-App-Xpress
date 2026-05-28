@@ -124,39 +124,6 @@ export default function MessageList({
         );
       })}
 
-      {typingText ? (
-        <li className={`flex ${typingSenderId ? "justify-start" : "justify-center"}`}>
-          <div className="flex max-w-[92%] items-start gap-2">
-            {typingSenderId ? (
-              senderAvatarById[typingSenderId] ? (
-                <img
-                  src={senderAvatarById[typingSenderId]}
-                  alt={senderNameById[typingSenderId] ?? peerName}
-                  className="h-9 w-9 shrink-0 rounded-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
-                  {(senderNameById[typingSenderId] ?? peerName)?.charAt(0)?.toUpperCase()}
-                </div>
-              )
-            ) : null}
-
-            <div className="flex min-w-0 flex-col items-start">
-              <div className="relative">
-                <div className="rounded-xl bg-white px-3 py-2 shadow-sm">
-                  <div className="flex items-center gap-1">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse" />
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse delay-75" />
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse delay-150" />
-                    <span className="ml-2 text-sm text-[#6b7280]">{typingSenderId ? `${senderNameById[typingSenderId] ?? peerName} đang nhập...` : typingText}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </li>
-      ) : null}
     </ul>
   );
 }

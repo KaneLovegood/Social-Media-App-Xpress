@@ -92,6 +92,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
     socket,
     currentUserId,
     effectiveActiveRoomId,
+    setActiveRoomId,
     peerUserId,
     roomByPeer,
     reloadRooms,
@@ -115,6 +116,44 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
 
   const typingTimeoutRef = useRef<number | null>(null);
   const recentGroupCallLogIdsRef = useRef<Set<string>>(new Set());
+
+  const upsertGroupRoomSummary = useCallback(
+    (details: GroupRoomDetails) => {
+      const lastMessageAt = details.lastMessageAt ?? details.updatedAt;
+
+      setRooms((prev) => {
+        const nextRoom: ChatRoomSummary = {
+          id: details.roomId,
+          roomType: "GROUP",
+          title: details.title,
+          peerUserId: details.roomId,
+          peerName: details.title,
+          avatarUrl: details.avatarUrl,
+          description: details.description,
+          emoji: details.emoji,
+          memberCount: details.memberCount,
+          memberRole: details.currentUserRole,
+          preview: details.lastMessagePreview ?? "",
+          lastMessageAt,
+          age: toAgeLabel(lastMessageAt),
+          unreadCount: prev.find((room) => room.id === details.roomId)?.unreadCount ?? 0,
+          isPeerOnline: false,
+        };
+
+        const exists = prev.some((room) => room.id === details.roomId);
+        if (!exists) {
+          return [nextRoom, ...prev];
+        }
+
+        return prev.map((room) =>
+          room.id === details.roomId
+            ? { ...room, ...nextRoom, unreadCount: room.unreadCount }
+            : room,
+        );
+      });
+    },
+    [setRooms],
+  );
 
   const onMessage = useCallback(
     (message: ChatMessage) => {
@@ -254,9 +293,9 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
   const onGroupRoomUpdated = useCallback(
     (payload: GroupRoomDetails) => {
       setGroupDetails((prev) => ({ ...prev, [payload.roomId]: payload }));
-      setRooms((prev) => prev.map((r) => (r.id === payload.roomId ? { ...r, title: payload.title, peerName: payload.title, avatarUrl: payload.avatarUrl, preview: payload.lastMessagePreview ?? r.preview, memberCount: payload.memberCount } : r)));
+      upsertGroupRoomSummary(payload);
     },
-    [setGroupDetails, setRooms],
+    [setGroupDetails, upsertGroupRoomSummary],
   );
 
   const onGroupMemberLeft = useCallback(
@@ -271,10 +310,65 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         return;
       }
 
-      if (payload.payload) onGroupRoomUpdated(payload.payload);
-      setGroupDetails((prev) => ({ ...prev, [payload.roomId]: { ...(prev[payload.roomId] ?? {}), members: (prev[payload.roomId]?.members ?? []).filter((m) => m.userId !== payload.userId) } as GroupRoomDetails }));
+      if (payload.payload) {
+        onGroupRoomUpdated(payload.payload);
+        return;
+      }
+
+      setGroupDetails((prev) => {
+        const current = prev[payload.roomId];
+        if (!current) return prev;
+
+        const nextDetails: GroupRoomDetails = {
+          ...current,
+          members: (current.members ?? []).filter((m) => m.userId !== payload.userId),
+          memberCount: Math.max(0, (current.memberCount ?? 0) - 1),
+        };
+
+        upsertGroupRoomSummary(nextDetails);
+        return { ...prev, [payload.roomId]: nextDetails };
+      });
     },
-    [currentUserId, onGroupRoomUpdated, setRooms, setGroupDetails],
+    [currentUserId, onGroupRoomUpdated, setGroupDetails, upsertGroupRoomSummary],
+  );
+
+  const onGroupDissolved = useCallback(
+    (payload: GroupRoomDetails | { roomId: string }) => {
+      const roomId = payload.roomId;
+
+      setRooms((prev) => prev.filter((room) => room.id !== roomId));
+      setGroupDetails((prev) => {
+        const next = { ...prev };
+        delete next[roomId];
+        return next;
+      });
+
+      if (setActiveRoomId && effectiveActiveRoomId === roomId) {
+        setActiveRoomId("");
+      }
+
+      if (props.groupCallRoomId === roomId) {
+        setGroupCallRoomId("");
+        setGroupCallMode(null);
+        setGroupCallDirection(null);
+        setGroupCallHostUserId("");
+        setPendingGroupCall(null);
+        setRejoinableGroupCall(null);
+      }
+    },
+    [
+      effectiveActiveRoomId,
+      props.groupCallRoomId,
+      setActiveRoomId,
+      setGroupCallDirection,
+      setGroupCallHostUserId,
+      setGroupCallMode,
+      setGroupCallRoomId,
+      setGroupDetails,
+      setPendingGroupCall,
+      setRejoinableGroupCall,
+      setRooms,
+    ],
   );
 
   const onGroupCallStarted = useCallback(
@@ -461,7 +555,7 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
     socket.on(CHAT_EVENTS.GROUP_MEMBER_LEFT, onGroupMemberLeft);
     socket.on(CHAT_EVENTS.GROUP_CALL_STARTED, onGroupCallStarted);
     socket.on(CHAT_EVENTS.GROUP_CALL_END, onGroupCallEnded);
-    socket.on(CHAT_EVENTS.GROUP_DISSOLVED, onGroupRoomUpdated);
+    socket.on(CHAT_EVENTS.GROUP_DISSOLVED, onGroupDissolved);
     socket.on(CHAT_EVENTS.REACTION, onReaction as any);
     socket.on(CALL_EVENTS.INCOMING, onIncomingCall);
     socket.on(CALL_EVENTS.END, onCallEnd);
@@ -478,10 +572,10 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
       socket.off(CHAT_EVENTS.GROUP_MEMBER_LEFT, onGroupMemberLeft);
       socket.off(CHAT_EVENTS.GROUP_CALL_STARTED, onGroupCallStarted);
       socket.off(CHAT_EVENTS.GROUP_CALL_END, onGroupCallEnded);
-      socket.off(CHAT_EVENTS.GROUP_DISSOLVED, onGroupRoomUpdated);
+      socket.off(CHAT_EVENTS.GROUP_DISSOLVED, onGroupDissolved);
       socket.off(CHAT_EVENTS.REACTION, onReaction as any);
       socket.off(CALL_EVENTS.INCOMING, onIncomingCall);
       socket.off(CALL_EVENTS.END, onCallEnd);
     };
-  }, [socket, onMessage, onGroupMessage, onRecalled, onReceived, onPresence, onTyping, onGroupRoomUpdated, onGroupMemberLeft, onGroupCallStarted, onGroupCallEnded, onReaction, onIncomingCall, onCallEnd]);
+  }, [socket, onMessage, onGroupMessage, onRecalled, onReceived, onPresence, onTyping, onGroupRoomUpdated, onGroupMemberLeft, onGroupDissolved, onGroupCallStarted, onGroupCallEnded, onReaction, onIncomingCall, onCallEnd]);
 }

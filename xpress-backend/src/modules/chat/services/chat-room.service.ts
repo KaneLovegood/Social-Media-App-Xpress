@@ -289,6 +289,27 @@ export class ChatRoomService {
     await this.assertGroupMembership(senderId, dto.roomId);
 
     const room = await this.getGroupRoom(dto.roomId);
+    let replyPreview: MessageEntity['replyPreview'];
+    let replyToMessageId: string | undefined;
+
+    if (dto.replyToMessageId) {
+      const original = await this.messagesRepository.findByMessageId(
+        dto.replyToMessageId,
+      );
+
+      if (!original) {
+        throw new NotFoundException('Tin nhan goc khong ton tai');
+      }
+
+      const originalRoomId = original.roomId ?? original.conversationId;
+      if (originalRoomId !== room.roomId || original.roomType !== 'GROUP') {
+        throw new BadRequestException('Khong the reply tin nhan khac nhom');
+      }
+
+      replyToMessageId = original.messageId;
+      replyPreview = this.messagesRepository.buildReplyPreview(original);
+    }
+
     const now = new Date().toISOString();
     const messageId = randomUUID();
 
@@ -306,6 +327,8 @@ export class ChatRoomService {
       receiverId: room.roomId,
       content: dto.content || '',
       messageType: dto.messageType || 'TEXT',
+      replyToMessageId,
+      replyPreview,
       fileUrl: dto.fileUrl,
       fileName: dto.fileName,
       fileSize: dto.fileSize,
