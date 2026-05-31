@@ -28,6 +28,7 @@ interface MessageListProps {
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
   className?: string;
 
   // New action props
@@ -60,6 +61,7 @@ export default function MessageList({
   onViewDetails,
   onRedial,
   onImageClick,
+  onReplyPreviewClick,
   className,
 
   isMultiSelectMode = false,
@@ -120,6 +122,7 @@ export default function MessageList({
             onViewDetails={onViewDetails}
             onRedial={onRedial}
             onImageClick={onImageClick}
+            onReplyPreviewClick={onReplyPreviewClick}
           />
         );
       })}

@@ -28,6 +28,7 @@ interface MessageItemRowProps {
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
 }
 
 function getInitial(name: string): string {
@@ -57,6 +58,7 @@ export default function MessageItemRow({
   onViewDetails,
   onRedial,
   onImageClick,
+  onReplyPreviewClick,
 }: MessageItemRowProps) {
   const isOwn = message.senderId === currentUserId;
   const isSystemMessage = message.messageType === "SYSTEM";
@@ -190,6 +192,7 @@ export default function MessageItemRow({
               senderNameById={senderNameById}
               onRedial={onRedial}
               onImageClick={onImageClick}
+              onReplyPreviewClick={onReplyPreviewClick}
             />
 
             {!isMultiSelectMode && (
@@ -213,7 +216,21 @@ export default function MessageItemRow({
                       messageId: message.messageId,
                       senderId: message.senderId,
                       senderName: replySenderName,
-                      content: message.content,
+                      messageType: message.messageType,
+                      content:
+                        message.content ||
+                        message.fileName ||
+                        (message.messageType === "IMAGE"
+                          ? "Ảnh"
+                          : message.messageType === "VIDEO"
+                            ? "Video"
+                            : message.messageType === "FILE"
+                              ? "Tệp tin"
+                              : "Tin nhắn"),
+                      fileUrl: message.fileUrl,
+                      fileName: message.fileName,
+                      fileSize: message.fileSize,
+                      mimeType: message.mimeType,
                     })
                   }
                   onForward={() => onForward(message)}

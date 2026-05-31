@@ -231,7 +231,12 @@ export class MessagesRepository {
     return {
       messageId: message.messageId,
       senderId: message.senderId,
+      messageType: message.messageType,
       content: message.content,
+      fileUrl: message.fileUrl,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      mimeType: message.mimeType,
     };
   }
 
