@@ -340,7 +340,6 @@ async function main() {
     if (port) {
       // --- CHẾ ĐỘ 1: CHẠY TRÊN CLOUD QUA MẠNG (SSE TRANSPORT) ---
       const app = express();
-      app.use(express.json());
 
       let transport: SSEServerTransport | null = null;
 
