@@ -28,7 +28,15 @@ interface MessageListProps {
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
   className?: string;
+
+  // New action props
+  isMultiSelectMode?: boolean;
+  selectedMessageIds?: string[];
+  onToggleSelectMessage?: (messageId: string) => void;
+  pinnedMessages?: ChatMessage[];
+  starredMessages?: ChatMessage[];
 }
 
 export default function MessageList({
@@ -53,7 +61,14 @@ export default function MessageList({
   onViewDetails,
   onRedial,
   onImageClick,
+  onReplyPreviewClick,
   className,
+
+  isMultiSelectMode = false,
+  selectedMessageIds = [],
+  onToggleSelectMessage,
+  pinnedMessages = [],
+  starredMessages = [],
 }: MessageListProps) {
   const isEmpty = messages.length === 0;
 
@@ -78,62 +93,40 @@ export default function MessageList({
         </p>
       </li>
 
-      {messages.map((message) => (
-        <MessageItemRow
-          key={message.messageId}
-          message={message}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          peerName={peerName}
-          senderNameById={senderNameById}
-          senderAvatarById={senderAvatarById}
-          onReply={onReply}
-          onForward={onForward}
-          onRecall={onRecall}
-          onDeleteForMe={onDeleteForMe}
-          onCopy={onCopy}
-          onPin={onPin}
-          onMark={onMark}
-          onSelectMany={onSelectMany}
-          onViewDetails={onViewDetails}
-          onRedial={onRedial}
-          onImageClick={onImageClick}
-        />
-      ))}
+      {messages.map((message) => {
+        const isPinned = pinnedMessages.some((m) => m.messageId === message.messageId);
+        const isStarred = starredMessages.some((m) => m.messageId === message.messageId);
+        const isSelected = selectedMessageIds.includes(message.messageId);
+        return (
+          <MessageItemRow
+            key={message.messageId}
+            message={message}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            peerName={peerName}
+            senderNameById={senderNameById}
+            senderAvatarById={senderAvatarById}
+            isMultiSelectMode={isMultiSelectMode}
+            isSelected={isSelected}
+            onToggleSelect={onToggleSelectMessage}
+            isPinned={isPinned}
+            isStarred={isStarred}
+            onReply={onReply}
+            onForward={onForward}
+            onRecall={onRecall}
+            onDeleteForMe={onDeleteForMe}
+            onCopy={onCopy}
+            onPin={onPin}
+            onMark={onMark}
+            onSelectMany={onSelectMany}
+            onViewDetails={onViewDetails}
+            onRedial={onRedial}
+            onImageClick={onImageClick}
+            onReplyPreviewClick={onReplyPreviewClick}
+          />
+        );
+      })}
 
-      {typingText ? (
-        <li className={`flex ${typingSenderId ? "justify-start" : "justify-center"}`}>
-          <div className="flex max-w-[92%] items-start gap-2">
-            {typingSenderId ? (
-              senderAvatarById[typingSenderId] ? (
-                <img
-                  src={senderAvatarById[typingSenderId]}
-                  alt={senderNameById[typingSenderId] ?? peerName}
-                  className="h-9 w-9 shrink-0 rounded-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
-                  {(senderNameById[typingSenderId] ?? peerName)?.charAt(0)?.toUpperCase()}
-                </div>
-              )
-            ) : null}
-
-            <div className="flex min-w-0 flex-col items-start">
-              <div className="relative">
-                <div className="rounded-xl bg-white px-3 py-2 shadow-sm">
-                  <div className="flex items-center gap-1">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse" />
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse delay-75" />
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#bfc4cc] animate-pulse delay-150" />
-                    <span className="ml-2 text-sm text-[#6b7280]">{typingSenderId ? `${senderNameById[typingSenderId] ?? peerName} đang nhập...` : typingText}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </li>
-      ) : null}
     </ul>
   );
 }

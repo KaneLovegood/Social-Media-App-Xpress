@@ -2,7 +2,12 @@ export interface ReplyPreview {
   messageId: string;
   senderId: string;
   senderName?: string;
+  messageType?: MessageType;
   content: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
 }
 
 export type MessageType =
@@ -11,12 +16,14 @@ export type MessageType =
   | 'IMAGE'
   | 'FILE'
   | 'VIDEO'
-  | 'SYSTEM';
+  | 'SYSTEM'
+  | 'SHARE_POST';
 
 export type CallLogOutcome =
   | 'self_cancelled'
   | 'peer_cancelled'
-  | 'connected_ended';
+  | 'connected_ended'
+  | 'left';
 
 export interface CallLogPayload {
   mode: 'voice' | 'video';
@@ -40,6 +47,8 @@ export interface MessageEntity {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  sharedPostId?: string;
+  sharedPost?: any;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;

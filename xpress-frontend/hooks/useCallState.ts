@@ -17,6 +17,12 @@ interface PendingGroupCall {
   senderId: string;
 }
 
+interface RejoinableGroupCall {
+  roomId: string;
+  callMode: "voice" | "video";
+  callHostUserId: string;
+}
+
 export function useCallState() {
   const [callMode, setCallMode] = useState<CallMode>(null);
   const [callDirection, setCallDirection] = useState<CallDirection>(null);
@@ -29,6 +35,8 @@ export function useCallState() {
   const [groupCallHostUserId, setGroupCallHostUserId] = useState("");
   const [pendingGroupCall, setPendingGroupCall] =
     useState<PendingGroupCall | null>(null);
+  const [rejoinableGroupCall, setRejoinableGroupCall] =
+    useState<RejoinableGroupCall | null>(null);
 
   // Reset private call state
   const resetPrivateCall = () => {
@@ -65,6 +73,8 @@ export function useCallState() {
     setGroupCallHostUserId,
     pendingGroupCall,
     setPendingGroupCall,
+    rejoinableGroupCall,
+    setRejoinableGroupCall,
     resetGroupCall,
   };
 }

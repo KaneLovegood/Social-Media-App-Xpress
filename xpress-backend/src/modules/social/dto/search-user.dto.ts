@@ -1,9 +1,9 @@
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
-export class SearchUserByPhoneDto {
+export class SearchUserDto {
   @IsString()
-  email: string;
+  query: string;
 
   @IsOptional()
   @Type(() => Number)

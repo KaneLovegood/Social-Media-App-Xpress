@@ -6,6 +6,13 @@ import ChatHeader from "./ChatHeader";
 import MessageInput, { SendMessageOptions } from "./MessageInput";
 import MessageList from "./MessageList";
 import ImageViewerModal from "./modal/ImageViewerModal";
+import Icon from "@/components/common/Icon";
+
+interface RejoinableGroupCall {
+  roomId: string;
+  callMode: "voice" | "video";
+  callHostUserId: string;
+}
 
 interface ChatContentProps {
   peerName: string;
@@ -28,6 +35,8 @@ interface ChatContentProps {
   onSend: (content: string, options?: SendMessageOptions) => void;
   onTyping: (isTyping: boolean) => void;
   typingSenderId?: string;
+  rejoinableGroupCall?: RejoinableGroupCall | null;
+  onResumeGroupCall?: () => void;
   onReply: (preview: ReplyPreview) => void;
   onForward: (message: ChatMessage) => void;
   onRecall: (messageId: string) => void;
@@ -38,6 +47,19 @@ interface ChatContentProps {
   onSelectMany: (message: ChatMessage) => void;
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: "voice" | "video") => void;
+  onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
+
+  // Multi-select and Pinned Messages Props
+  pinnedMessages?: ChatMessage[];
+  onUnpinMessage?: (roomId: string, messageId: string) => void;
+  isMultiSelectMode?: boolean;
+  selectedMessageIds?: string[];
+  onToggleSelectMessage?: (messageId: string) => void;
+  onClearSelection?: () => void;
+  onDeleteMultipleForMe?: (messageIds: string[]) => void;
+  onForwardMultiple?: (messages: ChatMessage[]) => void;
+  starredMessages?: ChatMessage[];
 }
 
 export default function ChatContent({
@@ -61,6 +83,8 @@ export default function ChatContent({
   onSend,
   onTyping,
   typingSenderId,
+  rejoinableGroupCall,
+  onResumeGroupCall,
   onReply,
   onForward,
   onRecall,
@@ -71,12 +95,59 @@ export default function ChatContent({
   onSelectMany,
   onViewDetails,
   onRedial,
+  onImageClick,
+  onReplyPreviewClick,
+
+  pinnedMessages = [],
+  onUnpinMessage,
+  isMultiSelectMode = false,
+  selectedMessageIds = [],
+  onToggleSelectMessage,
+  onClearSelection,
+  onDeleteMultipleForMe,
+  onForwardMultiple,
+  starredMessages = [],
 }: ChatContentProps) {
   const [viewerImage, setViewerImage] = useState<{
     url: string;
     senderName?: string;
     timestamp?: string;
   } | null>(null);
+
+  const [pinIndex, setPinIndex] = useState(0);
+  const showTypingIndicator = Boolean(
+    typingText && typingSenderId && typingSenderId !== currentUserId,
+  );
+  const typingLabel = typingSenderId
+    ? `${senderNameById[typingSenderId] ?? peerName} đang nhập...`
+    : typingText;
+
+  const handleScrollToMessage = (messageId: string) => {
+    const element = document.getElementById(`msg-${messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      // Premium highlight effect
+      element.classList.add("bg-amber-100/50", "border", "border-amber-200", "rounded-2xl", "shadow-sm");
+      setTimeout(() => {
+        element.classList.remove("bg-amber-100/50", "border", "border-amber-200", "rounded-2xl", "shadow-sm");
+      }, 2500);
+    }
+  };
+
+  const handleReplyPreviewClick = onReplyPreviewClick ?? handleScrollToMessage;
+
+  const handleNextPin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinIndex((prev) => (prev + 1) % pinnedMessages.length);
+  };
+
+  const handlePrevPin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinIndex((prev) => (prev - 1 + pinnedMessages.length) % pinnedMessages.length);
+  };
+
+  const activePin = pinnedMessages[pinIndex];
 
   return (
     <>
@@ -92,7 +163,94 @@ export default function ChatContent({
         onOpenVideoCall={onOpenVideoCall}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/* Pinned Messages Glassmorphism Top Banner */}
+      {pinnedMessages.length > 0 && activePin && (
+        <div
+          onClick={() => handleScrollToMessage(activePin.messageId)}
+          className="bg-white/85 backdrop-blur-md border-b border-slate-200 px-4 py-2 flex items-center justify-between shadow-xs transition-all hover:bg-sky-50/50 cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <span className="text-sky-600 flex shrink-0">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 rotate-45">
+                <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1 text-xs">
+              <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                Tin nhắn đã ghim
+                {pinnedMessages.length > 1 && (
+                  <span className="text-[10px] font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                    {pinIndex + 1}/{pinnedMessages.length}
+                  </span>
+                )}
+              </p>
+              <p className="text-slate-600 truncate mt-0.5 max-w-[90%]">
+                {activePin.content || "[Hình ảnh/Tệp/Video]"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {pinnedMessages.length > 1 && (
+              <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden shrink-0">
+                <button
+                  onClick={handlePrevPin}
+                  className="px-1.5 py-1 hover:bg-slate-50 border-r border-slate-200 text-slate-500 flex items-center justify-center"
+                  title="Trước"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3 w-3">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleNextPin}
+                  className="px-1.5 py-1 hover:bg-slate-50 text-slate-500 flex items-center justify-center"
+                  title="Kế tiếp"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3 w-3">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnpinMessage?.(activePin.conversationId || activePin.roomId || "", activePin.messageId);
+                // Adjust index if needed
+                if (pinIndex >= pinnedMessages.length - 1 && pinIndex > 0) {
+                  setPinIndex(pinIndex - 1);
+                }
+              }}
+              className="p-1 rounded-full text-slate-400 hover:text-red-500 hover:bg-slate-100 flex items-center justify-center shrink-0"
+              title="Bỏ ghim"
+            >
+              <Icon name="xmark" size="sm" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col relative">
+        {isGroup && rejoinableGroupCall ? (
+          <div className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm md:mx-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Cuộc họp vẫn còn người tham gia</p>
+                <p className="text-xs text-amber-800">
+                  Bạn đã rời cuộc họp này. Có thể tham gia lại ngay nếu muốn.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onResumeGroupCall}
+                className="inline-flex h-10 items-center justify-center rounded-full bg-amber-600 px-4 text-sm font-semibold text-white transition hover:bg-amber-500"
+              >
+                Tham gia lại
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <MessageList
           messages={activeMessages}
           currentUserId={currentUserId}
@@ -117,14 +275,99 @@ export default function ChatContent({
           onImageClick={(url, senderName, timestamp) =>
             setViewerImage({ url, senderName, timestamp })
           }
+          onReplyPreviewClick={handleReplyPreviewClick}
           className="flex-1"
+
+          // Multi-select & Star props passed to list
+          isMultiSelectMode={isMultiSelectMode}
+          selectedMessageIds={selectedMessageIds}
+          onToggleSelectMessage={onToggleSelectMessage}
+          pinnedMessages={pinnedMessages}
+          starredMessages={starredMessages}
         />
-        <MessageInput
-          replyTo={replyTo}
-          onClearReply={onClearReply}
-          onSend={onSend}
-          onTyping={onTyping}
-        />
+
+        {showTypingIndicator ? (
+          <div className="px-4 pb-2 pt-1 md:px-6">
+            <div className="flex items-start gap-2 pl-1">
+              {typingSenderId ? (
+                senderAvatarById[typingSenderId] ? (
+                  <img
+                    src={senderAvatarById[typingSenderId]}
+                    alt={senderNameById[typingSenderId] ?? peerName}
+                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#d7dfec] text-sm font-semibold text-[#2f4268]">
+                    {(senderNameById[typingSenderId] ?? peerName)
+                      ?.charAt(0)
+                      ?.toUpperCase()}
+                  </div>
+                )
+              ) : null}
+
+              <div className="rounded-xl bg-white px-3 py-2 text-sm text-[#6b7280] shadow-sm">
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc]" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc] delay-75" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#bfc4cc] delay-150" />
+                  <span className="ml-2">{typingLabel}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Conditional footer rendering: normal input vs multi-select toolbar */}
+        {isMultiSelectMode ? (
+          <div className="bg-white border-t border-slate-200 px-4 py-4 flex items-center justify-between shadow-2xl transition-all duration-300">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-700">
+                Đã chọn <strong className="text-sky-600 text-base">{selectedMessageIds.length}</strong> tin nhắn
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  const selectedMsgs = activeMessages.filter(m => selectedMessageIds.includes(m.messageId));
+                  onForwardMultiple?.(selectedMsgs);
+                }}
+                disabled={selectedMessageIds.length === 0}
+                className="flex items-center gap-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3.5 w-3.5">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                Chuyển tiếp
+              </button>
+              <button
+                onClick={() => {
+                  onDeleteMultipleForMe?.(selectedMessageIds);
+                }}
+                disabled={selectedMessageIds.length === 0}
+                className="flex items-center gap-1.5 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                <Icon name="trash" size="sm" />
+                Xóa chỉ ở phía tôi
+              </button>
+              <button
+                onClick={onClearSelection}
+                className="border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-600 bg-white"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        ) : (
+          <MessageInput
+            replyTo={replyTo}
+            onClearReply={onClearReply}
+            onSend={onSend}
+            onTyping={onTyping}
+          />
+        )}
       </div>
 
       <ImageViewerModal

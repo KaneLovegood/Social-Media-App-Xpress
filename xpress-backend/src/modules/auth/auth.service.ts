@@ -246,6 +246,15 @@ export class AuthService {
       },
     );
 
+    void this.emailOtpService
+      .sendOtpVerifiedEmail(normalizedEmail, dto.purpose)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `sendOtpVerifiedEmail failed for ${normalizedEmail} (${dto.purpose}): ${message}`,
+        );
+      });
+
     return {
       verified: true,
       otpToken,

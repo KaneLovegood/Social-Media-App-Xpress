@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { UsersRepository } from '../../auth/repositories/users.repository';
@@ -37,6 +39,7 @@ export class ChatRoomService {
     private readonly groupRoomsRepository: GroupRoomsRepository,
     private readonly usersRepository: UsersRepository,
     private readonly presenceService: PresenceService,
+    @Inject(forwardRef(() => SocialService))
     private readonly socialService: SocialService,
   ) {}
 
@@ -286,6 +289,27 @@ export class ChatRoomService {
     await this.assertGroupMembership(senderId, dto.roomId);
 
     const room = await this.getGroupRoom(dto.roomId);
+    let replyPreview: MessageEntity['replyPreview'];
+    let replyToMessageId: string | undefined;
+
+    if (dto.replyToMessageId) {
+      const original = await this.messagesRepository.findByMessageId(
+        dto.replyToMessageId,
+      );
+
+      if (!original) {
+        throw new NotFoundException('Tin nhan goc khong ton tai');
+      }
+
+      const originalRoomId = original.roomId ?? original.conversationId;
+      if (originalRoomId !== room.roomId || original.roomType !== 'GROUP') {
+        throw new BadRequestException('Khong the reply tin nhan khac nhom');
+      }
+
+      replyToMessageId = original.messageId;
+      replyPreview = this.messagesRepository.buildReplyPreview(original);
+    }
+
     const now = new Date().toISOString();
     const messageId = randomUUID();
 
@@ -303,6 +327,8 @@ export class ChatRoomService {
       receiverId: room.roomId,
       content: dto.content || '',
       messageType: dto.messageType || 'TEXT',
+      replyToMessageId,
+      replyPreview,
       fileUrl: dto.fileUrl,
       fileName: dto.fileName,
       fileSize: dto.fileSize,
@@ -333,9 +359,14 @@ export class ChatRoomService {
     await this.assertGroupMembership(senderId, roomId);
 
     const room = await this.getGroupRoom(roomId);
+    const actor = await this.usersRepository.findByUserId(senderId);
     const now = new Date().toISOString();
     const messageId = randomUUID();
-    const content = this.toGroupCallLogContent(payload.mode, payload.outcome);
+    const content = this.toGroupCallLogContent(
+      payload.mode,
+      payload.outcome,
+      actor?.name,
+    );
 
     const item: MessageEntity = {
       PK: `MESSAGE#${messageId}`,
@@ -358,6 +389,52 @@ export class ChatRoomService {
         actorUserId: senderId,
         initiatorUserId: senderId,
       },
+      isDeleted: false,
+      isRecalled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.messagesRepository.createMessage(item);
+    await this.groupRoomsRepository.updateRoomMeta(room.roomId, {
+      lastMessageAt: now,
+      lastMessagePreview: content,
+    });
+
+    return item;
+  }
+
+  async createGroupCallLeaveSystemMessage(
+    senderId: string,
+    roomId: string,
+    payload: {
+      mode: 'voice' | 'video';
+    },
+  ): Promise<MessageEntity> {
+    await this.assertGroupMembership(senderId, roomId);
+
+    const room = await this.getGroupRoom(roomId);
+    const actor = await this.usersRepository.findByUserId(senderId);
+    const now = new Date().toISOString();
+    const messageId = randomUUID();
+    const content = `${actor?.name ?? 'Một thành viên'} đã rời khỏi cuộc gọi nhóm ${
+      payload.mode === 'video' ? 'video' : 'thoại'
+    }`;
+
+    const item: MessageEntity = {
+      PK: `MESSAGE#${messageId}`,
+      SK: `MESSAGE#${messageId}`,
+      GSI1PK: `CONVERSATION#${room.roomId}`,
+      GSI1SK: `${now}#${messageId}`,
+      entityType: 'MESSAGE',
+      messageId,
+      conversationId: room.roomId,
+      roomId: room.roomId,
+      roomType: 'GROUP',
+      senderId,
+      receiverId: room.roomId,
+      content,
+      messageType: 'SYSTEM',
       isDeleted: false,
       isRecalled: false,
       createdAt: now,
@@ -727,8 +804,13 @@ export class ChatRoomService {
   private toGroupCallLogContent(
     mode: 'voice' | 'video',
     outcome: CallLogOutcome,
+    actorName?: string,
   ): string {
     const modeText = mode === 'video' ? 'video' : 'thoại';
+
+    if (outcome === 'left') {
+      return `${actorName ?? 'Một thành viên'} đã rời khỏi cuộc gọi nhóm ${modeText}`;
+    }
 
     if (outcome === 'connected_ended') {
       return `Cuộc gọi nhóm ${modeText} kết thúc`;

@@ -2,7 +2,12 @@ export interface ReplyPreview {
   messageId: string;
   senderId: string;
   senderName?: string;
+  messageType?: MessageType;
   content: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
 }
 
 export type MessageType =
@@ -11,7 +16,8 @@ export type MessageType =
   | "IMAGE"
   | "FILE"
   | "VIDEO"
-  | "SYSTEM";
+  | "SYSTEM"
+  | "SHARE_POST";
 
 export interface CallLogPayload {
   mode: "voice" | "video";
@@ -30,6 +36,8 @@ export interface ChatMessage {
   receiverId: string;
   content: string;
   messageType?: MessageType;
+  sharedPostId?: string;
+  sharedPost?: any;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
@@ -102,6 +110,12 @@ export interface GroupCallStartedPayload {
   callMode: "voice" | "video";
 }
 
+export interface GroupCallJoinPayload {
+  senderId: string;
+  roomId: string;
+  callMode: "voice" | "video";
+}
+
 export interface GroupCallOfferPayload {
   senderId: string;
   receiverId: string;
@@ -132,6 +146,14 @@ export interface GroupCallEndPayload {
   callMode?: "voice" | "video";
   reason?: string;
   endForAll?: boolean;
+  callLogMessage?: ChatMessage;
+}
+
+export interface GroupCallLimitReachedPayload {
+  roomId: string;
+  callMode?: "voice" | "video";
+  maxParticipants: number;
+  message?: string;
 }
 
 export interface ReactionPayload {

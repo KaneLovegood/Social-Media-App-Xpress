@@ -28,6 +28,7 @@ import IncomingGroupCallModal from "./modal/IncomingGroupCallModal";
 import ChatInfoPanel from "./ChatInfoPanel";
 import CreateGroupModal from "./modal/CreateGroupModal";
 import ForwardMessageModal from "./modal/ForwardMessageModal";
+import MessageDetailsModal from "./modal/MessageDetailsModal";
 import VideoCallComponent from "../video/VideoCallComponent";
 import GroupCallComponent from "../video/GroupCallComponent";
 import ChatContent from "./ChatContent";
@@ -92,6 +93,8 @@ export default function ChatContainer({
     setGroupCallHostUserId,
     pendingGroupCall,
     setPendingGroupCall,
+    rejoinableGroupCall,
+    setRejoinableGroupCall,
   } = useCallState();
 
   // Room management state
@@ -227,6 +230,11 @@ export default function ChatContainer({
   const activeGroupCallDetails = groupCallRoomId
     ? (groupDetailsByRoom[groupCallRoomId] ?? null)
     : null;
+  const activeRejoinableGroupCall =
+    activeRoom?.roomType === "GROUP" &&
+    rejoinableGroupCall?.roomId === activeRoom.id
+      ? rejoinableGroupCall
+      : null;
   const peerUserId =
     activeRoom?.roomType === "GROUP" ? "" : (activeRoom?.peerUserId ?? "");
   const peerName = activeRoom?.peerName ?? "User";
@@ -292,23 +300,54 @@ export default function ChatContainer({
     currentUserId,
     peerUserId,
   ]);
+
+  // Message actions hook call placed here so it can use effectiveActiveRoomId & peerUserId,
+  // but be declared before it is used in activeMessages memo below.
+  const {
+    pinnedMessagesByRoom,
+    starredMessagesByRoom,
+    deletedMessageIdsByRoom,
+    isMultiSelectMode,
+    selectedMessageIds,
+    messageDetailsToShow,
+    toggleSelectMessage,
+    clearSelection,
+    handleCopyMessage,
+    handlePinMessage,
+    handleUnpinMessage,
+    handleMarkMessage,
+    handleUnmarkMessage,
+    handleSelectManyMessage,
+    handleViewMessageDetails,
+    handleDeleteMessageForMe,
+    handleDeleteMultipleForMe,
+    setMessageDetailsToShow,
+  } = useMessageActions(effectiveActiveRoomId, peerUserId, currentUserId);
+
   const activeMessages = useMemo(() => {
     if (!effectiveActiveRoomId) {
       return [];
     }
 
     const baseMessages = messagesByRoom[effectiveActiveRoomId] ?? [];
+
+    // Filter out deleted-for-me messages
+    const deletedIds = deletedMessageIdsByRoom[effectiveActiveRoomId] ?? [];
+    const filteredDeletes = baseMessages.filter(
+      (message) => !deletedIds.includes(message.messageId)
+    );
+
     const clearedAt = clearedRoomAtById[effectiveActiveRoomId];
     if (!clearedAt) {
-      return baseMessages;
+      return filteredDeletes;
     }
 
     const clearedAtTs = Date.parse(clearedAt);
     if (Number.isNaN(clearedAtTs)) {
-      return baseMessages;
+      return filteredDeletes;
     }
 
-    return baseMessages.filter((message) => {
+    return filteredDeletes.filter((message) => {
       const messageTs = Date.parse(message.createdAt);
       if (Number.isNaN(messageTs)) {
         return true;
@@ -316,7 +355,7 @@ export default function ChatContainer({
 
       return messageTs > clearedAtTs;
     });
-  }, [clearedRoomAtById, effectiveActiveRoomId, messagesByRoom]);
+  }, [clearedRoomAtById, effectiveActiveRoomId, messagesByRoom, deletedMessageIdsByRoom]);
   const hasInitialSelection = Boolean(initialRoomId || initialPeerUserId);
   const hasInitialSelectionMatch = useMemo(() => {
     if (!hasInitialSelection) return false;
@@ -439,7 +478,7 @@ export default function ChatContainer({
   }, [activeRoomId, initialPeerUserId, initialRoomId, rooms]);
 
   useEffect(() => {
-    if (!effectiveActiveRoomId || loadedRoomIds[effectiveActiveRoomId]) {
+    if (!effectiveActiveRoomId || effectiveActiveRoomId === "AI_ASSISTANT" || loadedRoomIds[effectiveActiveRoomId]) {
       return;
     }
 
@@ -532,6 +571,7 @@ export default function ChatContainer({
     socket: socketRef.current,
     currentUserId,
     effectiveActiveRoomId,
+    setActiveRoomId,
     activeRoomRoomType: activeRoom?.roomType ?? null,
     peerUserId,
     roomByPeer,
@@ -547,11 +587,13 @@ export default function ChatContainer({
     groupCallRoomId,
     groupCallMode,
     pendingGroupCall,
+    rejoinableGroupCall,
     setGroupCallRoomId,
     setGroupCallMode,
     setGroupCallDirection,
     setGroupCallHostUserId,
     setPendingGroupCall,
+    setRejoinableGroupCall,
     setCallMode,
     setCallDirection,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -560,10 +602,7 @@ export default function ChatContainer({
   useEffect(() => {
     const listElement = listRef.current;
     if (!listElement) return;
-    listElement.scrollTo({
-      top: listElement.scrollHeight,
-      behavior: "smooth",
-    });
+    listElement.scrollTop = listElement.scrollHeight;
   }, [activeMessages]);
 
   // Ensure typing indicator is visible (scroll to bottom) when someone else is typing
@@ -574,10 +613,7 @@ export default function ChatContainer({
     // Only auto-scroll for typing events from others
     if (typingSenderId && typingSenderId === currentUserId) return;
 
-    listElement.scrollTo({
-      top: listElement.scrollHeight,
-      behavior: "smooth",
-    });
+    listElement.scrollTop = listElement.scrollHeight;
   }, [typingText, typingSenderId, currentUserId]);
 
   const handleSend = (content: string, options?: SendMessageOptions) => {
@@ -591,8 +627,10 @@ export default function ChatContainer({
     if (activeRoom?.roomType === "GROUP") {
       socketRef.current.emit(CHAT_EVENTS.GROUP_SEND, {
         roomId: effectiveActiveRoomId,
+        ...(replyTo ? { replyToMessageId: replyTo.messageId } : {}),
         ...payload,
       });
+      setReplyTo(undefined);
       return;
     }
 
@@ -618,78 +656,59 @@ export default function ChatContainer({
     socketRef.current?.emit(CHAT_EVENTS.RECALL, { messageId });
   };
 
+  const [forwardingMessages, setForwardingMessages] = useState<ChatMessage[]>([]);
+
   const handleOpenForwardMessage = (message: ChatMessage) => {
     setForwardingMessage(message);
+    setForwardingMessages([message]);
+  };
+
+  const handleOpenForwardMultiple = (messages: ChatMessage[]) => {
+    if (messages.length === 0) return;
+    setForwardingMessage(messages[0]);
+    setForwardingMessages(messages);
   };
 
   const handleForwardMessage = (roomIds: string[]) => {
-    if (!forwardingMessage || roomIds.length === 0) return;
+    if (forwardingMessages.length === 0 || roomIds.length === 0) return;
 
-    const payload = {
-      content: forwardingMessage.content,
-      messageType: forwardingMessage.messageType,
-      fileUrl: forwardingMessage.fileUrl,
-      fileName: forwardingMessage.fileName,
-      fileSize: forwardingMessage.fileSize,
-      mimeType: forwardingMessage.mimeType,
-    };
+    forwardingMessages.forEach((msg) => {
+      const payload = {
+        content: msg.content,
+        messageType: msg.messageType,
+        fileUrl: msg.fileUrl,
+        fileName: msg.fileName,
+        fileSize: msg.fileSize,
+        mimeType: msg.mimeType,
+      };
 
-    roomIds.forEach((roomId) => {
-      const targetRoom = rooms.find((room) => room.id === roomId);
-      if (!targetRoom) return;
+      roomIds.forEach((roomId) => {
+        const targetRoom = rooms.find((room) => room.id === roomId);
+        if (!targetRoom) return;
 
-      if (targetRoom.roomType === "GROUP") {
-        socketRef.current?.emit(CHAT_EVENTS.GROUP_SEND, {
-          roomId: targetRoom.id,
+        if (targetRoom.roomType === "GROUP") {
+          socketRef.current?.emit(CHAT_EVENTS.GROUP_SEND, {
+            roomId: targetRoom.id,
+            ...payload,
+          });
+          return;
+        }
+
+        if (!targetRoom.peerUserId) return;
+
+        socketRef.current?.emit(CHAT_EVENTS.SEND, {
+          receiverId: targetRoom.peerUserId,
           ...payload,
         });
-        return;
-      }
-
-      if (!targetRoom.peerUserId) return;
-
-      socketRef.current?.emit(CHAT_EVENTS.SEND, {
-        receiverId: targetRoom.peerUserId,
-        ...payload,
       });
     });
 
     setForwardingMessage(null);
+    setForwardingMessages([]);
+    clearSelection();
   };
 
-  // Message actions
-  const {
-    handleCopyMessage,
-    handlePinMessage,
-    handleMarkMessage,
-    handleSelectManyMessage,
-    handleViewMessageDetails,
-    emitMessageActionEvent,
-  } = useMessageActions(effectiveActiveRoomId, peerUserId);
 
-  const handleDeleteForMe = useCallback(
-    (messageId: string) => {
-      if (!effectiveActiveRoomId) return;
-
-      setMessagesByRoom((prev) => ({
-        ...prev,
-        [effectiveActiveRoomId]: (prev[effectiveActiveRoomId] ?? []).filter(
-          (message) => message.messageId !== messageId,
-        ),
-      }));
-
-      setReplyTo((prev) => (prev?.messageId === messageId ? undefined : prev));
-    },
-    [effectiveActiveRoomId],
-  );
-
-  const handleDeleteForMeWithEvent = useCallback(
-    (messageId: string) => {
-      handleDeleteForMe(messageId);
-      emitMessageActionEvent("delete_message_for_me", { messageId });
-    },
-    [emitMessageActionEvent, handleDeleteForMe],
-  );
 
   const handleTyping = (isTyping: boolean) => {
     if (!effectiveActiveRoomId || !socketRef.current) return;
@@ -730,7 +749,7 @@ export default function ChatContainer({
   };
 
   const startGroupCall = useCallback(
-    async (mode: "voice" | "video") => {
+    async (mode: "voice" | "video", hostUserId = currentUserId) => {
       if (
         !socketRef.current ||
         !activeRoom ||
@@ -754,7 +773,8 @@ export default function ChatContainer({
       setGroupCallRoomId(activeRoom.id);
       setGroupCallMode(mode);
       setGroupCallDirection("outgoing");
-      setGroupCallHostUserId(currentUserId);
+      setRejoinableGroupCall(null);
+      setGroupCallHostUserId(hostUserId);
 
       socketRef.current.emit(CHAT_EVENTS.GROUP_CALL_START, {
         roomId: activeRoom.id,
@@ -769,11 +789,29 @@ export default function ChatContainer({
       groupCallRoomId,
       currentUserId,
       setGroupCallHostUserId,
+      setRejoinableGroupCall,
     ],
   );
 
+  const resumeGroupCall = useCallback(() => {
+    if (!activeRejoinableGroupCall) return;
+
+    // Defensive: clear any pending incoming modal and clear rejoinable flag
+    setPendingGroupCall(null);
+    setRejoinableGroupCall(null);
+
+    void startGroupCall(
+      activeRejoinableGroupCall.callMode,
+      activeRejoinableGroupCall.callHostUserId,
+    );
+  }, [activeRejoinableGroupCall, startGroupCall]);
+
   const handleOpenVoiceCall = () => {
     if (activeRoom?.roomType === "GROUP") {
+      if (activeRejoinableGroupCall) {
+        resumeGroupCall();
+        return;
+      }
       void startGroupCall("voice");
       return;
     }
@@ -783,6 +821,10 @@ export default function ChatContainer({
 
   const handleOpenVideoCall = () => {
     if (activeRoom?.roomType === "GROUP") {
+      if (activeRejoinableGroupCall) {
+        resumeGroupCall();
+        return;
+      }
       void startGroupCall("video");
       return;
     }
@@ -993,6 +1035,7 @@ export default function ChatContainer({
     setGroupCallMode(pendingGroupCall.callMode);
     setGroupCallDirection("incoming");
     setGroupCallHostUserId(pendingGroupCall.senderId);
+    setRejoinableGroupCall(null);
     setPendingGroupCall(null);
   };
 
@@ -1077,18 +1120,29 @@ export default function ChatContainer({
               onOpenInfo={() => setIsMobileInfoOpen(true)}
               onOpenVoiceCall={handleOpenVoiceCall}
               onOpenVideoCall={handleOpenVideoCall}
+              rejoinableGroupCall={activeRejoinableGroupCall}
+              onResumeGroupCall={resumeGroupCall}
               onClearReply={() => setReplyTo(undefined)}
               onSend={handleSend}
               onTyping={handleTyping}
               onReply={setReplyTo}
               onForward={handleOpenForwardMessage}
               onRecall={handleRecall}
-              onDeleteForMe={handleDeleteForMeWithEvent}
+              onDeleteForMe={handleDeleteMessageForMe}
               onCopy={handleCopyMessage}
               onPin={handlePinMessage}
               onMark={handleMarkMessage}
               onSelectMany={handleSelectManyMessage}
               onViewDetails={handleViewMessageDetails}
+              pinnedMessages={pinnedMessagesByRoom[effectiveActiveRoomId]}
+              onUnpinMessage={handleUnpinMessage}
+              isMultiSelectMode={isMultiSelectMode}
+              selectedMessageIds={selectedMessageIds}
+              onToggleSelectMessage={toggleSelectMessage}
+              onClearSelection={clearSelection}
+              onDeleteMultipleForMe={handleDeleteMultipleForMe}
+              onForwardMultiple={handleOpenForwardMultiple}
+              starredMessages={starredMessagesByRoom[effectiveActiveRoomId]}
               onRedial={handleRedial}
             />
           )}
@@ -1108,6 +1162,10 @@ export default function ChatContainer({
             onMembersAdded={() => {
               void handleGroupMembersAdded();
             }}
+            starredMessages={starredMessagesByRoom[effectiveActiveRoomId]}
+            onUnmarkMessage={handleUnmarkMessage}
+            senderNameById={senderNameById}
+            senderAvatarById={senderAvatarById}
           />
         ) : null}
 
@@ -1135,6 +1193,10 @@ export default function ChatContainer({
               }}
               isMobileOpen
               onCloseMobile={() => setIsMobileInfoOpen(false)}
+              starredMessages={starredMessagesByRoom[effectiveActiveRoomId]}
+              onUnmarkMessage={handleUnmarkMessage}
+              senderNameById={senderNameById}
+              senderAvatarById={senderAvatarById}
             />
           </>
         ) : null}
@@ -1158,6 +1220,23 @@ export default function ChatContainer({
         onForward={handleForwardMessage}
       />
 
+      <MessageDetailsModal
+        isOpen={messageDetailsToShow !== null}
+        onClose={() => setMessageDetailsToShow(null)}
+        message={messageDetailsToShow}
+        senderName={
+          messageDetailsToShow
+            ? (senderNameById[messageDetailsToShow.senderId] ??
+               (messageDetailsToShow.senderId === currentUserId
+                 ? currentUserName
+                 : peerName))
+            : ""
+        }
+        senderAvatarUrl={
+          messageDetailsToShow ? senderAvatarById[messageDetailsToShow.senderId] : undefined
+        }
+      />
+
       <IncomingCallModal
         isOpen={incomingCall !== null}
         senderName={incomingCall?.senderName ?? ""}
@@ -1168,7 +1247,11 @@ export default function ChatContainer({
       />
 
       <IncomingGroupCallModal
-        isOpen={pendingGroupCall !== null}
+        isOpen={
+          pendingGroupCall !== null &&
+          !(rejoinableGroupCall && rejoinableGroupCall.roomId === pendingGroupCall?.roomId)
+        }
+        suppress={!!(rejoinableGroupCall && rejoinableGroupCall.roomId === pendingGroupCall?.roomId)}
         roomTitle={
           pendingGroupCall
             ? (groupDetailsByRoom[pendingGroupCall.roomId]?.title ??
@@ -1203,7 +1286,21 @@ export default function ChatContainer({
           callMode={groupCallMode}
           callDirection={groupCallDirection ?? "incoming"}
           callHostUserId={groupCallHostUserId}
+          onLeave={() => {
+            setRejoinableGroupCall({
+              roomId: groupCallRoomId,
+              callMode: groupCallMode,
+              callHostUserId: groupCallHostUserId,
+            });
+            // clear any pending incoming invite for this room to avoid modal
+            setPendingGroupCall(null);
+            setGroupCallRoomId("");
+            setGroupCallMode(null);
+            setGroupCallDirection(null);
+            setGroupCallHostUserId("");
+          }}
           onClose={() => {
+            setRejoinableGroupCall(null);
             setGroupCallRoomId("");
             setGroupCallMode(null);
             setGroupCallDirection(null);

@@ -21,10 +21,12 @@ export const CHAT_EVENTS = {
   GROUP_DISSOLVED: "chat:group:dissolved",
   GROUP_CALL_START: "chat:group:call:start",
   GROUP_CALL_STARTED: "chat:group:call:started",
+  GROUP_CALL_JOIN: "chat:group:call:join",
   GROUP_CALL_OFFER: "chat:group:call:offer",
   GROUP_CALL_ANSWER: "chat:group:call:answer",
   GROUP_CALL_ICE: "chat:group:call:ice",
   GROUP_CALL_END: "chat:group:call:end",
+  GROUP_CALL_LIMIT_REACHED: "chat:group:call:limit_reached",
   REACTION: "chat:reaction",
 } as const;
 
@@ -43,4 +45,11 @@ export const FEED_EVENTS = {
   REACTION_UPDATED: 'feed:reaction:updated',
   COMMENT_CREATED: 'feed:comment:created',
   COMMENT_DELETED: 'feed:comment:deleted',
+} as const;
+
+export const SOCIAL_EVENTS = {
+  REQUEST_RECEIVED: "friend:request_received",
+  REQUEST_ACCEPTED: "friend:request_accepted",
+  REQUEST_CANCELLED: "friend:request_cancelled",
+  UNFRIENDED: "friend:unfriended",
 } as const;

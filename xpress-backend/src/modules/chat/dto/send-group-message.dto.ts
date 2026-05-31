@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEnum,
   IsNumber,
+  IsUUID,
 } from 'class-validator';
 
 export class SendGroupMessageDto {
@@ -18,8 +19,12 @@ export class SendGroupMessageDto {
   content?: string;
 
   @IsOptional()
-  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'VIDEO', 'CALL_LOG'])
-  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO' | 'CALL_LOG';
+  @IsEnum(['TEXT', 'IMAGE', 'FILE', 'VIDEO', 'CALL_LOG', 'SHARE_POST'])
+  messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'VIDEO' | 'CALL_LOG' | 'SHARE_POST';
+
+  @IsOptional()
+  @IsString()
+  sharedPostId?: string;
 
   @IsOptional()
   @IsString()
@@ -36,4 +41,8 @@ export class SendGroupMessageDto {
   @IsOptional()
   @IsString()
   mimeType?: string;
+
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string;
 }
