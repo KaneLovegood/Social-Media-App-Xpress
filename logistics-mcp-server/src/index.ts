@@ -324,62 +324,84 @@ server.tool(
 );
 
 // --- Execution ---
-
 async function main() {
   try {
-    // 1. Kết nối MongoDB
     await searchService.connect();
     console.error("Connected to MongoDB Atlas");
 
-    // 2. Nhận diện PORT từ command line "--port <number>" hoặc từ biến môi trường
     const portIndex = process.argv.indexOf("--port");
-    const port = portIndex !== -1
-      ? parseInt(process.argv[portIndex + 1])
-      : (process.env.PORT ? parseInt(process.env.PORT) : null);
+    const port =
+      portIndex !== -1
+        ? parseInt(process.argv[portIndex + 1])
+        : process.env.PORT
+          ? parseInt(process.env.PORT)
+          : null;
 
     if (port) {
-      // --- CHẾ ĐỘ 1: CHẠY TRÊN CLOUD QUA MẠNG (SSE TRANSPORT) ---
       const app = express();
-      
-      // Hỗ trợ phân tích dữ liệu JSON nhận được từ Client
-      app.use(express.json());
 
-      // Quản lý nhiều kết nối/session Agent cùng lúc thông qua Map
       const activeTransports = new Map<string, SSEServerTransport>();
 
-      // Endpoint để các AI Agent đăng ký lắng nghe sự kiện từ Server
-      app.get("/sse", async (req: express.Request, res: express.Response) => {
+      app.get("/", (req, res) => {
+        res.send("Logistics MCP Server is running");
+      });
+
+      app.get("/health", (req, res) => {
+        res.json({
+          status: "ok",
+          server: "logistics-mcp-server",
+          transport: "sse",
+        });
+      });
+
+      app.get("/sse", async (req, res) => {
         console.error("New AI Agent connecting via SSE...");
+
         const transport = new SSEServerTransport("/messages", res);
-        
-        // Lưu transport với key là sessionId tự sinh từ SDK
+
         activeTransports.set(transport.sessionId, transport);
-        
-        // Dọn dẹp session khi client ngắt kết nối
-        req.on("close", () => {
-          console.error(`AI Agent disconnected: ${transport.sessionId}`);
+
+        console.error(`SSE session created: ${transport.sessionId}`);
+
+        res.on("close", () => {
+          console.error(`SSE session closed: ${transport.sessionId}`);
           activeTransports.delete(transport.sessionId);
         });
 
         await server.connect(transport);
       });
 
-      // Endpoint để các AI Agent gửi yêu cầu gọi Tool
-      app.post("/messages", async (req: express.Request, res: express.Response) => {
+      app.post("/messages", express.json(), async (req, res) => {
         const sessionId = req.query.sessionId as string;
+
+        console.error("Incoming MCP message sessionId:", sessionId);
+
+        if (!sessionId) {
+          res.status(400).send("Missing sessionId");
+          return;
+        }
+
         const transport = activeTransports.get(sessionId);
 
-        if (transport) {
-          await transport.handlePostMessage(req, res);
-        } else {
+        if (!transport) {
+          console.error("Session not found:", sessionId);
           res.status(404).send("Session not found");
+          return;
+        }
+
+        try {
+          await transport.handlePostMessage(req, res, req.body);
+        } catch (error) {
+          console.error("Error handling MCP message:", error);
+          res.status(500).send("Internal server error");
         }
       });
 
       app.listen(port, () => {
-        console.error(`🚀 Logistics MCP SSE Server running at http://localhost:${port}/sse`);
+        console.error(`🚀 Logistics MCP SSE Server running`);
+        console.error(`SSE endpoint: http://localhost:${port}/sse`);
+        console.error(`Messages endpoint: http://localhost:${port}/messages`);
       });
-
     } else {
       // --- CHẾ ĐỘ 2: CHẠY CỤC BỘ DƯỚI LOCAL (STDIO TRANSPORT) ---
       const transport = new StdioServerTransport();
