@@ -28,7 +28,7 @@ export class SocialService {
   async searchUserByEmail(email: string, actorUserId: string) {
     const normalizedEmail = email.toLowerCase().trim();
     
-    const result = await this.ddbDocClient.send(
+    const result = (await this.ddbDocClient.send(
       new ScanCommand({
         TableName: this.tableName,
         FilterExpression: "entityType = :entityType AND contains(email, :email)",
@@ -36,22 +36,22 @@ export class SocialService {
           ":entityType": "USER",
           ":email": normalizedEmail,
         },
-      })
-    );
+      }) as any
+    )) as any;
 
     const users = (result.Items || []) as any[];
     
     const items = await Promise.all(
       users.map(async (user) => {
-        const friendResult = await this.ddbDocClient.send(
+        const friendResult = (await this.ddbDocClient.send(
           new GetCommand({
             TableName: this.tableName,
             Key: {
               PK: `USER#${actorUserId}`,
               SK: `FRIEND#${user.userId}`,
             },
-          })
-        );
+          }) as any
+        )) as any;
         
         return {
           userId: user.userId,
@@ -95,10 +95,10 @@ export class SocialService {
     };
 
     await this.ddbDocClient.send(
-      new PutCommand({ TableName: this.tableName, Item: actorItem })
+      new PutCommand({ TableName: this.tableName, Item: actorItem }) as any
     );
     await this.ddbDocClient.send(
-      new PutCommand({ TableName: this.tableName, Item: targetItem })
+      new PutCommand({ TableName: this.tableName, Item: targetItem }) as any
     );
 
     return { success: true };
@@ -153,7 +153,7 @@ export class SocialService {
             },
           },
         ],
-      })
+      }) as any
     );
 
     return roomMeta;
@@ -161,15 +161,15 @@ export class SocialService {
 
   async addMemberToGroup(roomId: string, targetUserId: string, actorUserId: string) {
     // 1. Verify actor is ADMIN
-    const adminCheck = await this.ddbDocClient.send(
+    const adminCheck = (await this.ddbDocClient.send(
       new GetCommand({
         TableName: this.tableName,
         Key: {
           PK: `ROOM#${roomId}`,
           SK: `MEMBER#${actorUserId}`,
         },
-      })
-    );
+      }) as any
+    )) as any;
 
     if (!adminCheck.Item || adminCheck.Item.role !== "ADMIN") {
       throw new Error("Only ADMIN can add members to group");
@@ -213,14 +213,14 @@ export class SocialService {
             },
           },
         ],
-      })
+      }) as any
     );
 
     return { success: true };
   }
 
   async listMyGroups(userId: string) {
-    const result = await this.ddbDocClient.send(
+    const result = (await this.ddbDocClient.send(
       new ScanCommand({
         TableName: this.tableName,
         FilterExpression: "entityType = :entityType AND userId = :userId",
@@ -228,21 +228,21 @@ export class SocialService {
           ":entityType": "CHAT_GROUP_MEMBER",
           ":userId": userId,
         },
-      })
-    );
+      }) as any
+    )) as any;
 
     const memberships = (result.Items || []) as any[];
     const rooms = await Promise.all(
       memberships.map(async (m) => {
-        const roomResult = await this.ddbDocClient.send(
+        const roomResult = (await this.ddbDocClient.send(
           new GetCommand({
             TableName: this.tableName,
             Key: {
               PK: `ROOM#${m.roomId}`,
               SK: `META#${m.roomId}`,
             },
-          })
-        );
+          }) as any
+        )) as any;
         return { ...m, room: roomResult.Item };
       })
     );
@@ -251,7 +251,7 @@ export class SocialService {
   }
 
   async listFriends(userId: string) {
-    const result = await this.ddbDocClient.send(
+    const result = (await this.ddbDocClient.send(
       new QueryCommand({
         TableName: this.tableName,
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
@@ -259,22 +259,22 @@ export class SocialService {
           ":pk": `USER#${userId}`,
           ":sk": "FRIEND#",
         },
-      })
-    );
+      }) as any
+    )) as any;
 
     const friends = (result.Items || []) as any[];
     
     const items = await Promise.all(
       friends.map(async (friend) => {
-        const userResult = await this.ddbDocClient.send(
+        const userResult = (await this.ddbDocClient.send(
           new GetCommand({
             TableName: this.tableName,
             Key: {
               PK: `USER#${friend.targetUserId}`,
               SK: `PROFILE#${friend.targetUserId}`,
             },
-          })
-        );
+          }) as any
+        )) as any;
         
         const userData = userResult.Item || {};
         return {
@@ -308,7 +308,7 @@ export class SocialService {
               },
             },
           ],
-        })
+        }) as any
       );
       return { success: true, action: "REJECTED" };
     }
@@ -337,7 +337,7 @@ export class SocialService {
             },
           },
         ],
-      })
+      }) as any
     );
     return { success: true, action: "ACCEPTED" };
   }

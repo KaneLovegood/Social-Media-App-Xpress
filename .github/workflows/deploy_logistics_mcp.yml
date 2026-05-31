@@ -1,0 +1,78 @@
+name: Deploy Logistics MCP Server to EC2
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - "logistics-mcp-server/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.MCP_EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.MCP_EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2 via SSH
+        run: |
+          ssh ${{ secrets.MCP_EC2_USER }}@${{ secrets.MCP_EC2_HOST }} << 'EOF'
+            set -e
+            
+            # Đường dẫn tới thư mục dự án trên EC2 (điều chỉnh nếu khác)
+            PROJECT_ROOT="/home/ubuntu/New-Technology-Xpress"
+            
+            echo "📦 Navigating to project root: $PROJECT_ROOT"
+            if [ ! -d "$PROJECT_ROOT" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/TrinhHao42/New-Technology-Xpress.git "$PROJECT_ROOT"
+              cd "$PROJECT_ROOT"
+            else
+              cd "$PROJECT_ROOT"
+              echo "⬇️ Pulling latest code from dev branch"
+              git fetch origin dev
+              git checkout dev
+              git pull origin dev
+            fi
+
+            echo "🚀 Building and Running Logistics MCP Server via Docker"
+            cd logistics-mcp-server
+            
+            # Đảm bảo file .env tồn tại (Bạn nên tạo file này thủ công trên EC2 một lần đầu tiên)
+            if [ ! -f ".env" ]; then
+              echo "⚠️ Warning: .env file not found in logistics-mcp-server directory!"
+              # exit 1 # Bỏ comment nếu muốn dừng deploy khi thiếu .env
+            fi
+
+            # Xây dựng Docker image với tag logistics-mcp
+            docker build -t logistics-mcp .
+            
+            # Dừng và xóa container cũ nếu đang chạy
+            echo "🛑 Stopping old container if exists..."
+            docker stop mcp-server || true
+            docker rm mcp-server || true
+            
+            # Chạy container mới
+            # Port 3000 được map ra cổng 3000 của EC2 như trong docs
+            echo "🏃 Starting new container..."
+            docker run -d \
+              --name mcp-server \
+              --env-file .env \
+              -p 3000:3000 \
+              --restart always \
+              logistics-mcp
+
+            echo "🧹 Cleaning up unused Docker images"
+            docker image prune -f
+
+            echo "✅ Deployment finished successfully!"
+            docker ps | grep mcp-server
+          EOF

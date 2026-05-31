@@ -9,9 +9,10 @@ npx @modelcontextprotocol/inspector node build/index.js
 
 ## 🗺️ Bản Đồ Kiến Trúc & Tài Liệu (Knowledge Graph)
 Để dễ dàng theo dõi dạng đồ thị (Graph view trong Obsidian/VS Code/GitHub), bạn có thể chuyển hướng giữa các tài liệu bằng các liên kết sau (Wiki Links):
-- 🏗️ **Kiến trúc & Luồng dữ liệu:** [Document Flow Core](./01-architecture-document-flow.md) | [Upload Flow Status](./docs/02-upload-flow-status.md)
-- 🔌 **Tích hợp WebApp:** [Web App Integration Logic](./docs/06-webapp-integration-architecture.md) ➔ [Web App Implementation Guide](./docs/07-webapp-integration-guide.md)
-- 🛠️ **Troubleshooting & Setup:** [Sửa lỗi PDF Parsing](./docs/03-troubleshooting-pdf-parsing.md) ➔ [Giải pháp Local Extraction](./docs/04-solution-local-pdf-extraction.md) | [Setup MongoDB Vector Index](./docs/05-setup-mongodb-vector-index.md)
+- 🏗️ **Kiến trúc & Luồng dữ liệu:** [Document Flow Core](./01-architecture-document-flow.md) | [Upload Flow Status](./02-upload-flow-status.md)
+- 🔌 **Tích hợp WebApp:** [Web App Integration Logic](./06-webapp-integration-architecture.md) ➔ [Web App Implementation Guide](./07-webapp-integration-guide.md)
+- 🖥️ **Kết nối Desktop & Agent:** [Desktop & Agent Integration Guide](./08-mcp-desktop-and-agent-integration.md) ➔ [AWS EC2 Deployment Guide](./09-mcp-aws-ec2-deployment-guide.md)
+- 🛠️ **Troubleshooting & Setup:** [Sửa lỗi PDF Parsing](./03-troubleshooting-pdf-parsing.md) ➔ [Giải pháp Local Extraction](./04-solution-local-pdf-extraction.md) | [Setup MongoDB Vector Index](./05-setup-mongodb-vector-index.md)
 
 ---
 
