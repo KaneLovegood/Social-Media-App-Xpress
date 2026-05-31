@@ -340,22 +340,39 @@ async function main() {
     if (port) {
       // --- CHẾ ĐỘ 1: CHẠY TRÊN CLOUD QUA MẠNG (SSE TRANSPORT) ---
       const app = express();
+      
+      // Hỗ trợ phân tích dữ liệu JSON nhận được từ Client
+      app.use(express.json());
 
-      let transport: SSEServerTransport | null = null;
+      // Quản lý nhiều kết nối/session Agent cùng lúc thông qua Map
+      const activeTransports = new Map<string, SSEServerTransport>();
 
       // Endpoint để các AI Agent đăng ký lắng nghe sự kiện từ Server
       app.get("/sse", async (req: express.Request, res: express.Response) => {
         console.error("New AI Agent connecting via SSE...");
-        transport = new SSEServerTransport("/messages", res);
+        const transport = new SSEServerTransport("/messages", res);
+        
+        // Lưu transport với key là sessionId tự sinh từ SDK
+        activeTransports.set(transport.sessionId, transport);
+        
+        // Dọn dẹp session khi client ngắt kết nối
+        req.on("close", () => {
+          console.error(`AI Agent disconnected: ${transport.sessionId}`);
+          activeTransports.delete(transport.sessionId);
+        });
+
         await server.connect(transport);
       });
 
       // Endpoint để các AI Agent gửi yêu cầu gọi Tool
       app.post("/messages", async (req: express.Request, res: express.Response) => {
+        const sessionId = req.query.sessionId as string;
+        const transport = activeTransports.get(sessionId);
+
         if (transport) {
           await transport.handlePostMessage(req, res);
         } else {
-          res.status(400).send("SSE transport not initialized yet");
+          res.status(404).send("Session not found");
         }
       });
 
