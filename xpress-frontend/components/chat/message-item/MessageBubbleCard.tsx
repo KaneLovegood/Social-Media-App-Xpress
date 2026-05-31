@@ -14,6 +14,7 @@ interface Props {
   senderNameById?: Record<string, string>;
   onRedial?: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
 }
 
 function dinhDangThoiGian(value: string): string {
@@ -68,6 +69,7 @@ export default function MessageBubbleCard({
   message,
   senderNameById,
   onImageClick,
+  onReplyPreviewClick,
   senderName = "User",
 }: Props) {
   const router = useRouter();
@@ -85,7 +87,7 @@ export default function MessageBubbleCard({
   // 1. Recalled Messages
   if (message.isRecalled) {
     return (
-      <div className="rounded-lg bg-zinc-100 px-3 py-2 shadow-xs border border-zinc-200/50 min-w-[120px]">
+      <div className="rounded-lg bg-zinc-100 px-3 py-2 shadow-xs border border-zinc-200/50 min-w-30">
         <div className="text-xs italic text-zinc-400 select-none flex items-center gap-1.5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3.5 w-3.5 text-zinc-300">
             <circle cx="12" cy="12" r="10" />
@@ -102,7 +104,7 @@ export default function MessageBubbleCard({
     const sharedPost = message.sharedPost;
 
     return (
-      <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-[240px] max-w-[320px]">
+      <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-60 max-w-[320px]">
         {message.content && (
           <div className="whitespace-pre-wrap text-sm text-[#111827] mb-2 font-medium">
             {message.content}
@@ -175,7 +177,7 @@ export default function MessageBubbleCard({
   if (message.messageType === 'IMAGE' && message.fileUrl) {
     return (
       <div
-        className="overflow-hidden rounded-xl max-w-[280px] shadow-sm bg-slate-50 border border-slate-100 cursor-pointer"
+        className="overflow-hidden rounded-xl max-w-70 shadow-sm bg-slate-50 border border-slate-100 cursor-pointer"
         onClick={() => onImageClick?.(message.fileUrl!, senderName, dinhDangThoiGian(message.createdAt))}
       >
         <img
@@ -191,7 +193,7 @@ export default function MessageBubbleCard({
   // 4. Video Messages
   if (message.messageType === 'VIDEO' && message.fileUrl) {
     return (
-      <div className="overflow-hidden rounded-xl max-w-[280px] shadow-sm bg-black border border-zinc-800">
+      <div className="overflow-hidden rounded-xl max-w-70 shadow-sm bg-black border border-zinc-800">
         <video
           src={message.fileUrl}
           controls
@@ -217,7 +219,7 @@ export default function MessageBubbleCard({
         href={message.fileUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-3 shadow-xs max-w-[280px] transition-colors"
+        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-3 shadow-xs max-w-70 transition-colors"
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5">
@@ -268,7 +270,7 @@ export default function MessageBubbleCard({
     }
 
     return (
-      <div className={`flex items-center gap-3 rounded-xl border p-3 shadow-xs max-w-[280px] min-w-[210px] ${cardBgClass}`}>
+      <div className={`flex items-center gap-3 rounded-xl border p-3 shadow-xs max-w-70 min-w-52.5 ${cardBgClass}`}>
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-xs ${iconColorClass}`}>
           <Icon name={iconName} size="base" />
         </div>
@@ -282,9 +284,17 @@ export default function MessageBubbleCard({
 
   // Default: Text messages
   return (
-    <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-[120px]">
+    <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-30">
       {replyPreviewWithResolvedName && (
-        <ReplyPreview reply={replyPreviewWithResolvedName} mode="message" />
+        <ReplyPreview
+          reply={replyPreviewWithResolvedName}
+          mode="message"
+          onClick={
+            onReplyPreviewClick
+              ? () => onReplyPreviewClick(replyPreviewWithResolvedName.messageId)
+              : undefined
+          }
+        />
       )}
       <div className="whitespace-pre-wrap text-sm text-[#111827]">{message.content}</div>
     </div>

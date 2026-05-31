@@ -2,7 +2,12 @@ export interface ReplyPreview {
   messageId: string;
   senderId: string;
   senderName?: string;
+  messageType?: MessageType;
   content: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
 }
 
 export type MessageType =

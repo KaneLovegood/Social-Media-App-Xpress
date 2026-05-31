@@ -602,10 +602,7 @@ export default function ChatContainer({
   useEffect(() => {
     const listElement = listRef.current;
     if (!listElement) return;
-    listElement.scrollTo({
-      top: listElement.scrollHeight,
-      behavior: "smooth",
-    });
+    listElement.scrollTop = listElement.scrollHeight;
   }, [activeMessages]);
 
   // Ensure typing indicator is visible (scroll to bottom) when someone else is typing
@@ -616,10 +613,7 @@ export default function ChatContainer({
     // Only auto-scroll for typing events from others
     if (typingSenderId && typingSenderId === currentUserId) return;
 
-    listElement.scrollTo({
-      top: listElement.scrollHeight,
-      behavior: "smooth",
-    });
+    listElement.scrollTop = listElement.scrollHeight;
   }, [typingText, typingSenderId, currentUserId]);
 
   const handleSend = (content: string, options?: SendMessageOptions) => {
@@ -1140,7 +1134,6 @@ export default function ChatContainer({
               onMark={handleMarkMessage}
               onSelectMany={handleSelectManyMessage}
               onViewDetails={handleViewMessageDetails}
-              
               pinnedMessages={pinnedMessagesByRoom[effectiveActiveRoomId]}
               onUnpinMessage={handleUnpinMessage}
               isMultiSelectMode={isMultiSelectMode}

@@ -48,6 +48,7 @@ interface ChatContentProps {
   onViewDetails: (message: ChatMessage) => void;
   onRedial: (mode: "voice" | "video") => void;
   onImageClick?: (url: string, senderName?: string, timestamp?: string) => void;
+  onReplyPreviewClick?: (messageId: string) => void;
 
   // Multi-select and Pinned Messages Props
   pinnedMessages?: ChatMessage[];
@@ -95,6 +96,7 @@ export default function ChatContent({
   onViewDetails,
   onRedial,
   onImageClick,
+  onReplyPreviewClick,
 
   pinnedMessages = [],
   onUnpinMessage,
@@ -132,6 +134,8 @@ export default function ChatContent({
       }, 2500);
     }
   };
+
+  const handleReplyPreviewClick = onReplyPreviewClick ?? handleScrollToMessage;
 
   const handleNextPin = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -271,6 +275,7 @@ export default function ChatContent({
           onImageClick={(url, senderName, timestamp) =>
             setViewerImage({ url, senderName, timestamp })
           }
+          onReplyPreviewClick={handleReplyPreviewClick}
           className="flex-1"
 
           // Multi-select & Star props passed to list
