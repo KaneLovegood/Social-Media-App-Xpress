@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
  * Browser origins allowed by REST and Socket.IO.
  * Supports comma-separated exact origins and regex literals, e.g.
  * CORS_ORIGINS=http://localhost:3000,/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/
+ * Use CORS_ORIGINS=* to allow every browser origin.
  */
 function corsOriginsFromEnv(): (string | RegExp)[] {
   const raw = (process.env.CORS_ORIGINS ?? '').trim();
@@ -29,7 +30,11 @@ function corsOriginsFromEnv(): (string | RegExp)[] {
 }
 
 const corsOriginList = corsOriginsFromEnv();
+const allowAllCorsOrigins = corsOriginList.some(
+  (allowedOrigin) => allowedOrigin === '*',
+);
 const isCorsOriginAllowed = (origin: string): boolean =>
+  allowAllCorsOrigins ||
   corsOriginList.some((allowedOrigin) => {
     if (typeof allowedOrigin === 'string') {
       return allowedOrigin === '*' || allowedOrigin === origin;

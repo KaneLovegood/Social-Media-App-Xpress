@@ -4,11 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
+    "dev:https": "next dev -p 3001 --experimental-https",
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
     "prepare": "husky",
     "cap:sync": "cap sync",
+    "cap:android": "cap sync && cap open android",
+    "cap:ios": "cap sync && cap open ios",
     "fix:rsc": "node scripts/fix-rsc-paths.mjs",
     "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync",
     "export": "next export"

@@ -251,6 +251,24 @@ server.tool(
   }
 );
 
+server.tool(
+  "social_get_group_transcript",
+  "Lấy nhật ký cuộc hội thoại (transcript) của một nhóm chat để tóm tắt hoặc phân tích. Chỉ thành viên nhóm mới được phép sử dụng.",
+  {
+    roomId: z.string().describe("Mã phòng chat nhóm (roomId)"),
+    actorUserId: z.string().describe("UserId của bạn để xác thực quyền thành viên"),
+    limit: z.number().optional().default(50).describe("Số lượng tin nhắn gần nhất cần lấy (mặc định 50)")
+  },
+  async ({ roomId, actorUserId, limit }) => {
+    try {
+      const data = await socialService.getGroupTranscript(roomId, actorUserId, limit);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (error: any) {
+      return { content: [{ type: "text", text: `Lấy dữ liệu nhóm thất bại: ${error.message}` }], isError: true };
+    }
+  }
+);
+
 // --- 5.3 Logistics Intelligence Tools ---
 
 server.tool(
@@ -328,12 +346,10 @@ async function main() {
     console.error("Connected to MongoDB Atlas");
 
     const portIndex = process.argv.indexOf("--port");
-    const port =
-      portIndex !== -1
-        ? parseInt(process.argv[portIndex + 1])
-        : process.env.PORT
-          ? parseInt(process.env.PORT)
-          : null;
+    const isSSE = portIndex !== -1 || (process.env.PORT && process.env.MCP_TRANSPORT === 'sse');
+    const port = isSSE
+      ? (portIndex !== -1 ? parseInt(process.argv[portIndex + 1]) : parseInt(process.env.PORT!))
+      : null;
 
     if (port) {
       const app = express();

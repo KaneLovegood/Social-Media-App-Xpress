@@ -84,6 +84,7 @@ Nếu người dùng muốn tạo nhóm chat hoặc thêm người vào nhóm:
 - Quy trình: Tạo nhóm mới bằng 'social_create_group' -> Lấy roomId từ kết quả -> Thêm thành viên bằng 'social_add_to_group' với roomId đó và targetUserId.
 - Bạn CÓ THỂ gọi nhiều tool liên tiếp trong một lượt nếu đã đủ thông tin.
 - Dùng 'social_list_my_groups' để xem danh sách nhóm hiện có của bạn.
+- Khi người dùng muốn tóm tắt hoặc xem nội dung trao đổi của một nhóm chat, bạn hãy dùng 'social_get_group_transcript' với roomId và actorUserId. Sau khi nhận được transcript thô, hãy định dạng bản tóm tắt thật chuyên nghiệp bằng Markdown có cấu trúc gồm: 🎯 **Chủ đề thảo luận chính**, 🤝 **Các quyết định đã thống nhất**, và 📋 **Danh sách việc cần làm (Action Items)** kèm người chịu trách nhiệm (nếu có).
 
 Nếu chưa đủ thông tin (ví dụ thiếu quy trình, thiếu dữ liệu để thực hiện tool, thiếu email, tên nhóm, ...), hãy trả lời hoặc đặt câu hỏi và yêu cầu người dùng cung cấp thêm một cách thân thiện.
 Khi đã thực hiện xong các bước (tạo nhóm, thêm người), hãy xác nhận rõ ràng với người dùng.
@@ -141,7 +142,7 @@ Luôn trả lời bằng tiếng Việt.`;
 
       let finalReply = '';
       let iteration = 0;
-      const MAX_ITERATIONS = 5;
+      const MAX_ITERATIONS = 10;
 
       while (iteration < MAX_ITERATIONS) {
         iteration++;
@@ -213,10 +214,23 @@ Luôn trả lời bằng tiếng Việt.`;
         break;
       }
 
-      if (iteration >= MAX_ITERATIONS) {
+      if (iteration >= MAX_ITERATIONS && !finalReply) {
         this.logger.warn(
-          `Reached MAX_ITERATIONS (${MAX_ITERATIONS}) in tool execution loop.`,
+          `Reached MAX_ITERATIONS (${MAX_ITERATIONS}) in tool execution loop. Forcing final summary response.`,
         );
+        try {
+          const finalCompletion = await this.openai.chat.completions.create({
+            model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+            messages: messages,
+            temperature: 0,
+          });
+          finalReply =
+            finalCompletion.choices[0].message.content ||
+            'Tôi đã thực hiện xong các tác vụ.';
+        } catch (err) {
+          this.logger.error('Error generating final fallback reply:', err);
+          finalReply = 'Tôi đã thực hiện các yêu cầu của bạn.';
+        }
       }
 
       if (userId && finalReply) {

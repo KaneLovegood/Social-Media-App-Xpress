@@ -70,10 +70,12 @@ export class McpClientService implements OnModuleInit, OnModuleDestroy {
       }
 
       this.logger.log(`Starting local MCP Server via Stdio: ${serverPath}`);
+      const childEnv = { ...process.env } as Record<string, string>;
+      delete childEnv.PORT;
       this.transport = new StdioClientTransport({
         command: 'node',
         args: [serverPath],
-        env: process.env as Record<string, string>,
+        env: childEnv,
       });
 
       await this.client.connect(this.transport);
