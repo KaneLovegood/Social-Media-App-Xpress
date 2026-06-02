@@ -43,7 +43,10 @@ export class NewsFeedService {
     const acceptedPosts: PostEntity[] = [];
 
     for (let i = 0; i < 5 && acceptedPosts.length < limit; i += 1) {
-      const page = await this.newsFeedRepository.listFeedPage(limit * 2, cursor);
+      const page = await this.newsFeedRepository.listFeedPage(
+        limit * 2,
+        cursor,
+      );
       cursor = page.nextCursor ?? undefined;
       nextCursor = page.nextCursor;
 
@@ -74,10 +77,11 @@ export class NewsFeedService {
     idempotencyKey?: string,
   ): Promise<BaiVietView> {
     if (idempotencyKey) {
-      const idempotentRecord = await this.newsFeedRepository.getIdempotencyRecord(
-        actorUserId,
-        idempotencyKey,
-      );
+      const idempotentRecord =
+        await this.newsFeedRepository.getIdempotencyRecord(
+          actorUserId,
+          idempotencyKey,
+        );
       if (idempotentRecord) {
         const post = await this.requirePost(idempotentRecord.postId);
         return this.toBaiVietView(await this.toFeedPostView(actorUserId, post));
@@ -89,8 +93,15 @@ export class NewsFeedService {
     const imageUrls = (dto.danhSachAnh ?? []).filter((item) => item.trim());
     const videoUrls = (dto.danhSachVideo ?? []).filter((item) => item.trim());
 
-    if (!content && !location && imageUrls.length === 0 && videoUrls.length === 0) {
-      throw new BadRequestException('Bai viet can co noi dung, vi tri, anh hoac video');
+    if (
+      !content &&
+      !location &&
+      imageUrls.length === 0 &&
+      videoUrls.length === 0
+    ) {
+      throw new BadRequestException(
+        'Bai viet can co noi dung, vi tri, anh hoac video',
+      );
     }
 
     const now = new Date().toISOString();
@@ -127,10 +138,11 @@ export class NewsFeedService {
           postId,
         );
       } catch (error) {
-        const maybeExisting = await this.newsFeedRepository.getIdempotencyRecord(
-          actorUserId,
-          idempotencyKey,
-        );
+        const maybeExisting =
+          await this.newsFeedRepository.getIdempotencyRecord(
+            actorUserId,
+            idempotencyKey,
+          );
         if (maybeExisting) {
           const existingPost = await this.requirePost(maybeExisting.postId);
           return this.toBaiVietView(
@@ -160,7 +172,12 @@ export class NewsFeedService {
     const hasImageUpdate = dto.danhSachAnh !== undefined;
     const hasVideoUpdate = dto.danhSachVideo !== undefined;
 
-    if (hasContentUpdate || hasLocationUpdate || hasImageUpdate || hasVideoUpdate) {
+    if (
+      hasContentUpdate ||
+      hasLocationUpdate ||
+      hasImageUpdate ||
+      hasVideoUpdate
+    ) {
       const content = (dto.noiDung ?? post.content).trim();
       const location = (dto.viTri ?? post.location ?? '').trim();
       const imageUrls = (dto.danhSachAnh ?? post.imageUrls).filter((item) =>
@@ -170,8 +187,15 @@ export class NewsFeedService {
         item.trim(),
       );
 
-      if (!content && !location && imageUrls.length === 0 && videoUrls.length === 0) {
-        throw new BadRequestException('Bai viet can co noi dung, vi tri, anh hoac video');
+      if (
+        !content &&
+        !location &&
+        imageUrls.length === 0 &&
+        videoUrls.length === 0
+      ) {
+        throw new BadRequestException(
+          'Bai viet can co noi dung, vi tri, anh hoac video',
+        );
       }
     }
 
@@ -187,7 +211,10 @@ export class NewsFeedService {
     return this.toBaiVietView(await this.toFeedPostView(actorUserId, updated));
   }
 
-  async xoaBaiViet(actorUserId: string, postId: string): Promise<{ thanhCong: boolean }> {
+  async xoaBaiViet(
+    actorUserId: string,
+    postId: string,
+  ): Promise<{ thanhCong: boolean }> {
     const post = await this.requirePost(postId);
     if (post.userId !== actorUserId) {
       throw new ForbiddenException('Ban khong co quyen xoa bai viet nay');
@@ -208,7 +235,10 @@ export class NewsFeedService {
       throw new ForbiddenException('Ban khong co quyen tuong tac bai viet nay');
     }
 
-    const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    const alreadyLiked = await this.newsFeedRepository.hasLike(
+      postId,
+      actorUserId,
+    );
     let likeCount = Number(post.likeCount ?? 0);
     if (!alreadyLiked) {
       await this.newsFeedRepository.createLike(postId, actorUserId);
@@ -237,7 +267,10 @@ export class NewsFeedService {
       throw new NotFoundException('Bai viet khong ton tai');
     }
 
-    const alreadyLiked = await this.newsFeedRepository.hasLike(postId, actorUserId);
+    const alreadyLiked = await this.newsFeedRepository.hasLike(
+      postId,
+      actorUserId,
+    );
     let likeCount = Number(post.likeCount ?? 0);
     if (alreadyLiked) {
       await this.newsFeedRepository.deleteLike(postId, actorUserId);
@@ -333,11 +366,15 @@ export class NewsFeedService {
     }
 
     if (originalPost.sharedFromPostId) {
-      throw new BadRequestException('Khong the chia se lai bai viet da duoc chia se (gioi han 2 cap)');
+      throw new BadRequestException(
+        'Khong the chia se lai bai viet da duoc chia se (gioi han 2 cap)',
+      );
     }
 
     if (originalPost.visibility === 'private') {
-      throw new ForbiddenException('Khong the chia se bai viet o che do rieng tu');
+      throw new ForbiddenException(
+        'Khong the chia se bai viet o che do rieng tu',
+      );
     }
 
     let visibility = dto.cheDoRiengTu ?? 'friends';
@@ -375,10 +412,15 @@ export class NewsFeedService {
     await this.newsFeedRepository.createPost(sharedPost);
     await this.newsFeedRepository.addShareCount(originalPost.postId);
 
-    return this.toBaiVietView(await this.toFeedPostView(actorUserId, sharedPost));
+    return this.toBaiVietView(
+      await this.toFeedPostView(actorUserId, sharedPost),
+    );
   }
 
-  async layChiTietBaiViet(actorUserId: string, postId: string): Promise<BaiVietView> {
+  async layChiTietBaiViet(
+    actorUserId: string,
+    postId: string,
+  ): Promise<BaiVietView> {
     const post = await this.requirePost(postId);
     if (post.isDeleted) {
       throw new NotFoundException('Bai viet da bi xoa');
@@ -416,7 +458,8 @@ export class NewsFeedService {
 
     // Sort comments chronologically (oldest first)
     const sortedComments = [...comments].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
     let commentsToReturn = sortedComments;
@@ -430,9 +473,15 @@ export class NewsFeedService {
 
     let originalPost: FeedPostView | undefined = undefined;
     if (item.sharedFromPostId && depth === 0) {
-      const origPostEntity = await this.newsFeedRepository.getPost(item.sharedFromPostId);
+      const origPostEntity = await this.newsFeedRepository.getPost(
+        item.sharedFromPostId,
+      );
       if (origPostEntity) {
-        originalPost = await this.toFeedPostView(actorUserId, origPostEntity, 1);
+        originalPost = await this.toFeedPostView(
+          actorUserId,
+          origPostEntity,
+          1,
+        );
       }
     }
 
@@ -471,14 +520,21 @@ export class NewsFeedService {
 
     const allowedAuthorIds = await this.getAllowedAuthorIds(actorUserId);
     if (!this.canViewPost(actorUserId, post, allowedAuthorIds)) {
-      throw new ForbiddenException('Ban khong co quyen xem binh luan cua bai viet nay');
+      throw new ForbiddenException(
+        'Ban khong co quyen xem binh luan cua bai viet nay',
+      );
     }
 
-    const page = await this.newsFeedRepository.listCommentsPage(postId, limit, cursor);
+    const page = await this.newsFeedRepository.listCommentsPage(
+      postId,
+      limit,
+      cursor,
+    );
 
     // Sort chronologically (oldest first)
     const sortedComments = [...page.items].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
     const items = await Promise.all(
@@ -491,7 +547,9 @@ export class NewsFeedService {
     };
   }
 
-  private async toCommentView(comment: PostCommentEntity): Promise<FeedCommentView> {
+  private async toCommentView(
+    comment: PostCommentEntity,
+  ): Promise<FeedCommentView> {
     return {
       commentId: comment.commentId,
       postId: comment.postId,
@@ -560,8 +618,12 @@ export class NewsFeedService {
       thoiGianCapNhat: item.updatedAt,
       tacGia: this.toTacGiaView(item.author),
       daThich: item.isLikedByMe,
-      danhSachBinhLuan: item.comments.map((comment) => this.toBinhLuanView(comment)),
-      baiVietGoc: item.originalPost ? this.toBaiVietView(item.originalPost) : undefined,
+      danhSachBinhLuan: item.comments.map((comment) =>
+        this.toBinhLuanView(comment),
+      ),
+      baiVietGoc: item.originalPost
+        ? this.toBaiVietView(item.originalPost)
+        : undefined,
     };
   }
 
@@ -599,7 +661,8 @@ export class NewsFeedService {
   }
 
   private async getAllowedAuthorIds(actorUserId: string): Promise<Set<string>> {
-    const friendUsers = await this.socialService.listAllFriendUsers(actorUserId);
+    const friendUsers =
+      await this.socialService.listAllFriendUsers(actorUserId);
     const allowed = new Set<string>([actorUserId]);
     for (const friend of friendUsers) {
       allowed.add(friend.userId);

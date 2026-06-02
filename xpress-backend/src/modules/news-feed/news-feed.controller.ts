@@ -74,7 +74,10 @@ export class NewsFeedController {
     @Req() req: AuthenticatedRequest,
     @Param('postId') postId: string,
   ) {
-    const result = await this.newsFeedService.xoaBaiViet(this.getUserId(req), postId);
+    const result = await this.newsFeedService.xoaBaiViet(
+      this.getUserId(req),
+      postId,
+    );
     this.newsFeedGateway.emitPostDeleted({ maBaiViet: postId });
     return result;
   }
@@ -164,7 +167,10 @@ export class NewsFeedController {
       postId,
       commentId,
     );
-    this.newsFeedGateway.emitCommentDeleted({ maBaiViet: postId, maBinhLuan: commentId });
+    this.newsFeedGateway.emitCommentDeleted({
+      maBaiViet: postId,
+      maBinhLuan: commentId,
+    });
     return result;
   }
 

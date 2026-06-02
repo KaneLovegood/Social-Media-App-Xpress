@@ -124,7 +124,8 @@ export class UsersRepository {
       const result = await this.ddbDocClient.send(
         new ScanCommand({
           TableName: this.tableName,
-          FilterExpression: 'entityType = :entityType AND userId <> :actorUserId',
+          FilterExpression:
+            'entityType = :entityType AND userId <> :actorUserId',
           ExpressionAttributeValues: {
             ':entityType': 'USER',
             ':actorUserId': actorUserId,
@@ -136,8 +137,12 @@ export class UsersRepository {
 
       if (result.Items?.length) {
         const filtered = (result.Items as UserEntity[]).filter((user) => {
-          const nameMatches = (user.name || '').toLowerCase().includes(lowercasedQuery);
-          const emailMatches = (user.email || '').toLowerCase().includes(lowercasedQuery);
+          const nameMatches = (user.name || '')
+            .toLowerCase()
+            .includes(lowercasedQuery);
+          const emailMatches = (user.email || '')
+            .toLowerCase()
+            .includes(lowercasedQuery);
           const idMatches = user.userId === trimmedQuery;
           return nameMatches || emailMatches || idMatches;
         });
@@ -195,7 +200,10 @@ export class UsersRepository {
     );
   }
 
-  async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+  async updatePasswordHash(
+    userId: string,
+    passwordHash: string,
+  ): Promise<void> {
     await this.ddbDocClient.send(
       new UpdateCommand({
         TableName: this.tableName,

@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  forwardRef,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { SocialService } from '../../social/social.service';
 import { ChatActionDto, ChatActionName } from '../dto/chat-action.dto';

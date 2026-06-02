@@ -31,10 +31,7 @@ export class SocialController {
   constructor(private readonly socialService: SocialService) {}
 
   @Get('users/search')
-  searchUsers(
-    @Req() req: AuthenticatedRequest,
-    @Query() query: SearchUserDto,
-  ) {
+  searchUsers(@Req() req: AuthenticatedRequest, @Query() query: SearchUserDto) {
     return this.socialService.searchUsers(this.getUserId(req), query);
   }
 
@@ -105,7 +102,10 @@ export class SocialController {
     @Req() req: AuthenticatedRequest,
     @Param('targetUserId') targetUserId: string,
   ) {
-    return this.socialService.cancelFriendRequest(this.getUserId(req), targetUserId);
+    return this.socialService.cancelFriendRequest(
+      this.getUserId(req),
+      targetUserId,
+    );
   }
 
   @Get('blocks')
@@ -121,7 +121,10 @@ export class SocialController {
     @Req() req: AuthenticatedRequest,
     @Param('requesterUserId') requesterUserId: string,
   ) {
-    return this.socialService.restoreFriendRequest(this.getUserId(req), requesterUserId);
+    return this.socialService.restoreFriendRequest(
+      this.getUserId(req),
+      requesterUserId,
+    );
   }
 
   @Post('blocks')
