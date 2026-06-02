@@ -5,7 +5,8 @@ on:
     branches:
       - dev
     paths:
-      - "xpress-backend/**"
+      - '.github/workflows/deploy_backend.yml'
+      - 'xpress-backend/**'
 
 jobs:
   deploy:
@@ -16,31 +17,21 @@ jobs:
         working-directory: xpress-backend
 
     steps:
-      # 1. Checkout
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Setup Node
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # 3. Setup pnpm
-      - name: Setup pnpm
+      - name: Build Docker image
         run: |
-          corepack enable
-          corepack prepare pnpm@9.15.9 --activate
+          docker build \
+            -t xpress-backend:${{ github.sha }} \
+            -f xpress-backend/Dockerfile \
+            xpress-backend
 
-      # 4. Install deps
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Package Docker image
+        run: |
+          mkdir -p /tmp/xpress-backend-artifacts
+          docker save xpress-backend:${{ github.sha }} | gzip > /tmp/xpress-backend-artifacts/xpress-backend-${{ github.sha }}.tar.gz
 
-      # 5. Build
-      - name: Build project
-        run: NODE_OPTIONS="--max-old-space-size=512" pnpm build
-
-      # 6. Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -48,33 +39,37 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 7. Ensure remote directory exists
       - name: Prepare EC2 directory
         run: |
-          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} "
-            mkdir -p /home/ubuntu/xpress-backend/dist
-          "
+          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} "mkdir -p /home/ubuntu/xpress-backend/releases"
 
-      # 8. Upload ONLY dist
-      - name: Upload dist to EC2
+      - name: Upload image to EC2
         run: |
-          rsync -avz --delete \
-            dist/ \
-            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/dist/
+          scp /tmp/xpress-backend-artifacts/xpress-backend-${{ github.sha }}.tar.gz \
+            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/releases/
 
-      # 9. Restart PM2
-      - name: Restart backend
+      - name: Load image and restart Docker container
         run: |
           ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
 
             set -e
 
-            cd /home/ubuntu/xpress-backend
+            IMAGE_TAG='${{ github.sha }}'
+            RELEASE_DIR='/home/ubuntu/xpress-backend/releases'
+            IMAGE_FILE="${RELEASE_DIR}/xpress-backend-${IMAGE_TAG}.tar.gz"
 
-            pm2 restart xpress-backend \
-              || pm2 start dist/src/main.js --name xpress-backend
+            gunzip -c "$IMAGE_FILE" | docker load
+            rm -f "$IMAGE_FILE"
 
-            pm2 save
+            docker stop xpress-backend || true
+            docker rm xpress-backend || true
+
+            docker run -d \
+              --name xpress-backend \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              --env-file /home/ubuntu/xpress-backend/.env \
+              xpress-backend:${IMAGE_TAG}
 
             echo "✅ Deploy completed"
 
