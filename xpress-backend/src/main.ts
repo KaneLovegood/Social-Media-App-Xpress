@@ -36,7 +36,9 @@ const allowAllCorsOrigins = corsOriginList.some(
 const isCorsOriginAllowed = (origin: string): boolean =>
   allowAllCorsOrigins ||
   corsOriginList.some((allowedOrigin) => {
-    if (typeof allowedOrigin === 'string') return allowedOrigin === origin;
+    if (typeof allowedOrigin === 'string') {
+      return allowedOrigin === '*' || allowedOrigin === origin;
+    }
     return allowedOrigin.test(origin);
   });
 
