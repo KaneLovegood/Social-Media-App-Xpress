@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import express from "express";
 import { z } from "zod";
 import * as dotenv from "dotenv";
 
@@ -72,12 +74,12 @@ server.tool(
     try {
       const queryVector = await searchService.getEmbedding(queryText);
       const results = await searchService.vectorSearch(queryVector, topK);
-      
-      const responseText = results.map((r: any, i: any) => 
-        `[Result ${i+1}] Source: ${r.fileUrl}\n${r.content}`
+
+      const responseText = results.map((r: any, i: any) =>
+        `[Result ${i + 1}] Source: ${r.fileUrl}\n${r.content}`
       ).join('\n\n---\n\n');
 
-      return { 
+      return {
         content: [{ type: "text", text: responseText || "No results." }],
         structuredContent: { results }
       };
@@ -136,7 +138,7 @@ server.tool(
 server.tool(
   "social_search_user",
   "Tìm kiếm người dùng theo email và xem trạng thái bạn bè hiện tại giữa bạn và người đó.",
-  { 
+  {
     email: z.string().describe("Email của người dùng cần tìm"),
     actorUserId: z.string().describe("UserId của bạn (lấy từ system context)")
   },
@@ -153,7 +155,7 @@ server.tool(
 server.tool(
   "social_send_friend_request",
   "Gửi lời mời kết bạn tới một người dùng cụ thể bằng targetUserId.",
-  { 
+  {
     actorUserId: z.string().describe("UserId của bạn (lấy từ system context)"),
     targetUserId: z.string().describe("UserId của người nhận lời mời")
   },
@@ -170,7 +172,7 @@ server.tool(
 server.tool(
   "social_create_group",
   "Tạo một nhóm chat mới với tiêu đề (title).",
-  { 
+  {
     title: z.string().describe("Tên của nhóm chat mới"),
     actorUserId: z.string().describe("UserId của bạn (lấy từ system context)")
   },
@@ -187,7 +189,7 @@ server.tool(
 server.tool(
   "social_add_to_group",
   "Thêm một người dùng (targetUserId) vào nhóm chat (roomId).",
-  { 
+  {
     roomId: z.string().describe("ID của nhóm chat"),
     targetUserId: z.string().describe("UserId của người cần thêm vào"),
     actorUserId: z.string().describe("UserId của bạn (phải là ADMIN nhóm)")
@@ -205,7 +207,7 @@ server.tool(
 server.tool(
   "social_list_my_groups",
   "Liệt kê danh sách các nhóm chat mà bạn đang tham gia.",
-  { 
+  {
     actorUserId: z.string().describe("UserId của bạn")
   },
   async ({ actorUserId }) => {
@@ -221,7 +223,7 @@ server.tool(
 server.tool(
   "social_list_friends",
   "Liệt kê danh sách bạn bè và các yêu cầu kết bạn của bạn.",
-  { 
+  {
     actorUserId: z.string().describe("UserId của bạn")
   },
   async ({ actorUserId }) => {
@@ -237,7 +239,7 @@ server.tool(
 server.tool(
   "social_accept_reject_friend",
   "Chấp nhận hoặc từ chối một yêu cầu kết bạn.",
-  { 
+  {
     actorUserId: z.string().describe("UserId của bạn"),
     targetUserId: z.string().describe("UserId của người gửi lời mời"),
     action: z.enum(["ACCEPT", "REJECT"]).describe("Action cần thực hiện")
@@ -322,15 +324,91 @@ server.tool(
 );
 
 // --- Execution ---
-
 async function main() {
   try {
     await searchService.connect();
     console.error("Connected to MongoDB Atlas");
 
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Logistics MCP Server running on stdio");
+    const portIndex = process.argv.indexOf("--port");
+    const port =
+      portIndex !== -1
+        ? parseInt(process.argv[portIndex + 1])
+        : process.env.PORT
+          ? parseInt(process.env.PORT)
+          : null;
+
+    if (port) {
+      const app = express();
+
+      const activeTransports = new Map<string, SSEServerTransport>();
+
+      app.get("/", (req, res) => {
+        res.send("Logistics MCP Server is running");
+      });
+
+      app.get("/health", (req, res) => {
+        res.json({
+          status: "ok",
+          server: "logistics-mcp-server",
+          transport: "sse",
+        });
+      });
+
+      app.get("/sse", async (req, res) => {
+        console.error("New AI Agent connecting via SSE...");
+
+        const transport = new SSEServerTransport("/messages", res);
+
+        activeTransports.set(transport.sessionId, transport);
+
+        console.error(`SSE session created: ${transport.sessionId}`);
+
+        res.on("close", () => {
+          console.error(`SSE session closed: ${transport.sessionId}`);
+          activeTransports.delete(transport.sessionId);
+        });
+
+        await server.connect(transport);
+      });
+
+      app.post("/messages", express.json(), async (req, res) => {
+        const sessionId = req.query.sessionId as string;
+
+        console.error("Incoming MCP message sessionId:", sessionId);
+
+        if (!sessionId) {
+          res.status(400).send("Missing sessionId");
+          return;
+        }
+
+        const transport = activeTransports.get(sessionId);
+
+        if (!transport) {
+          console.error("Session not found:", sessionId);
+          res.status(404).send("Session not found");
+          return;
+        }
+
+        try {
+          await transport.handlePostMessage(req, res, req.body);
+        } catch (error) {
+          console.error("Error handling MCP message:", error);
+          res.status(500).send("Internal server error");
+        }
+      });
+
+      app.listen(port, () => {
+        console.error(`🚀 Logistics MCP SSE Server running`);
+        console.error(`SSE endpoint: http://localhost:${port}/sse`);
+        console.error(`Messages endpoint: http://localhost:${port}/messages`);
+      });
+    } else {
+      // --- CHẾ ĐỘ 2: CHẠY CỤC BỘ DƯỚI LOCAL (STDIO TRANSPORT) ---
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      console.error("🔌 Logistics MCP Server running locally on stdio");
+    }
+
   } catch (error) {
     console.error("Initialization error:", error);
     process.exit(1);

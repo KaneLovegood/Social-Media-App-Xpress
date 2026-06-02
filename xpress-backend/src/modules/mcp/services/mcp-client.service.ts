@@ -6,11 +6,12 @@ import {
 } from '@nestjs/common';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 @Injectable()
 export class McpClientService implements OnModuleInit, OnModuleDestroy {
   private client: Client;
-  private transport: StdioClientTransport | null = null;
+  private transport: StdioClientTransport | SSEClientTransport | null = null;
   private readonly logger = new Logger(McpClientService.name);
 
   constructor() {
@@ -21,25 +22,58 @@ export class McpClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    const serverPath = process.env.MCP_SERVER_PATH;
-    if (!serverPath) {
-      this.logger.warn(
-        'MCP_SERVER_PATH is not set in .env. MCP Service will not start automatically.',
-      );
-      return;
-    }
+    const transportType = process.env.MCP_TRANSPORT || 'stdio';
 
-    try {
-      this.transport = new StdioClientTransport({
-        command: 'node',
-        args: [serverPath],
-        env: process.env as Record<string, string>,
-      });
+    if (transportType === 'sse') {
+      const serverUrl = process.env.MCP_SERVER_URL;
+      if (!serverUrl) {
+        this.logger.warn(
+          'MCP_SERVER_URL is not set in .env while MCP_TRANSPORT is set to sse.',
+        );
+        return;
+      }
 
-      await this.client.connect(this.transport);
-      this.logger.log('Successfully connected to MCP Server!');
-    } catch (error) {
-      this.logger.error('Failed to connect to MCP Server', error);
+      try {
+        this.logger.log(
+          `Connecting to remote MCP Server via SSE: ${serverUrl}`,
+        );
+        this.transport = new SSEClientTransport(new URL(serverUrl));
+        await this.client.connect(this.transport);
+        this.logger.log('Successfully connected to remote MCP Server via SSE!');
+      } catch (error) {
+        this.logger.error(
+          'Failed to connect to remote MCP Server via SSE',
+          error,
+        );
+      }
+    } else {
+      // Default: stdio
+      const serverPath = process.env.MCP_SERVER_PATH;
+      if (!serverPath) {
+        this.logger.warn(
+          'MCP_SERVER_PATH is not set in .env. MCP Service will not start automatically.',
+        );
+        return;
+      }
+
+      try {
+        this.logger.log(`Starting local MCP Server via Stdio: ${serverPath}`);
+        this.transport = new StdioClientTransport({
+          command: 'node',
+          args: [serverPath],
+          env: process.env as Record<string, string>,
+        });
+
+        await this.client.connect(this.transport);
+        this.logger.log(
+          'Successfully connected to local MCP Server via Stdio!',
+        );
+      } catch (error) {
+        this.logger.error(
+          'Failed to connect to local MCP Server via Stdio',
+          error,
+        );
+      }
     }
   }
 
