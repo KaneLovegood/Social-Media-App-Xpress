@@ -240,6 +240,28 @@ export class UsersRepository {
     );
   }
 
+  async updateTwoFactorEnabled(
+    userId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.ddbDocClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `USER#${userId}`,
+          SK: `PROFILE#${userId}`,
+        },
+        ConditionExpression: 'attribute_exists(PK)',
+        UpdateExpression:
+          'SET twoFactorEnabled = :enabled, updatedAt = :updatedAt',
+        ExpressionAttributeValues: {
+          ':enabled': enabled,
+          ':updatedAt': new Date().toISOString(),
+        },
+      }),
+    );
+  }
+
   normalizeEmail(email: string): string {
     return email.replace(/\s+/g, '').trim().toLowerCase();
   }

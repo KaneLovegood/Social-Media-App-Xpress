@@ -90,20 +90,24 @@ export class SessionRepository {
     sessionId: string,
     refreshTokenHash: string,
     refreshTokenExpiresAt: string,
+    authProvider?: SessionEntity['authProvider'],
   ): Promise<void> {
     const now = new Date().toISOString();
+    const authProviderUpdate =
+      authProvider == null ? '' : ', authProvider = :authProvider';
     await this.ddbDocClient.send(
       new UpdateCommand({
         TableName: this.tableName,
         Key: { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
         ConditionExpression: 'attribute_exists(PK)',
         UpdateExpression:
-          'SET refreshTokenHash = :refreshTokenHash, refreshTokenExpiresAt = :refreshTokenExpiresAt, lastSeenAt = :lastSeenAt, updatedAt = :updatedAt',
+          `SET refreshTokenHash = :refreshTokenHash, refreshTokenExpiresAt = :refreshTokenExpiresAt, lastSeenAt = :lastSeenAt, updatedAt = :updatedAt${authProviderUpdate}`,
         ExpressionAttributeValues: {
           ':refreshTokenHash': refreshTokenHash,
           ':refreshTokenExpiresAt': refreshTokenExpiresAt,
           ':lastSeenAt': now,
           ':updatedAt': now,
+          ...(authProvider == null ? {} : { ':authProvider': authProvider }),
         },
       }),
     );

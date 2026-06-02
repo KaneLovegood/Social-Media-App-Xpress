@@ -1,4 +1,5 @@
 export type ProfileStatus = 'online' | 'offline' | 'unknown';
+export type ProfileAuthProvider = 'LOCAL' | 'GOOGLE';
 
 export interface ProfileModel {
   userId: string;
@@ -10,4 +11,7 @@ export interface ProfileModel {
   status: ProfileStatus;
   initials: string;
   storageUsedPercent: number;
+  authProvider: ProfileAuthProvider;
+  passwordAuthEnabled: boolean;
+  twoFactorEnabled: boolean;
 }

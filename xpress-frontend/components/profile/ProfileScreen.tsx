@@ -1,11 +1,36 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Shield, Lock, Bell, Camera, TextAlignJustify } from 'lucide-react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  Bell,
+  Camera,
+  KeyRound,
+  Lock,
+  Shield,
+  ShieldCheck,
+  TextAlignJustify,
+  X,
+} from 'lucide-react';
 import ChatAppRail from '@/components/chat/ChatAppRail';
-import { getProfileModel, updateProfileAvatar } from '@/modules/profile/profile.service';
+import {
+  changeProfilePassword,
+  disableTwoFactor,
+  enableTwoFactor,
+  getProfileModel,
+  sendTwoFactorDisableOtp,
+  sendTwoFactorSetupOtp,
+  updateProfileAvatar,
+} from '@/modules/profile/profile.service';
 
 const noopSubscribe = () => () => {};
+
+type PasswordForm = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+type TwoFactorMode = 'enable' | 'disable';
 
 function StatusDot({ status }: { status: 'online' | 'offline' | 'unknown' }) {
   if (status === 'online') {
@@ -24,12 +49,71 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<ReturnType<typeof getProfileModel> | null>(null);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isTwoFactorModalOpen, setIsTwoFactorModalOpen] = useState(false);
+  const [isSendingTwoFactorOtp, setIsSendingTwoFactorOtp] = useState(false);
+  const [isSubmittingTwoFactor, setIsSubmittingTwoFactor] = useState(false);
+  const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('enable');
+  const [twoFactorOtp, setTwoFactorOtp] = useState('');
+  const [twoFactorError, setTwoFactorError] = useState('');
+  const [twoFactorSuccess, setTwoFactorSuccess] = useState('');
+  const [passwordForm, setPasswordForm] = useState<PasswordForm>({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const passwordDialogRef = useRef<HTMLDivElement | null>(null);
+  const twoFactorDialogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isHydrated) return;
-    setProfile(getProfileModel());
+    const timeoutId = window.setTimeout(() => {
+      setProfile(getProfileModel());
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [isHydrated]);
+
+  useEffect(() => {
+    if (!isPasswordModalOpen && !isTwoFactorModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusId = window.setTimeout(() => {
+      if (isPasswordModalOpen) passwordDialogRef.current?.focus();
+      if (isTwoFactorModalOpen) twoFactorDialogRef.current?.focus();
+    }, 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === 'Escape' &&
+        !isChangingPassword &&
+        !isSubmittingTwoFactor &&
+        !isSendingTwoFactorOtp
+      ) {
+        setIsPasswordModalOpen(false);
+        setIsTwoFactorModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.clearTimeout(focusId);
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [
+    isChangingPassword,
+    isSubmittingTwoFactor,
+    isPasswordModalOpen,
+    isSendingTwoFactorOtp,
+    isTwoFactorModalOpen,
+  ]);
 
   const handleAvatarSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -52,9 +136,167 @@ export default function ProfileScreen() {
     }
   };
 
+  const updatePasswordField =
+    (field: keyof PasswordForm) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setPasswordForm((prev) => ({
+        ...prev,
+        [field]: event.target.value,
+      }));
+      setPasswordError('');
+      setPasswordSuccess('');
+    };
+
+  const openPasswordModal = () => {
+    if (
+      !profile ||
+      profile.authProvider === 'GOOGLE' ||
+      !profile.passwordAuthEnabled
+    ) {
+      return;
+    }
+
+    setPasswordError('');
+    setPasswordSuccess('');
+    setIsPasswordModalOpen(true);
+  };
+
+  const closePasswordModal = () => {
+    if (isChangingPassword) return;
+    setIsPasswordModalOpen(false);
+  };
+
+  const openTwoFactorModal = async (mode: TwoFactorMode) => {
+    if (!profile) return;
+    if (mode === 'enable' && profile.twoFactorEnabled) return;
+    if (mode === 'disable' && !profile.twoFactorEnabled) return;
+
+    setTwoFactorMode(mode);
+    setIsTwoFactorModalOpen(true);
+    setTwoFactorOtp('');
+    setTwoFactorError('');
+    setTwoFactorSuccess('');
+    setIsSendingTwoFactorOtp(true);
+
+    try {
+      if (mode === 'enable') {
+        await sendTwoFactorSetupOtp();
+      } else {
+        await sendTwoFactorDisableOtp();
+      }
+      setTwoFactorSuccess('Đã gửi OTP tới email của bạn.');
+    } catch (error) {
+      setTwoFactorError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể gửi OTP, vui lòng thử lại.',
+      );
+    } finally {
+      setIsSendingTwoFactorOtp(false);
+    }
+  };
+
+  const closeTwoFactorModal = () => {
+    if (isSubmittingTwoFactor || isSendingTwoFactorOtp) return;
+    setIsTwoFactorModalOpen(false);
+  };
+
+  const handleTwoFactorSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    setTwoFactorError('');
+
+    if (twoFactorOtp.length !== 4) {
+      setTwoFactorError('Vui lòng nhập đủ 4 số OTP.');
+      return;
+    }
+
+    try {
+      setIsSubmittingTwoFactor(true);
+      const nextProfile =
+        twoFactorMode === 'enable'
+          ? await enableTwoFactor(twoFactorOtp)
+          : await disableTwoFactor(twoFactorOtp);
+      setProfile(nextProfile);
+      setTwoFactorSuccess(
+        twoFactorMode === 'enable'
+          ? 'Đã bật xác thực 2 yếu tố.'
+          : 'Đã tắt xác thực 2 yếu tố.',
+      );
+      setTwoFactorOtp('');
+      window.setTimeout(() => {
+        setIsTwoFactorModalOpen(false);
+      }, 700);
+    } catch (error) {
+      setTwoFactorError(
+        error instanceof Error
+          ? error.message
+          : 'Cập nhật xác thực 2 yếu tố thất bại, vui lòng thử lại.',
+      );
+    } finally {
+      setIsSubmittingTwoFactor(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!passwordForm.currentPassword) {
+      setPasswordError('Vui lòng nhập mật khẩu hiện tại.');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError('Mật khẩu mới phải có ít nhất 8 ký tự.');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
+    if (passwordForm.currentPassword === passwordForm.newPassword) {
+      setPasswordError('Mật khẩu mới phải khác mật khẩu hiện tại.');
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      await changeProfilePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setPasswordSuccess('Đổi mật khẩu thành công.');
+    } catch (error) {
+      setPasswordError(
+        error instanceof Error
+          ? error.message
+          : 'Đổi mật khẩu thất bại, vui lòng thử lại.',
+      );
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   if (!isHydrated || !profile) {
     return <section className="h-full w-full bg-[#f3f4f6]" />;
   }
+
+  const isPasswordChangeDisabled =
+    profile.authProvider === 'GOOGLE' || !profile.passwordAuthEnabled;
+  const passwordDisabledTooltip =
+    'Đổi mật khẩu không khả dụng vì bạn đang dùng tài khoản Google.';
 
   return (
     <section className="flex h-full w-full flex-col overflow-y-auto bg-[#f3f4f6]">
@@ -153,13 +395,54 @@ export default function ProfileScreen() {
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#dae2ff] text-[#0052cc]">
                   <Shield className="h-5 w-5" />
                 </span>
-                <h3 className="text-lg font-bold text-[#191c1e]">Account & Security</h3>
+                <h3 className="text-lg font-bold text-[#191c1e]">Bảo mật tài khoản</h3>
               </div>
-              <ul className="space-y-3 text-sm text-[#424655]">
-                <li className="rounded-lg bg-[#f3f4f6] px-3 py-2">Đổi mật khẩu</li>
-                <li className="rounded-lg bg-[#f3f4f6] px-3 py-2">Xác thực 2 bước: Tắt</li>
-                <li className="rounded-lg bg-[#f3f4f6] px-3 py-2">Quản lý phiên đăng nhập</li>
-              </ul>
+              <div className="space-y-3">
+                <span
+                  className="group relative block"
+                  title={isPasswordChangeDisabled ? passwordDisabledTooltip : undefined}
+                >
+                  <button
+                    type="button"
+                    onClick={openPasswordModal}
+                    disabled={isPasswordChangeDisabled}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0052cc] px-4 text-sm font-bold text-white hover:bg-[#0044aa] disabled:cursor-not-allowed disabled:bg-[#c7d0df] disabled:text-[#5f6878]"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    Đổi mật khẩu
+                  </button>
+                  {isPasswordChangeDisabled ? (
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[240px] -translate-x-1/2 rounded-lg bg-[#191c1e] px-3 py-2 text-center text-xs font-semibold leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                      {passwordDisabledTooltip}
+                    </span>
+                  ) : null}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    void openTwoFactorModal(
+                      profile.twoFactorEnabled ? 'disable' : 'enable',
+                    );
+                  }}
+                  className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border px-4 text-sm font-bold ${
+                    profile.twoFactorEnabled
+                      ? 'border-red-200 bg-white text-red-700 hover:bg-red-50'
+                      : 'border-[#d8dce2] bg-white text-[#2c3342] hover:bg-[#f6f7f9]'
+                  }`}
+                >
+                  <ShieldCheck
+                    className={`h-4 w-4 ${
+                      profile.twoFactorEnabled
+                        ? 'text-red-600'
+                        : 'text-[#0052cc]'
+                    }`}
+                  />
+                  {profile.twoFactorEnabled
+                    ? 'Tắt xác thực 2 yếu tố'
+                    : 'Bật xác thực 2 yếu tố'}
+                </button>
+              </div>
             </article>
 
             <article className="rounded-xl bg-white p-6 shadow-[0_4px_20px_rgba(25,28,30,0.06)]">
@@ -191,6 +474,226 @@ export default function ProfileScreen() {
             </article>
           </section>
         </div>
+
+        {isPasswordModalOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+            <button
+              type="button"
+              aria-label="Đóng đổi mật khẩu"
+              className="absolute inset-0 h-full w-full"
+              onClick={closePasswordModal}
+            />
+
+            <div
+              ref={passwordDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="change-password-title"
+              tabIndex={-1}
+              className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)] outline-none"
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#dae2ff] text-[#0052cc]">
+                    <KeyRound className="h-5 w-5" />
+                  </span>
+                  <h2 id="change-password-title" className="text-lg font-bold text-[#191c1e]">
+                    Đổi mật khẩu
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closePasswordModal}
+                  disabled={isChangingPassword}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#727687] hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Đóng"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleChangePasswordSubmit}>
+                <div className="space-y-1.5">
+                  <label htmlFor="currentPassword" className="text-sm font-semibold text-[#424655]">
+                    Mật khẩu hiện tại
+                  </label>
+                  <input
+                    id="currentPassword"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={passwordForm.currentPassword}
+                    onChange={updatePasswordField('currentPassword')}
+                    className="h-10 w-full rounded-lg border border-[#d8dce2] bg-white px-3 text-sm text-[#191c1e] outline-none focus:border-[#0052cc] focus:ring-2 focus:ring-[#dae2ff]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="newPassword" className="text-sm font-semibold text-[#424655]">
+                    Mật khẩu mới
+                  </label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    value={passwordForm.newPassword}
+                    onChange={updatePasswordField('newPassword')}
+                    className="h-10 w-full rounded-lg border border-[#d8dce2] bg-white px-3 text-sm text-[#191c1e] outline-none focus:border-[#0052cc] focus:ring-2 focus:ring-[#dae2ff]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="confirmPassword" className="text-sm font-semibold text-[#424655]">
+                    Xác nhận mật khẩu mới
+                  </label>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    value={passwordForm.confirmPassword}
+                    onChange={updatePasswordField('confirmPassword')}
+                    className="h-10 w-full rounded-lg border border-[#d8dce2] bg-white px-3 text-sm text-[#191c1e] outline-none focus:border-[#0052cc] focus:ring-2 focus:ring-[#dae2ff]"
+                  />
+                </div>
+
+                {passwordError ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {passwordError}
+                  </p>
+                ) : null}
+
+                {passwordSuccess ? (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {passwordSuccess}
+                  </p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#0052cc] px-4 text-sm font-bold text-white hover:bg-[#0044aa] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  {isChangingPassword ? 'Đang đổi mật khẩu...' : 'Cập nhật mật khẩu'}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {isTwoFactorModalOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+            <button
+              type="button"
+              aria-label={`Đóng ${
+                twoFactorMode === 'enable'
+                  ? 'bật xác thực 2 yếu tố'
+                  : 'tắt xác thực 2 yếu tố'
+              }`}
+              className="absolute inset-0 h-full w-full"
+              onClick={closeTwoFactorModal}
+            />
+
+            <div
+              ref={twoFactorDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="two-factor-title"
+              tabIndex={-1}
+              className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)] outline-none"
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#dae2ff] text-[#0052cc]">
+                    <ShieldCheck className="h-5 w-5" />
+                  </span>
+                  <h2 id="two-factor-title" className="text-lg font-bold text-[#191c1e]">
+                    {twoFactorMode === 'enable'
+                      ? 'Bật xác thực 2 yếu tố'
+                      : 'Tắt xác thực 2 yếu tố'}
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeTwoFactorModal}
+                  disabled={isSubmittingTwoFactor || isSendingTwoFactorOtp}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#727687] hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Đóng"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleTwoFactorSubmit}>
+                <div className="space-y-1.5">
+                  <label htmlFor="twoFactorOtp" className="text-sm font-semibold text-[#424655]">
+                    Mã OTP email
+                  </label>
+                  <input
+                    id="twoFactorOtp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={4}
+                    required
+                    value={twoFactorOtp}
+                    onChange={(event) => {
+                      setTwoFactorOtp(
+                        event.target.value.replace(/\D/g, '').slice(0, 4),
+                      );
+                      setTwoFactorError('');
+                    }}
+                    className="h-11 w-full rounded-lg border border-[#d8dce2] bg-white px-3 text-center text-lg font-bold tracking-[0.25em] text-[#191c1e] outline-none focus:border-[#0052cc] focus:ring-2 focus:ring-[#dae2ff]"
+                    placeholder="0000"
+                  />
+                </div>
+
+                {isSendingTwoFactorOtp ? (
+                  <p className="rounded-lg border border-[#d8dce2] bg-[#f3f4f6] px-3 py-2 text-sm text-[#424655]">
+                    Đang gửi OTP tới email của bạn...
+                  </p>
+                ) : null}
+
+                {twoFactorError ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {twoFactorError}
+                  </p>
+                ) : null}
+
+                {twoFactorSuccess ? (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {twoFactorSuccess}
+                  </p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingTwoFactor || isSendingTwoFactorOtp}
+                  className={`inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                    twoFactorMode === 'enable'
+                      ? 'bg-[#0052cc] hover:bg-[#0044aa]'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  {isSubmittingTwoFactor
+                    ? twoFactorMode === 'enable'
+                      ? 'Đang bật xác thực...'
+                      : 'Đang tắt xác thực...'
+                    : twoFactorMode === 'enable'
+                      ? 'Xác nhận bật 2FA'
+                      : 'Xác nhận tắt 2FA'}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         {isMobileRailOpen ? (
           <>
