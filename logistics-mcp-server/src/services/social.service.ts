@@ -341,4 +341,76 @@ export class SocialService {
     );
     return { success: true, action: "ACCEPTED" };
   }
+
+  async getGroupTranscript(roomId: string, actorUserId: string, limit = 15) {
+    // 1. Verify membership
+    const membership = (await this.ddbDocClient.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `ROOM#${roomId}`,
+          SK: `MEMBER#${actorUserId}`,
+        },
+      }) as any
+    )) as any;
+
+    if (!membership.Item) {
+      throw new Error("Access denied: You are not a member of this group room");
+    }
+
+    // 2. Query messages via GSI1 index
+    const result = (await this.ddbDocClient.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :gsi1pk",
+        ExpressionAttributeValues: {
+          ":gsi1pk": `CONVERSATION#${roomId}`,
+        },
+        ScanIndexForward: false,
+        Limit: limit,
+      }) as any
+    )) as any;
+
+    const messages = (result.Items || []) as any[];
+    // Reverse to get proper chronological order
+    messages.reverse();
+
+    // 3. Resolve sender names
+    const uniqueSenderIds = Array.from(new Set(messages.map((m) => m.senderId)));
+    const senderNames: Record<string, string> = {};
+
+    await Promise.all(
+      uniqueSenderIds.map(async (senderId) => {
+        const userResult = (await this.ddbDocClient.send(
+          new GetCommand({
+            TableName: this.tableName,
+            Key: {
+              PK: `USER#${senderId}`,
+              SK: `PROFILE#${senderId}`,
+            },
+          }) as any
+        )) as any;
+        senderNames[senderId] = userResult.Item?.name || "Người dùng ẩn danh";
+      })
+    );
+
+    // 4. Format transcript
+    const formattedTranscript = messages
+      .map((m) => {
+        const name = senderNames[m.senderId] || "Người dùng ẩn danh";
+        const time = new Date(m.createdAt).toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return `[${time}] ${name}: ${m.content || "[Hình ảnh/Tệp/Video]"}`;
+      })
+      .join("\n");
+
+    return {
+      roomId,
+      messageCount: messages.length,
+      transcript: formattedTranscript || "Không có tin nhắn nào trong nhóm này.",
+    };
+  }
 }
