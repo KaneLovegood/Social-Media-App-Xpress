@@ -30,7 +30,9 @@ function corsOriginsFromEnv(): (string | RegExp)[] {
 const corsOriginList = corsOriginsFromEnv();
 const isCorsOriginAllowed = (origin: string): boolean =>
   corsOriginList.some((allowedOrigin) => {
-    if (typeof allowedOrigin === 'string') return allowedOrigin === origin;
+    if (typeof allowedOrigin === 'string') {
+      return allowedOrigin === '*' || allowedOrigin === origin;
+    }
     return allowedOrigin.test(origin);
   });
 
