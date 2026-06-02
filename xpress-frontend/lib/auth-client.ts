@@ -12,6 +12,9 @@ export interface StoredUser {
   role: string;
   status: string;
   avatarUrl?: string;
+  authProvider?: 'LOCAL' | 'GOOGLE';
+  passwordAuthEnabled?: boolean;
+  twoFactorEnabled?: boolean;
 }
 
 interface SessionPayload {

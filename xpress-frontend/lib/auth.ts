@@ -8,6 +8,9 @@ export type AuthUser = {
   role: string;
   status: string;
   avatarUrl?: string;
+  authProvider?: 'LOCAL' | 'GOOGLE';
+  passwordAuthEnabled?: boolean;
+  twoFactorEnabled?: boolean;
 };
 
 export type AuthResponse = {
@@ -15,6 +18,15 @@ export type AuthResponse = {
   tokenType: string;
   user: AuthUser;
 };
+
+export type TwoFactorChallenge = {
+  requiresTwoFactor: true;
+  email: string;
+  twoFactorToken: string;
+  expiresAt: string;
+};
+
+export type AuthResult = AuthResponse | TwoFactorChallenge;
 
 type AuthPayload = {
   email: string;
@@ -55,11 +67,13 @@ type ResetPasswordPayload = {
 
 export async function login(payload: AuthPayload) {
   const device = await getDevicePayload();
-  const result = await request<AuthResponse>('/auth/login', {
+  const result = await request<AuthResult>('/auth/login', {
     ...payload,
     ...device,
   });
-  await persistSession(result);
+  if (!isTwoFactorChallenge(result)) {
+    await persistSession(result);
+  }
   return result;
 }
 
@@ -98,11 +112,22 @@ export async function loginWithGoogle(
   options: { platform?: 'web' | 'android' | 'ios' } = {},
 ) {
   const device = await getDevicePayload();
-  const result = await request<AuthResponse>('/auth/google', {
+  const result = await request<AuthResult>('/auth/google', {
     idToken,
     platform: options.platform ?? 'web',
     ...device,
   });
+  if (!isTwoFactorChallenge(result)) {
+    await persistSession(result);
+  }
+  return result;
+}
+
+export async function verifyTwoFactorLogin(payload: {
+  twoFactorToken: string;
+  code: string;
+}) {
+  const result = await request<AuthResponse>('/auth/2fa/login/verify', payload);
   await persistSession(result);
   return result;
 }
@@ -151,4 +176,10 @@ function getErrorMessage(message: unknown) {
   if (Array.isArray(message)) return message.join(', ');
   if (typeof message === 'string' && message.trim().length > 0) return message;
   return 'Đã có lỗi xảy ra, vui lòng thử lại.';
+}
+
+export function isTwoFactorChallenge(
+  result: AuthResult,
+): result is TwoFactorChallenge {
+  return 'requiresTwoFactor' in result && result.requiresTwoFactor === true;
 }

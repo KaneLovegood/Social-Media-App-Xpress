@@ -13,6 +13,7 @@ import {
 import type { CookieOptions, Request, Response } from 'express';
 import { Public } from '../../middleware/public.decorator';
 import { AuthService } from './auth.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
@@ -22,6 +23,8 @@ import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
+import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
+import { VerifyTwoFactorSetupDto } from './dto/verify-two-factor-setup.dto';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -47,10 +50,24 @@ interface AuthResponseWithRefreshToken {
     role: string;
     status: string;
     avatarUrl: string;
+    authProvider?: 'LOCAL' | 'GOOGLE';
+    passwordAuthEnabled?: boolean;
+    twoFactorEnabled: boolean;
   };
 }
 
 type PublicAuthResponse = Omit<AuthResponseWithRefreshToken, 'refreshToken'>;
+
+interface TwoFactorChallengeResponse {
+  requiresTwoFactor: true;
+  email: string;
+  twoFactorToken: string;
+  expiresAt: string;
+}
+
+type AuthOrTwoFactorResponse =
+  | AuthResponseWithRefreshToken
+  | TwoFactorChallengeResponse;
 
 @Controller('auth')
 export class AuthController {
@@ -85,7 +102,7 @@ export class AuthController {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
-    return this.withRefreshCookie(req, res, authResponse);
+    return this.withRefreshCookieWhenAuthenticated(req, res, authResponse);
   }
 
   @Public()
@@ -96,6 +113,20 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const authResponse = await this.authService.loginWithGoogle(dto, {
+      ipAddress: this.resolveIp(req),
+      userAgent: req.headers['user-agent'] ?? '',
+    });
+    return this.withRefreshCookieWhenAuthenticated(req, res, authResponse);
+  }
+
+  @Public()
+  @Post('2fa/login/verify')
+  async verifyTwoFactorLogin(
+    @Body() dto: VerifyTwoFactorLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authResponse = await this.authService.verifyTwoFactorLogin(dto, {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
@@ -118,6 +149,68 @@ export class AuthController {
   @Post('password/reset')
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  @Patch('password')
+  changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    const userId = req.user?.userId;
+    const sessionId = req.user?.sessionId;
+    if (!userId || !sessionId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.changePassword(userId, sessionId, dto);
+  }
+
+  @Post('2fa/setup/send')
+  sendTwoFactorSetupOtp(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.sendTwoFactorSetupOtp(userId);
+  }
+
+  @Patch('2fa/setup/verify')
+  enableTwoFactor(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: VerifyTwoFactorSetupDto,
+  ) {
+    const userId = req.user?.userId;
+    const sessionId = req.user?.sessionId;
+    if (!userId || !sessionId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.enableTwoFactor(userId, sessionId, dto);
+  }
+
+  @Post('2fa/disable/send')
+  sendTwoFactorDisableOtp(@Req() req: AuthenticatedRequest) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.sendTwoFactorDisableOtp(userId);
+  }
+
+  @Patch('2fa/disable/verify')
+  disableTwoFactor(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: VerifyTwoFactorSetupDto,
+  ) {
+    const userId = req.user?.userId;
+    const sessionId = req.user?.sessionId;
+    if (!userId || !sessionId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.disableTwoFactor(userId, sessionId, dto);
   }
 
   @Public()
@@ -199,11 +292,12 @@ export class AuthController {
   @Patch('avatar')
   updateAvatar(@Req() req: AuthenticatedRequest, @Body() dto: UpdateAvatarDto) {
     const userId = req.user?.userId;
-    if (!userId) {
+    const sessionId = req.user?.sessionId;
+    if (!userId || !sessionId) {
       throw new UnauthorizedException('Unauthorized');
     }
 
-    return this.authService.updateAvatar(userId, dto);
+    return this.authService.updateAvatar(userId, sessionId, dto);
   }
 
   private resolveIp(req: Request): string {
@@ -228,6 +322,18 @@ export class AuthController {
       this.refreshCookieOptions(req),
     );
     return responseBody;
+  }
+
+  private withRefreshCookieWhenAuthenticated(
+    req: Request,
+    res: Response,
+    authResponse: AuthOrTwoFactorResponse,
+  ): PublicAuthResponse | TwoFactorChallengeResponse {
+    if ('requiresTwoFactor' in authResponse) {
+      return authResponse;
+    }
+
+    return this.withRefreshCookie(req, res, authResponse);
   }
 
   private clearRefreshCookie(req: Request, res: Response): void {

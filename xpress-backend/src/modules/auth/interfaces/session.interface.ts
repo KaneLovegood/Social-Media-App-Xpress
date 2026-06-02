@@ -1,3 +1,5 @@
+import type { AuthProvider } from './user.interface';
+
 export type SessionStatus = 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
 
 export interface SessionEntity {
@@ -8,6 +10,7 @@ export interface SessionEntity {
   userId: string;
   sessionId: string;
   status: SessionStatus;
+  authProvider?: AuthProvider;
 
   refreshTokenHash: string;
   refreshTokenExpiresAt: string;

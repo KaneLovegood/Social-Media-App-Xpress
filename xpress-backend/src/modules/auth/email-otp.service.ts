@@ -572,6 +572,16 @@ export class EmailOtpService {
     if (purpose === 'CHANGE_PASSWORD') {
       return isVietnamese ? 'quen mat khau' : 'password reset';
     }
+    if (purpose === 'TWO_FACTOR_SETUP') {
+      return isVietnamese
+        ? 'bat xac thuc 2 yeu to'
+        : 'two-factor authentication setup';
+    }
+    if (purpose === 'TWO_FACTOR_DISABLE') {
+      return isVietnamese
+        ? 'tat xac thuc 2 yeu to'
+        : 'two-factor authentication disable';
+    }
     return isVietnamese ? 'dang nhap' : 'login';
   }
 

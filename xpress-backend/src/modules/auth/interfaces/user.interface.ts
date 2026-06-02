@@ -1,5 +1,6 @@
 export type UserRole = 'CUSTOMER' | 'DRIVER' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'BANNED';
+export type AuthProvider = 'LOCAL' | 'GOOGLE';
 
 export interface UserEntity {
   PK: string;
@@ -15,6 +16,9 @@ export interface UserEntity {
   role: UserRole;
   status: UserStatus;
   avatarUrl?: string;
+  authProvider?: AuthProvider;
+  passwordAuthEnabled?: boolean;
+  twoFactorEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }

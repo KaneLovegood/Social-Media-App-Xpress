@@ -14,6 +14,7 @@ import { FirebaseAdminService } from '../../common/firebase/firebase-admin.servi
 import { DeviceSessionService } from '../device-session/device-session.service';
 import { AuthSessionGateway } from './auth-session.gateway';
 import { EmailOtpService } from './email-otp.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
@@ -23,6 +24,8 @@ import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { UpdateAvatarDto } from './dto/update-avatar.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
+import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
+import { VerifyTwoFactorSetupDto } from './dto/verify-two-factor-setup.dto';
 import {
   EmailOtpEntity,
   EmailOtpPurpose,
@@ -31,7 +34,7 @@ import { SessionEntity } from './interfaces/session.interface';
 import { EmailOtpRepository } from './repositories/email-otp.repository';
 import { UsersRepository } from './repositories/users.repository';
 import { SessionRepository } from './repositories/session.repository';
-import { UserEntity } from './interfaces/user.interface';
+import { AuthProvider, UserEntity } from './interfaces/user.interface';
 
 interface JwtPayload {
   sub: string;
@@ -48,6 +51,16 @@ interface OtpTokenPayload {
   purpose: EmailOtpPurpose;
 }
 
+interface TwoFactorTokenPayload {
+  type: '2fa';
+  sub: string;
+  email: string;
+  deviceId: string;
+  authProvider?: AuthProvider;
+  deviceName?: string;
+  timezone?: string;
+}
+
 interface SessionClientContext {
   ipAddress?: string;
   userAgent?: string;
@@ -62,6 +75,7 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly accessTokenExpiresIn = '10m';
   private readonly otpTokenExpiresIn = '10m';
+  private readonly twoFactorTokenExpiresIn = '10m';
   private readonly emailOtpExpiresInMs = 10 * 60 * 1000;
   private readonly emailOtpMaxAttempts = 5;
   private readonly refreshTokenExpiresInMs = 7 * 24 * 60 * 60 * 1000;
@@ -106,6 +120,8 @@ export class AuthService {
       passwordHash,
       role: 'CUSTOMER',
       status: 'ACTIVE',
+      authProvider: 'LOCAL',
+      passwordAuthEnabled: true,
       createdAt: now,
       updatedAt: now,
     };
@@ -129,6 +145,7 @@ export class AuthService {
       deviceId,
       deviceName,
       timezone,
+      authProvider: 'LOCAL',
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
@@ -138,14 +155,29 @@ export class AuthService {
     const user = await this.usersRepository.findByEmail(dto.email);
     if (!user) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
 
+    if (!this.canUsePasswordAuth(user)) {
+      throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+    }
+
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+
+    if (user.twoFactorEnabled) {
+      return this.startTwoFactorLoginChallenge(user, {
+        deviceId: dto.deviceId,
+        deviceName: dto.deviceName,
+        timezone: dto.timezone,
+        authProvider: 'LOCAL',
+      });
+    }
+
     await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
       deviceName: dto.deviceName,
       timezone: dto.timezone,
+      authProvider: 'LOCAL',
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
@@ -167,75 +199,22 @@ export class AuthService {
       if (!existed) {
         throw new BadRequestException('Email chưa được đăng ký');
       }
+      if (purpose === 'CHANGE_PASSWORD' && !this.canUsePasswordAuth(existed)) {
+        throw new BadRequestException(
+          'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+        );
+      }
     }
 
-    const code = this.generateOtpCode();
-    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
-    const codeHash = await bcrypt.hash(code, rounds);
-    const now = new Date().toISOString();
-    const expiresAt = new Date(
-      Date.now() + this.emailOtpExpiresInMs,
-    ).toISOString();
-
-    const otp: EmailOtpEntity = {
-      PK: `OTP#${normalizedEmail}`,
-      SK: `OTP#${purpose}`,
-      entityType: 'EMAIL_OTP',
-      email: normalizedEmail,
-      purpose,
-      codeHash,
-      expiresAt,
-      attempts: 0,
-      maxAttempts: this.emailOtpMaxAttempts,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.emailOtpRepository.upsertOtp(otp);
-    const channel = await this.emailOtpService.sendOtpEmail(
+    return this.createAndSendEmailOtp(
       normalizedEmail,
-      code,
       purpose,
     );
-
-    return {
-      success: true,
-      purpose,
-      expiresAt,
-      channel,
-    };
   }
 
   async verifyEmailOtp(dto: VerifyEmailOtpDto) {
     const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
-    const otp = await this.emailOtpRepository.findOtp(
-      normalizedEmail,
-      dto.purpose,
-    );
-    if (!otp) {
-      throw new BadRequestException('OTP không tồn tại hoặc đã hết hạn');
-    }
-
-    if (Date.parse(otp.expiresAt) <= Date.now()) {
-      await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
-      throw new BadRequestException('OTP đã hết hạn');
-    }
-
-    if (otp.attempts >= otp.maxAttempts) {
-      await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
-      throw new BadRequestException('OTP đã vượt quá số lần thử');
-    }
-
-    const matched = await bcrypt.compare(dto.code, otp.codeHash);
-    if (!matched) {
-      await this.emailOtpRepository.incrementAttempts(
-        normalizedEmail,
-        dto.purpose,
-      );
-      throw new BadRequestException('OTP không chính xác');
-    }
-
-    await this.emailOtpRepository.deleteOtp(normalizedEmail, dto.purpose);
+    await this.consumeEmailOtp(normalizedEmail, dto.purpose, dto.code);
     const otpToken = await this.jwtService.signAsync<OtpTokenPayload>(
       {
         type: 'otp',
@@ -270,6 +249,11 @@ export class AuthService {
     if (!user) {
       throw new BadRequestException('Email chưa được đăng ký');
     }
+    if (!this.canUsePasswordAuth(user)) {
+      throw new BadRequestException(
+        'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+      );
+    }
 
     let payload: OtpTokenPayload;
     try {
@@ -298,6 +282,207 @@ export class AuthService {
     return {
       success: true,
     };
+  }
+
+  async changePassword(
+    userId: string,
+    currentSessionId: string,
+    dto: ChangePasswordDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+    if (
+      currentSession?.authProvider === 'GOOGLE' ||
+      !this.canUsePasswordAuth(user)
+    ) {
+      throw new BadRequestException(
+        'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+      );
+    }
+
+    const currentPasswordMatched = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!currentPasswordMatched) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    const isReusingCurrentPassword = await bcrypt.compare(
+      dto.newPassword,
+      user.passwordHash,
+    );
+    if (isReusingCurrentPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, rounds);
+    await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
+
+    const activeSessions = await this.sessionRepository.findActiveSessions(
+      user.userId,
+    );
+    const otherSessions = activeSessions.filter(
+      (session) => session.sessionId !== currentSessionId,
+    );
+
+    await Promise.all(
+      otherSessions.map(async (session) => {
+        await this.sessionRepository.deactivateSession(
+          user.userId,
+          session.sessionId,
+        );
+        this.authSessionGateway.notifySessionRevoked(user.userId, {
+          sessionId: session.sessionId,
+          revokedAt: new Date().toISOString(),
+        });
+      }),
+    );
+
+    return {
+      success: true,
+    };
+  }
+
+  async sendTwoFactorSetupOtp(userId: string) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố đã được bật');
+    }
+
+    return this.createAndSendEmailOtp(user.email, 'TWO_FACTOR_SETUP');
+  }
+
+  async sendTwoFactorDisableOtp(userId: string) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố chưa được bật');
+    }
+
+    return this.createAndSendEmailOtp(user.email, 'TWO_FACTOR_DISABLE');
+  }
+
+  async enableTwoFactor(
+    userId: string,
+    currentSessionId: string,
+    dto: VerifyTwoFactorSetupDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+
+    if (!user.twoFactorEnabled) {
+      await this.consumeEmailOtp(
+        user.email,
+        'TWO_FACTOR_SETUP',
+        dto.code,
+      );
+      await this.usersRepository.updateTwoFactorEnabled(user.userId, true);
+    }
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: true,
+      },
+    };
+  }
+
+  async disableTwoFactor(
+    userId: string,
+    currentSessionId: string,
+    dto: VerifyTwoFactorSetupDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố chưa được bật');
+    }
+
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+    await this.consumeEmailOtp(user.email, 'TWO_FACTOR_DISABLE', dto.code);
+    await this.usersRepository.updateTwoFactorEnabled(user.userId, false);
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: false,
+      },
+    };
+  }
+
+  async verifyTwoFactorLogin(
+    dto: VerifyTwoFactorLoginDto,
+    context: SessionClientContext = {},
+  ) {
+    const payload = await this.verifyTwoFactorToken(dto.twoFactorToken);
+    const user = await this.usersRepository.findByUserId(payload.sub);
+    if (!user || user.email !== payload.email) {
+      throw new UnauthorizedException('Xác thực 2 yếu tố không hợp lệ');
+    }
+
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Tài khoản chưa bật xác thực 2 yếu tố');
+    }
+
+    await this.consumeEmailOtp(user.email, 'LOGIN', dto.code);
+    await this.releaseOtherDeviceSessions(user.userId, payload.deviceId);
+
+    return this.buildAuthResponse(user, {
+      deviceId: payload.deviceId,
+      deviceName: payload.deviceName,
+      timezone: payload.timezone,
+      authProvider: payload.authProvider ?? 'LOCAL',
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
   }
 
   /**
@@ -357,6 +542,8 @@ export class AuthService {
         role: 'CUSTOMER',
         status: 'ACTIVE',
         avatarUrl: decoded.picture,
+        authProvider: 'GOOGLE',
+        passwordAuthEnabled: false,
         createdAt: now,
         updatedAt: now,
       };
@@ -366,12 +553,23 @@ export class AuthService {
         `Created new user from Firebase auth: ${user.userId} (uid=${decoded.uid})`,
       );
     }
+
+    if (user.twoFactorEnabled) {
+      return this.startTwoFactorLoginChallenge(user, {
+        deviceId: dto.deviceId,
+        deviceName: dto.deviceName ?? 'Google Sign-in',
+        timezone: dto.timezone,
+        authProvider: 'GOOGLE',
+      });
+    }
+
     await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
 
     return this.buildAuthResponse(user, {
       deviceId: dto.deviceId,
       deviceName: dto.deviceName ?? 'Google Sign-in',
       timezone: dto.timezone,
+      authProvider: 'GOOGLE',
       ipAddress: context.ipAddress ?? '',
       userAgent: context.userAgent ?? '',
     });
@@ -400,11 +598,19 @@ export class AuthService {
     }
   }
 
-  async updateAvatar(userId: string, dto: UpdateAvatarDto) {
+  async updateAvatar(
+    userId: string,
+    currentSessionId: string,
+    dto: UpdateAvatarDto,
+  ) {
     const user = await this.usersRepository.findByUserId(userId);
     if (!user) {
       throw new UnauthorizedException('Unauthorized');
     }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
 
     const avatarUrl = dto.avatarUrl.trim();
     await this.usersRepository.updateAvatarUrl(userId, avatarUrl);
@@ -418,6 +624,12 @@ export class AuthService {
         role: user.role,
         status: user.status,
         avatarUrl,
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
       },
     };
   }
@@ -551,6 +763,7 @@ export class AuthService {
       deviceId: string;
       deviceName?: string;
       timezone?: string;
+      authProvider: AuthProvider;
       ipAddress?: string;
       userAgent?: string;
     },
@@ -569,24 +782,30 @@ export class AuthService {
 
     const now = new Date().toISOString();
     const sessionId = existingSession?.sessionId ?? randomUUID();
-    const session: SessionEntity = existingSession ?? {
-      PK: `USER#${user.userId}`,
-      SK: `SESSION#${sessionId}`,
-      entityType: 'SESSION',
-      userId: user.userId,
-      sessionId,
-      status: 'ACTIVE',
-      refreshTokenHash: '',
-      refreshTokenExpiresAt: now,
-      deviceFingerprintHash,
-      deviceName: sessionContext.deviceName,
-      userAgent: sessionContext.userAgent,
-      ipAddress: sessionContext.ipAddress,
-      timezone: sessionContext.timezone,
-      createdAt: now,
-      updatedAt: now,
-      lastSeenAt: now,
-    };
+    const session: SessionEntity = existingSession
+      ? {
+          ...existingSession,
+          authProvider: sessionContext.authProvider,
+        }
+      : {
+          PK: `USER#${user.userId}`,
+          SK: `SESSION#${sessionId}`,
+          entityType: 'SESSION',
+          userId: user.userId,
+          sessionId,
+          status: 'ACTIVE',
+          authProvider: sessionContext.authProvider,
+          refreshTokenHash: '',
+          refreshTokenExpiresAt: now,
+          deviceFingerprintHash,
+          deviceName: sessionContext.deviceName,
+          userAgent: sessionContext.userAgent,
+          ipAddress: sessionContext.ipAddress,
+          timezone: sessionContext.timezone,
+          createdAt: now,
+          updatedAt: now,
+          lastSeenAt: now,
+        };
 
     const response = await this.buildAuthResponseFromSession(user, session);
 
@@ -615,6 +834,140 @@ export class AuthService {
     }
 
     return response;
+  }
+
+  private async startTwoFactorLoginChallenge(
+    user: UserEntity,
+    sessionContext: {
+      deviceId: string;
+      deviceName?: string;
+      timezone?: string;
+      authProvider: AuthProvider;
+    },
+  ) {
+    const otp = await this.createAndSendEmailOtp(user.email, 'LOGIN');
+    const twoFactorToken =
+      await this.jwtService.signAsync<TwoFactorTokenPayload>(
+        {
+          type: '2fa',
+          sub: user.userId,
+          email: user.email,
+          deviceId: sessionContext.deviceId,
+          authProvider: sessionContext.authProvider,
+          deviceName: sessionContext.deviceName,
+          timezone: sessionContext.timezone,
+        },
+        {
+          expiresIn: this.twoFactorTokenExpiresIn,
+        },
+      );
+
+    return {
+      requiresTwoFactor: true as const,
+      email: user.email,
+      twoFactorToken,
+      expiresAt: otp.expiresAt,
+    };
+  }
+
+  private async verifyTwoFactorToken(
+    token: string,
+  ): Promise<TwoFactorTokenPayload> {
+    let payload: TwoFactorTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<TwoFactorTokenPayload>(token);
+    } catch {
+      throw new UnauthorizedException(
+        'Phiên xác thực 2 yếu tố không hợp lệ hoặc đã hết hạn',
+      );
+    }
+
+    if (
+      payload.type !== '2fa' ||
+      !payload.sub ||
+      !payload.email ||
+      !payload.deviceId
+    ) {
+      throw new UnauthorizedException('Phiên xác thực 2 yếu tố không hợp lệ');
+    }
+
+    return payload;
+  }
+
+  private async createAndSendEmailOtp(
+    normalizedEmail: string,
+    purpose: EmailOtpPurpose,
+  ) {
+    const code = this.generateOtpCode();
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const codeHash = await bcrypt.hash(code, rounds);
+    const now = new Date().toISOString();
+    const expiresAt = new Date(
+      Date.now() + this.emailOtpExpiresInMs,
+    ).toISOString();
+
+    const otp: EmailOtpEntity = {
+      PK: `OTP#${normalizedEmail}`,
+      SK: `OTP#${purpose}`,
+      entityType: 'EMAIL_OTP',
+      email: normalizedEmail,
+      purpose,
+      codeHash,
+      expiresAt,
+      attempts: 0,
+      maxAttempts: this.emailOtpMaxAttempts,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.emailOtpRepository.upsertOtp(otp);
+    const channel = await this.emailOtpService.sendOtpEmail(
+      normalizedEmail,
+      code,
+      purpose,
+    );
+
+    return {
+      success: true,
+      purpose,
+      expiresAt,
+      channel,
+    };
+  }
+
+  private async consumeEmailOtp(
+    normalizedEmail: string,
+    purpose: EmailOtpPurpose,
+    code: string,
+  ): Promise<void> {
+    const otp = await this.emailOtpRepository.findOtp(
+      normalizedEmail,
+      purpose,
+    );
+    if (!otp) {
+      throw new BadRequestException('OTP không tồn tại hoặc đã hết hạn');
+    }
+
+    if (Date.parse(otp.expiresAt) <= Date.now()) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
+      throw new BadRequestException('OTP đã hết hạn');
+    }
+
+    if (otp.attempts >= otp.maxAttempts) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
+      throw new BadRequestException('OTP đã vượt quá số lần thử');
+    }
+
+    const matched = await bcrypt.compare(code, otp.codeHash);
+    if (!matched) {
+      await this.emailOtpRepository.incrementAttempts(
+        normalizedEmail,
+        purpose,
+      );
+      throw new BadRequestException('OTP không chính xác');
+    }
+
+    await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
   }
 
   private inferPlatform(userAgent?: string): string {
@@ -687,6 +1040,10 @@ export class AuthService {
         role: user.role,
         status: user.status,
         avatarUrl: user.avatarUrl ?? '',
+        authProvider: session.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          session.authProvider !== 'GOOGLE' && this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
       },
     };
   }
@@ -706,7 +1063,12 @@ export class AuthService {
       session.sessionId,
       session.refreshTokenHash,
       session.refreshTokenExpiresAt,
+      session.authProvider,
     );
+  }
+
+  private canUsePasswordAuth(user: UserEntity): boolean {
+    return user.passwordAuthEnabled !== false && user.authProvider !== 'GOOGLE';
   }
 
   /**

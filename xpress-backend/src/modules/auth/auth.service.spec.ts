@@ -1,5 +1,5 @@
 import * as bcrypt from 'bcrypt';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AuthSessionGateway } from './auth-session.gateway';
@@ -21,7 +21,9 @@ describe('AuthService', () => {
   const usersRepository = {
     normalizeEmail: jest.fn((email: string) => email.trim().toLowerCase()),
     findByEmail: jest.fn(),
+    findByUserId: jest.fn(),
     updatePasswordHash: jest.fn(),
+    updateTwoFactorEnabled: jest.fn(),
   } as unknown as jest.Mocked<UsersRepository>;
 
   const emailOtpRepository = {
@@ -37,6 +39,7 @@ describe('AuthService', () => {
   };
   const sessionRepository = {
     deactivateAllSessions: jest.fn(),
+    findSessionById: jest.fn(),
     findActiveSessions: jest.fn(),
     findActiveSessionByFingerprint: jest.fn(),
     deactivateSession: jest.fn(),
@@ -90,6 +93,11 @@ describe('AuthService', () => {
       deviceSessionService as never,
       firebaseAdmin as never,
     );
+    (sessionRepository.findSessionById as jest.Mock).mockResolvedValue({
+      sessionId: 'session-1',
+      authProvider: 'LOCAL',
+      status: 'ACTIVE',
+    });
   });
 
   it('sends change-password OTP only for registered users', async () => {
@@ -168,6 +176,159 @@ describe('AuthService', () => {
     );
     expect(sessionRepository.deactivateAllSessions).toHaveBeenCalledWith(
       'user-1',
+    );
+  });
+
+  it('rejects change password when current password is wrong', async () => {
+    (usersRepository.findByUserId as jest.Mock).mockResolvedValue({
+      userId: 'user-1',
+      email: 'test@example.com',
+      passwordHash: 'old-hash',
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+    await expect(
+      authService.changePassword('user-1', 'session-1', {
+        currentPassword: 'WrongPassword123',
+        newPassword: 'NewPassword123',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(usersRepository.updatePasswordHash).not.toHaveBeenCalled();
+  });
+
+  it('rejects change password for Google-authenticated sessions', async () => {
+    (usersRepository.findByUserId as jest.Mock).mockResolvedValue({
+      userId: 'user-1',
+      email: 'test@example.com',
+      passwordHash: 'old-hash',
+      authProvider: 'LOCAL',
+      passwordAuthEnabled: true,
+    });
+    (sessionRepository.findSessionById as jest.Mock).mockResolvedValueOnce({
+      sessionId: 'session-1',
+      authProvider: 'GOOGLE',
+      status: 'ACTIVE',
+    });
+
+    await expect(
+      authService.changePassword('user-1', 'session-1', {
+        currentPassword: 'OldPassword123',
+        newPassword: 'NewPassword123',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+    expect(usersRepository.updatePasswordHash).not.toHaveBeenCalled();
+  });
+
+  it('updates password for the current user and keeps current session active', async () => {
+    (usersRepository.findByUserId as jest.Mock).mockResolvedValue({
+      userId: 'user-1',
+      email: 'test@example.com',
+      passwordHash: 'old-hash',
+    });
+    (bcrypt.compare as jest.Mock)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    (bcrypt.hash as jest.Mock).mockResolvedValue('new-hash');
+    (sessionRepository.findActiveSessions as jest.Mock).mockResolvedValue([
+      { sessionId: 'session-1', status: 'ACTIVE' },
+      { sessionId: 'session-2', status: 'ACTIVE' },
+    ]);
+    (sessionRepository.deactivateSession as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+
+    await expect(
+      authService.changePassword('user-1', 'session-1', {
+        currentPassword: 'OldPassword123',
+        newPassword: 'NewPassword123',
+      }),
+    ).resolves.toEqual({ success: true });
+
+    expect(usersRepository.updatePasswordHash).toHaveBeenCalledWith(
+      'user-1',
+      'new-hash',
+    );
+    expect(sessionRepository.deactivateSession).toHaveBeenCalledWith(
+      'user-1',
+      'session-2',
+    );
+    expect(sessionRepository.deactivateSession).not.toHaveBeenCalledWith(
+      'user-1',
+      'session-1',
+    );
+  });
+
+  it('sends disable-two-factor OTP only when two-factor auth is enabled', async () => {
+    (usersRepository.findByUserId as jest.Mock).mockResolvedValue({
+      userId: 'user-1',
+      email: 'test@example.com',
+      twoFactorEnabled: true,
+    });
+    (bcrypt.hash as jest.Mock).mockResolvedValue('otp-hash');
+    (emailOtpRepository.upsertOtp as jest.Mock).mockResolvedValue(undefined);
+    (emailOtpService.sendOtpEmail as jest.Mock).mockResolvedValue('console');
+
+    await authService.sendTwoFactorDisableOtp('user-1');
+
+    expect(emailOtpRepository.upsertOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'test@example.com',
+        purpose: 'TWO_FACTOR_DISABLE',
+        codeHash: 'otp-hash',
+      }),
+    );
+    expect(emailOtpService.sendOtpEmail).toHaveBeenCalledWith(
+      'test@example.com',
+      expect.any(String),
+      'TWO_FACTOR_DISABLE',
+    );
+  });
+
+  it('disables two-factor auth after a valid OTP', async () => {
+    (usersRepository.findByUserId as jest.Mock).mockResolvedValue({
+      userId: 'user-1',
+      name: 'Test',
+      email: 'test@example.com',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      passwordHash: 'hash',
+      twoFactorEnabled: true,
+    });
+    (emailOtpRepository.findOtp as jest.Mock).mockResolvedValue({
+      email: 'test@example.com',
+      purpose: 'TWO_FACTOR_DISABLE',
+      codeHash: 'otp-hash',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      attempts: 0,
+      maxAttempts: 5,
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    (usersRepository.updateTwoFactorEnabled as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+
+    await expect(
+      authService.disableTwoFactor('user-1', 'session-1', {
+        code: '1234',
+      }),
+    ).resolves.toEqual({
+      success: true,
+      user: expect.objectContaining({
+        userId: 'user-1',
+        twoFactorEnabled: false,
+      }),
+    });
+
+    expect(emailOtpRepository.deleteOtp).toHaveBeenCalledWith(
+      'test@example.com',
+      'TWO_FACTOR_DISABLE',
+    );
+    expect(usersRepository.updateTwoFactorEnabled).toHaveBeenCalledWith(
+      'user-1',
+      false,
     );
   });
 
