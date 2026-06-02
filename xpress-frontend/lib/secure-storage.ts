@@ -21,7 +21,6 @@ let hydrationPromise: Promise<void> | null = null;
 
 const HYDRATION_KEYS = [
   'xpress_access_token',
-  'xpress_refresh_token',
   'xpress_user',
   'xpress_device_id',
 ];
@@ -30,7 +29,7 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-function useNative(): boolean {
+function shouldUseNativeStorage(): boolean {
   return isBrowser() && Capacitor.isNativePlatform();
 }
 
@@ -39,7 +38,7 @@ export async function hydrateSecureStorage(): Promise<void> {
   if (hydrationPromise) return hydrationPromise;
 
   hydrationPromise = (async () => {
-    if (useNative()) {
+    if (shouldUseNativeStorage()) {
       await Promise.all(
         HYDRATION_KEYS.map(async (key) => {
           const { value } = await Preferences.get({ key });
@@ -97,7 +96,7 @@ export async function secureSet(key: string, value: string): Promise<void> {
     /* ignore */
   }
 
-  if (useNative()) {
+  if (shouldUseNativeStorage()) {
     await Preferences.set({ key, value });
   }
 }
@@ -112,7 +111,7 @@ export async function secureRemove(key: string): Promise<void> {
     /* ignore */
   }
 
-  if (useNative()) {
+  if (shouldUseNativeStorage()) {
     await Preferences.remove({ key });
   }
 }

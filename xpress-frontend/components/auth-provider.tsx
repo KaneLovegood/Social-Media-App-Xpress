@@ -9,7 +9,7 @@ import type { Socket } from 'socket.io-client';
 
 import {
   forceLogout,
-  getAccessToken,
+  getValidAccessToken,
   hydrateAuth,
   validateSession,
 } from '@/lib/auth-client';
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastTokenRef = useRef<string>('');
   const isHandlingForceLogoutRef = useRef(false);
 
-  // Hydrate tokens on mount so every downstream sync `getAccessToken()`
+  // Hydrate tokens on mount so every downstream auth helper
   // call sees the real value (important because the first call often
   // happens before React effects flush on native).
   useEffect(() => {
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await hydrateAuth();
       if (cancelled) return;
 
-      const token = getAccessToken();
+      const token = await getValidAccessToken();
       if (!token) {
         teardownSocket();
         return;
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       await hydrateAuth();
       if (cancelled) return;
-      if (!getAccessToken()) return;
+      if (!(await getValidAccessToken())) return;
       // Skip on auth pages themselves
       if (pathname.startsWith('/login') || pathname.startsWith('/register'))
         return;
@@ -160,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         async ({ isActive }) => {
           if (!isActive) return;
           await hydrateAuth();
-          if (!getAccessToken()) return;
+          if (!(await getValidAccessToken())) return;
           const ok = await validateSession();
           if (!ok) {
             toast.error(

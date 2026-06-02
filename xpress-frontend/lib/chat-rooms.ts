@@ -1,4 +1,3 @@
-﻿import { getAccessToken } from "./auth-client";
 import { authFetch } from './auth-client';
 
 const API_BASE_URL =

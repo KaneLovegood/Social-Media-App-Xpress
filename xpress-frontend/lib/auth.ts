@@ -12,7 +12,6 @@ export type AuthUser = {
 
 export type AuthResponse = {
   accessToken: string;
-  refreshToken: string;
   tokenType: string;
   user: AuthUser;
 };
@@ -117,6 +116,7 @@ async function request<TResponse>(
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(payload),
   });
 

@@ -64,8 +64,9 @@ export class AuthService {
   private readonly otpTokenExpiresIn = '10m';
   private readonly emailOtpExpiresInMs = 10 * 60 * 1000;
   private readonly emailOtpMaxAttempts = 5;
+  private readonly refreshTokenExpiresInMs = 7 * 24 * 60 * 60 * 1000;
   private readonly refreshTokenExpiresIn =
-    process.env.REFRESH_TOKEN_EXPIRES_IN ?? '30d';
+    process.env.REFRESH_TOKEN_EXPIRES_IN ?? '7d';
   private readonly refreshTokenSecret =
     process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
 
@@ -425,6 +426,9 @@ export class AuthService {
     if (!this.refreshTokenSecret) {
       throw new UnauthorizedException('Refresh token chưa được cấu hình');
     }
+    if (!dto.refreshToken) {
+      throw new UnauthorizedException('Refresh token không hợp lệ');
+    }
 
     let payload: JwtPayload;
     try {
@@ -658,7 +662,7 @@ export class AuthService {
     const refreshTokenExpiresAt =
       decodedRefresh?.exp != null
         ? new Date(decodedRefresh.exp * 1000).toISOString()
-        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        : new Date(Date.now() + this.refreshTokenExpiresInMs).toISOString();
     const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
     const refreshTokenHash = await bcrypt.hash(refreshToken, rounds);
     await this.upsertSession({
