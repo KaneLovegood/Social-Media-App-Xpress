@@ -1,5 +1,5 @@
 import * as bcrypt from 'bcrypt';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AuthSessionGateway } from './auth-session.gateway';
@@ -171,7 +171,7 @@ describe('AuthService', () => {
     );
   });
 
-  it('blocks login when user still has an active session', async () => {
+  it('deactivates stale sessions and allows login on a new device', async () => {
     (usersRepository.findByEmail as jest.Mock).mockResolvedValue({
       userId: 'user-1',
       email: 'test@example.com',
@@ -187,9 +187,13 @@ describe('AuthService', () => {
         status: 'ACTIVE',
       },
     ]);
-    (
-      sessionRepository.findActiveSessionByFingerprint as jest.Mock
-    ).mockResolvedValue(null);
+    (sessionRepository.deactivateSession as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+
+    const buildAuthResponseSpy = jest
+      .spyOn(authService as any, 'buildAuthResponse')
+      .mockResolvedValue({ success: true });
 
     await expect(
       authService.login({
@@ -199,9 +203,14 @@ describe('AuthService', () => {
         deviceName: 'Chrome',
         timezone: 'Asia/Ho_Chi_Minh',
       }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).resolves.toEqual({ success: true });
 
     expect(sessionRepository.findActiveSessions).toHaveBeenCalledWith('user-1');
+    expect(sessionRepository.deactivateSession).toHaveBeenCalledWith(
+      'user-1',
+      'session-1',
+    );
+    expect(buildAuthResponseSpy).toHaveBeenCalled();
   });
 
   it('allows login on the same device when active session exists', async () => {
