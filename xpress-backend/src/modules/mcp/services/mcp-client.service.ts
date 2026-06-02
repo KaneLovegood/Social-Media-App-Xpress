@@ -92,6 +92,8 @@ export class McpClientService implements OnModuleInit, OnModuleDestroy {
   }
 
   async callTool(name: string, args: Record<string, unknown>) {
-    return this.client.callTool({ name, arguments: args });
+    return this.client.callTool({ name, arguments: args }, undefined, {
+      timeout: 180000,
+    });
   }
 }

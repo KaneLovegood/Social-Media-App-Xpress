@@ -37,10 +37,7 @@ const executionService = new ExecutionService(OPENROUTER_API_KEY);
 const webSearchService = new WebSearchService(SERPER_API_KEY);
 const socialService = new SocialService();
 
-const server = new McpServer({
-  name: "logistics-mcp-server",
-  version: "1.2.0",
-});
+function registerTools(server: McpServer) {
 
 // --- 5.1 Knowledge Tools ---
 
@@ -322,6 +319,7 @@ server.tool(
     }
   }
 );
+}
 
 // --- Execution ---
 async function main() {
@@ -368,7 +366,13 @@ async function main() {
           activeTransports.delete(transport.sessionId);
         });
 
-        await server.connect(transport);
+        const connectionServer = new McpServer({
+          name: "logistics-mcp-server",
+          version: "1.2.0",
+        });
+        registerTools(connectionServer);
+
+        await connectionServer.connect(transport);
       });
 
       app.post("/messages", express.json(), async (req, res) => {
@@ -404,6 +408,12 @@ async function main() {
       });
     } else {
       // --- CHẾ ĐỘ 2: CHẠY CỤC BỘ DƯỚI LOCAL (STDIO TRANSPORT) ---
+      const server = new McpServer({
+        name: "logistics-mcp-server",
+        version: "1.2.0",
+      });
+      registerTools(server);
+
       const transport = new StdioServerTransport();
       await server.connect(transport);
       console.error("🔌 Logistics MCP Server running locally on stdio");
