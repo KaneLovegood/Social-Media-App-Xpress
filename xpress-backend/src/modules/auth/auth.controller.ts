@@ -7,9 +7,10 @@ import {
   Patch,
   Post,
   Req,
+  Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import { Public } from '../../middleware/public.decorator';
 import { AuthService } from './auth.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
@@ -31,35 +32,74 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+interface AuthResponseWithRefreshToken {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  session: {
+    sessionId: string;
+    deviceName: string;
+  };
+  user: {
+    userId: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    avatarUrl: string;
+  };
+}
+
+type PublicAuthResponse = Omit<AuthResponseWithRefreshToken, 'refreshToken'>;
+
 @Controller('auth')
 export class AuthController {
+  private readonly refreshTokenCookieName =
+    process.env.REFRESH_TOKEN_COOKIE_NAME ?? 'xpress_refresh_token';
+  private readonly refreshTokenCookieMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+
   constructor(private readonly authService: AuthService) {}
 
   @Public()
   @Post('register')
-  register(@Body() dto: RegisterDto, @Req() req: Request) {
-    return this.authService.register(dto, {
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authResponse = await this.authService.register(dto, {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
+    return this.withRefreshCookie(req, res, authResponse);
   }
 
   @Public()
   @Post('login')
-  login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto, {
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authResponse = await this.authService.login(dto, {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
+    return this.withRefreshCookie(req, res, authResponse);
   }
 
   @Public()
   @Post('google')
-  google(@Body() dto: GoogleAuthDto, @Req() req: Request) {
-    return this.authService.loginWithGoogle(dto, {
+  async google(
+    @Body() dto: GoogleAuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authResponse = await this.authService.loginWithGoogle(dto, {
       ipAddress: this.resolveIp(req),
       userAgent: req.headers['user-agent'] ?? '',
     });
+    return this.withRefreshCookie(req, res, authResponse);
   }
 
   @Public()
@@ -82,19 +122,53 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refresh(dto);
+  async refresh(
+    @Body() dto: RefreshTokenDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const bodyRefreshToken = dto.refreshToken?.trim();
+    const refreshToken =
+      bodyRefreshToken || this.readCookie(req, this.refreshTokenCookieName);
+    if (!refreshToken) {
+      this.clearRefreshCookie(req, res);
+      throw new UnauthorizedException('Refresh token không hợp lệ');
+    }
+
+    try {
+      const authResponse = await this.authService.refresh({ refreshToken });
+      return this.withRefreshCookie(req, res, authResponse);
+    } catch (error) {
+      this.clearRefreshCookie(req, res);
+      throw error;
+    }
   }
 
   @Public()
   @Post('logout')
-  logout(@Body() dto: LogoutDto, @Req() req: Request) {
-    return this.authService.logout(dto, {
-      authorizationHeader:
-        typeof req.headers.authorization === 'string'
-          ? req.headers.authorization
-          : undefined,
-    });
+  async logout(
+    @Body() dto: LogoutDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    try {
+      return await this.authService.logout(
+        {
+          ...dto,
+          refreshToken:
+            dto.refreshToken?.trim() ||
+            this.readCookie(req, this.refreshTokenCookieName),
+        },
+        {
+          authorizationHeader:
+            typeof req.headers.authorization === 'string'
+              ? req.headers.authorization
+              : undefined,
+        },
+      );
+    } finally {
+      this.clearRefreshCookie(req, res);
+    }
   }
 
   @Get('sessions')
@@ -140,5 +214,87 @@ export class AuthController {
     }
 
     return req.ip ?? '';
+  }
+
+  private withRefreshCookie(
+    req: Request,
+    res: Response,
+    authResponse: AuthResponseWithRefreshToken,
+  ): PublicAuthResponse {
+    const { refreshToken, ...responseBody } = authResponse;
+    res.cookie(
+      this.refreshTokenCookieName,
+      refreshToken,
+      this.refreshCookieOptions(req),
+    );
+    return responseBody;
+  }
+
+  private clearRefreshCookie(req: Request, res: Response): void {
+    const options = this.refreshCookieOptions(req);
+    delete options.maxAge;
+    res.clearCookie(this.refreshTokenCookieName, options);
+  }
+
+  private refreshCookieOptions(req: Request): CookieOptions {
+    const secure = this.shouldUseSecureCookie(req);
+    const configuredSameSite =
+      process.env.REFRESH_TOKEN_COOKIE_SAMESITE?.toLowerCase();
+    const sameSite =
+      configuredSameSite === 'strict' ||
+      configuredSameSite === 'lax' ||
+      configuredSameSite === 'none'
+        ? configuredSameSite
+        : secure
+          ? 'none'
+          : 'lax';
+    const domain = process.env.REFRESH_TOKEN_COOKIE_DOMAIN?.trim();
+
+    return {
+      httpOnly: true,
+      secure,
+      sameSite,
+      path: '/auth',
+      maxAge: this.refreshTokenCookieMaxAgeMs,
+      ...(domain ? { domain } : {}),
+    };
+  }
+
+  private shouldUseSecureCookie(req: Request): boolean {
+    const configuredSecure = process.env.REFRESH_TOKEN_COOKIE_SECURE;
+    if (configuredSecure != null) {
+      return configuredSecure.toLowerCase() === 'true';
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const firstForwardedProto =
+      typeof forwardedProto === 'string'
+        ? forwardedProto.split(',')[0]?.trim()
+        : undefined;
+
+    return (
+      process.env.NODE_ENV === 'production' ||
+      req.secure ||
+      firstForwardedProto === 'https'
+    );
+  }
+
+  private readCookie(req: Request, name: string): string | undefined {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) return undefined;
+
+    for (const part of cookieHeader.split(';')) {
+      const [rawKey, ...rawValueParts] = part.trim().split('=');
+      if (rawKey !== name) continue;
+
+      const rawValue = rawValueParts.join('=');
+      try {
+        return decodeURIComponent(rawValue);
+      } catch {
+        return rawValue;
+      }
+    }
+
+    return undefined;
   }
 }
