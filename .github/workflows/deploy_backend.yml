@@ -1,76 +1,117 @@
-name: Deploy Backend to EC2 (Dev)
+name: Deploy Backend to EC2 with Docker (Optimized)
 
 on:
   push:
     branches:
-      - dev
+      - main
     paths:
-      - '.github/workflows/deploy_backend.yml'
       - 'xpress-backend/**'
+      - '.github/workflows/deploy_backend.yaml'
 
 jobs:
-  deploy:
+  test:
+    name: Test Backend
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: xpress-backend
+        working-directory: ./xpress-backend
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: |
-          docker build \
-            -t xpress-backend:${{ github.sha }} \
-            -f xpress-backend/Dockerfile \
-            xpress-backend
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: Package Docker image
-        run: |
-          mkdir -p /tmp/xpress-backend-artifacts
-          docker save xpress-backend:${{ github.sha }} | gzip > /tmp/xpress-backend-artifacts/xpress-backend-${{ github.sha }}.tar.gz
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.BACKEND_EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.BACKEND_EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Prepare EC2 directory
-        run: |
-          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} "mkdir -p /home/ubuntu/xpress-backend/releases"
+      - name: Run Linter
+        run: pnpm lint
 
-      - name: Upload image to EC2
+      - name: Run Tests
         run: |
-          scp /tmp/xpress-backend-artifacts/xpress-backend-${{ github.sha }}.tar.gz \
-            ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }}:/home/ubuntu/xpress-backend/releases/
+          if pnpm run | grep -q "test"; then
+            pnpm test
+          else
+            echo "No test script found, skipping tests."
+          fi
 
-      - name: Load image and restart Docker container
-        run: |
-          ssh ${{ secrets.BACKEND_EC2_USER }}@${{ secrets.BACKEND_EC2_HOST }} << 'EOF'
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./xpress-backend
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:buildcache,mode=max
+
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BACKEND_EC2_HOST }}
+          username: ${{ secrets.BACKEND_EC2_USER }}
+          key: ${{ secrets.BACKEND_EC2_SSH_KEY }}
+          script: |
             set -e
 
-            IMAGE_TAG='${{ github.sha }}'
-            RELEASE_DIR='/home/ubuntu/xpress-backend/releases'
-            IMAGE_FILE="${RELEASE_DIR}/xpress-backend-${IMAGE_TAG}.tar.gz"
+            echo "=== REMOVE UNUSED IMAGES ==="
+            sudo docker image prune -af || true
 
-            gunzip -c "$IMAGE_FILE" | docker load
-            rm -f "$IMAGE_FILE"
+            echo "=== PULL IMAGE ==="
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:latest
 
-            docker stop xpress-backend || true
-            docker rm xpress-backend || true
+            echo "=== STOP OLD CONTAINER ==="
+            sudo docker stop xpress-backend || true
+            sudo docker rm xpress-backend || true
 
-            docker run -d \
+            echo "=== START NEW CONTAINER ==="
+            sudo docker run -d \
               --name xpress-backend \
               --restart unless-stopped \
-              -p 3000:3000 \
-              --env-file /home/ubuntu/xpress-backend/.env \
-              xpress-backend:${IMAGE_TAG}
+              -p 8080:8080 \
+              --env-file /home/${{ secrets.BACKEND_EC2_USER }}/xpress-backend/.env \
+              ${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:latest
 
-            echo "✅ Deploy completed"
+            echo "=== CLEANUP ==="
+            sudo docker container prune -f || true
+            sudo docker image prune -af || true
+            sudo docker builder prune -af || true
 
-          EOF
+            echo "=== RUNNING CONTAINERS ==="
+            sudo docker ps
+
+            echo "=== DISK USAGE ==="
+            df -h
