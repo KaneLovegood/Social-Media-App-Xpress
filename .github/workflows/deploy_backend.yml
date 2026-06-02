@@ -102,7 +102,7 @@ jobs:
             sudo docker run -d \
               --name xpress-backend \
               --restart unless-stopped \
-              -p 8080:8080 \
+              -p 8080:3000 \
               --env-file /home/${{ secrets.BACKEND_EC2_USER }}/xpress-backend/.env \
               ${{ secrets.DOCKERHUB_USERNAME }}/xpress-backend:latest
 
