@@ -346,12 +346,10 @@ async function main() {
     console.error("Connected to MongoDB Atlas");
 
     const portIndex = process.argv.indexOf("--port");
-    const port =
-      portIndex !== -1
-        ? parseInt(process.argv[portIndex + 1])
-        : process.env.PORT
-          ? parseInt(process.env.PORT)
-          : null;
+    const isSSE = portIndex !== -1 || (process.env.PORT && process.env.MCP_TRANSPORT === 'sse');
+    const port = isSSE
+      ? (portIndex !== -1 ? parseInt(process.argv[portIndex + 1]) : parseInt(process.env.PORT!))
+      : null;
 
     if (port) {
       const app = express();

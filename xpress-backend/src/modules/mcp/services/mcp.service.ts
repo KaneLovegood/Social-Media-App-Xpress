@@ -142,7 +142,7 @@ Luôn trả lời bằng tiếng Việt.`;
 
       let finalReply = '';
       let iteration = 0;
-      const MAX_ITERATIONS = 5;
+      const MAX_ITERATIONS = 10;
 
       while (iteration < MAX_ITERATIONS) {
         iteration++;
@@ -214,10 +214,23 @@ Luôn trả lời bằng tiếng Việt.`;
         break;
       }
 
-      if (iteration >= MAX_ITERATIONS) {
+      if (iteration >= MAX_ITERATIONS && !finalReply) {
         this.logger.warn(
-          `Reached MAX_ITERATIONS (${MAX_ITERATIONS}) in tool execution loop.`,
+          `Reached MAX_ITERATIONS (${MAX_ITERATIONS}) in tool execution loop. Forcing final summary response.`,
         );
+        try {
+          const finalCompletion = await this.openai.chat.completions.create({
+            model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
+            messages: messages,
+            temperature: 0,
+          });
+          finalReply =
+            finalCompletion.choices[0].message.content ||
+            'Tôi đã thực hiện xong các tác vụ.';
+        } catch (err) {
+          this.logger.error('Error generating final fallback reply:', err);
+          finalReply = 'Tôi đã thực hiện các yêu cầu của bạn.';
+        }
       }
 
       if (userId && finalReply) {
