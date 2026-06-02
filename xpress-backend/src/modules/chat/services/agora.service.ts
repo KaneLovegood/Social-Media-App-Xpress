@@ -11,13 +11,22 @@ export class AgoraService {
     this.appCertificate = process.env.AGORA_APP_CERTIFICATE || '';
 
     if (!this.appId || !this.appCertificate) {
-      console.warn('AGORA_APP_ID or AGORA_APP_CERTIFICATE is not set in environment variables');
+      console.warn(
+        'AGORA_APP_ID or AGORA_APP_CERTIFICATE is not set in environment variables',
+      );
     }
   }
 
-  generateRtcToken(channelName: string, uid: number | string, role: number = RtcRole.PUBLISHER, expirationTimeInSeconds: number = 3600) {
+  generateRtcToken(
+    channelName: string,
+    uid: number | string,
+    role: number = RtcRole.PUBLISHER,
+    expirationTimeInSeconds: number = 3600,
+  ) {
     if (!this.appId || !this.appCertificate) {
-      throw new InternalServerErrorException('Agora credentials are not configured');
+      throw new InternalServerErrorException(
+        'Agora credentials are not configured',
+      );
     }
 
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -32,7 +41,7 @@ export class AgoraService {
         uid,
         role,
         privilegeExpiredTs,
-        privilegeExpiredTs
+        privilegeExpiredTs,
       );
     } else {
       token = RtcTokenBuilder.buildTokenWithUserAccount(
@@ -42,7 +51,7 @@ export class AgoraService {
         uid,
         role,
         privilegeExpiredTs,
-        privilegeExpiredTs
+        privilegeExpiredTs,
       );
     }
 

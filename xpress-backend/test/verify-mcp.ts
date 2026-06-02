@@ -31,7 +31,7 @@ async function testMcpToolCalling() {
       {
         provide: McpHistoryService,
         useValue: {
-          saveMessage: async () => { },
+          saveMessage: async () => {},
           getHistory: async () => [],
         },
       },

@@ -318,10 +318,16 @@ export class ChatService {
     return this.chatRoomService.getChatRoomsForUser(userId);
   }
 
-  async decorateMessage(userId: string, message: MessageEntity): Promise<MessageEntity> {
+  async decorateMessage(
+    userId: string,
+    message: MessageEntity,
+  ): Promise<MessageEntity> {
     if (message.messageType === 'SHARE_POST' && message.sharedPostId) {
       try {
-        const post = await this.newsFeedService.layChiTietBaiViet(userId, message.sharedPostId);
+        const post = await this.newsFeedService.layChiTietBaiViet(
+          userId,
+          message.sharedPostId,
+        );
         message.sharedPost = post;
       } catch (error) {
         message.sharedPost = null;
@@ -330,15 +336,23 @@ export class ChatService {
     return message;
   }
 
-  async decorateMessages(userId: string, messages: MessageEntity[]): Promise<MessageEntity[]> {
-    return Promise.all(messages.map(msg => this.decorateMessage(userId, msg)));
+  async decorateMessages(
+    userId: string,
+    messages: MessageEntity[],
+  ): Promise<MessageEntity[]> {
+    return Promise.all(
+      messages.map((msg) => this.decorateMessage(userId, msg)),
+    );
   }
 
   async getMessagesForRoom(
     userId: string,
     roomId: string,
   ): Promise<MessageEntity[]> {
-    const messages = await this.chatRoomService.getMessagesForRoom(userId, roomId);
+    const messages = await this.chatRoomService.getMessagesForRoom(
+      userId,
+      roomId,
+    );
     return this.decorateMessages(userId, messages);
   }
 
@@ -441,12 +455,16 @@ export class ChatService {
     senderId: string,
     dto: { postId: string; roomIds: string[]; noiDung?: string },
   ): Promise<MessageEntity[]> {
-    const originalPost = await this.newsFeedService.layChiTietBaiViet(senderId, dto.postId);
+    const originalPost = await this.newsFeedService.layChiTietBaiViet(
+      senderId,
+      dto.postId,
+    );
 
     if (originalPost.cheDoRiengTu === 'friends') {
       const authorId = originalPost.maNguoiDung;
-      const friendsOfAuthor = await this.socialService.listAllFriendUsers(authorId);
-      const friendsOfAuthorSet = new Set(friendsOfAuthor.map(f => f.userId));
+      const friendsOfAuthor =
+        await this.socialService.listAllFriendUsers(authorId);
+      const friendsOfAuthorSet = new Set(friendsOfAuthor.map((f) => f.userId));
       friendsOfAuthorSet.add(authorId);
 
       for (const roomId of dto.roomIds) {
@@ -455,13 +473,13 @@ export class ChatService {
           memberIds = roomId.split(':');
         } else {
           const members = await this.groupRoomsRepository.listMembers(roomId);
-          memberIds = members.map(m => m.userId);
+          memberIds = members.map((m) => m.userId);
         }
 
         for (const memberId of memberIds) {
           if (memberId !== senderId && !friendsOfAuthorSet.has(memberId)) {
             throw new ForbiddenException(
-              'Thành viên trong phòng chat không phải là bạn bè của tác giả bài viết gốc'
+              'Thành viên trong phòng chat không phải là bạn bè của tác giả bài viết gốc',
             );
           }
         }
@@ -474,7 +492,9 @@ export class ChatService {
       const now = new Date().toISOString();
       const messageId = randomUUID();
       const isPrivate = roomId.includes(':');
-      const receiverId = isPrivate ? roomId.split(':').find(id => id !== senderId)! : roomId;
+      const receiverId = isPrivate
+        ? roomId.split(':').find((id) => id !== senderId)!
+        : roomId;
 
       const item: MessageEntity = {
         PK: `MESSAGE#${messageId}`,

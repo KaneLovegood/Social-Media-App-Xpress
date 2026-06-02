@@ -90,7 +90,10 @@ export class ChatGateway
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
 
-    for (const [roomId, participants] of this.activeGroupCallParticipants.entries()) {
+    for (const [
+      roomId,
+      participants,
+    ] of this.activeGroupCallParticipants.entries()) {
       participants.delete(userId);
       if (participants.size === 0) {
         this.activeGroupCallParticipants.delete(roomId);
@@ -323,7 +326,10 @@ export class ChatGateway
       this.activeGroupCallParticipants.get(payload.roomId) ?? new Set<string>();
 
     const isAlreadyInCall = participants.has(userId);
-    if (!isAlreadyInCall && participants.size >= this.maxGroupCallParticipants) {
+    if (
+      !isAlreadyInCall &&
+      participants.size >= this.maxGroupCallParticipants
+    ) {
       this.transportService.emitToUser(
         userId,
         CHAT_EVENTS.GROUP_CALL_LIMIT_REACHED,
@@ -444,11 +450,12 @@ export class ChatGateway
         this.activeGroupCallParticipants.delete(payload.roomId);
       }
 
-      const callLogMessage = await this.chatService.createGroupCallLeaveSystemMessage(
-        userId,
-        payload.roomId,
-        { mode: callMode },
-      );
+      const callLogMessage =
+        await this.chatService.createGroupCallLeaveSystemMessage(
+          userId,
+          payload.roomId,
+          { mode: callMode },
+        );
 
       this.transportService.emitToGroup(
         payload.roomId,

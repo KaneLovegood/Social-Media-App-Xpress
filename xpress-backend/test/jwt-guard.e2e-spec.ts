@@ -65,9 +65,7 @@ class FakeSessionRepository {
   }
 
   findSessionById(userId: string, sessionId: string) {
-    return Promise.resolve(
-      this.sessions.get(`${userId}#${sessionId}`) ?? null,
-    );
+    return Promise.resolve(this.sessions.get(`${userId}#${sessionId}`) ?? null);
   }
 }
 
@@ -172,7 +170,7 @@ describe('JwtGuard (e2e — token isolation, forgery & @Public())', () => {
     await app.init();
 
     jwt = app.get(JwtService);
-    sessions = app.get(SessionRepository) as unknown as FakeSessionRepository;
+    sessions = app.get(SessionRepository);
 
     sessions.setActive(userA.sub, userA.sid);
     sessions.setActive(userB.sub, userB.sid);

@@ -18,7 +18,9 @@ interface JwtPayload {
     origin: '*',
   },
 })
-export class NewsFeedGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class NewsFeedGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(NewsFeedGateway.name);
   private readonly userSockets = new Map<string, Set<string>>();
   private readonly socketUsers = new Map<string, string>();

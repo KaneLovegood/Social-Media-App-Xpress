@@ -124,15 +124,22 @@ export class SocialService {
     const actorUser = await this.usersRepository.findByUserId(actorUserId);
     if (actorUser) {
       try {
-        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const transportService = this.moduleRef.get(
+          ChatGatewayTransportService,
+          { strict: false },
+        );
         const presenceActor = this.presenceService.getPresence(actorUserId);
-        transportService.emitToUser(dto.targetUserId, SOCIAL_EVENTS.REQUEST_RECEIVED, {
-          userId: actorUserId,
-          name: actorUser.name,
-          email: actorUser.email,
-          isOnline: presenceActor.isOnline,
-          lastSeenAt: presenceActor.lastSeenAt,
-        });
+        transportService.emitToUser(
+          dto.targetUserId,
+          SOCIAL_EVENTS.REQUEST_RECEIVED,
+          {
+            userId: actorUserId,
+            name: actorUser.name,
+            email: actorUser.email,
+            isOnline: presenceActor.isOnline,
+            lastSeenAt: presenceActor.lastSeenAt,
+          },
+        );
       } catch (err) {
         // ignore
       }
@@ -164,25 +171,37 @@ export class SocialService {
 
     if (actorUser && requesterUser) {
       try {
-        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
+        const transportService = this.moduleRef.get(
+          ChatGatewayTransportService,
+          { strict: false },
+        );
         const presenceActor = this.presenceService.getPresence(actorUserId);
-        const presenceRequester = this.presenceService.getPresence(requesterUserId);
+        const presenceRequester =
+          this.presenceService.getPresence(requesterUserId);
 
-        transportService.emitToUser(requesterUserId, SOCIAL_EVENTS.REQUEST_ACCEPTED, {
-          userId: actorUserId,
-          name: actorUser.name,
-          email: actorUser.email,
-          isOnline: presenceActor.isOnline,
-          lastSeenAt: presenceActor.lastSeenAt,
-        });
+        transportService.emitToUser(
+          requesterUserId,
+          SOCIAL_EVENTS.REQUEST_ACCEPTED,
+          {
+            userId: actorUserId,
+            name: actorUser.name,
+            email: actorUser.email,
+            isOnline: presenceActor.isOnline,
+            lastSeenAt: presenceActor.lastSeenAt,
+          },
+        );
 
-        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.REQUEST_ACCEPTED, {
-          userId: requesterUserId,
-          name: requesterUser.name,
-          email: requesterUser.email,
-          isOnline: presenceRequester.isOnline,
-          lastSeenAt: presenceRequester.lastSeenAt,
-        });
+        transportService.emitToUser(
+          actorUserId,
+          SOCIAL_EVENTS.REQUEST_ACCEPTED,
+          {
+            userId: requesterUserId,
+            name: requesterUser.name,
+            email: requesterUser.email,
+            isOnline: presenceRequester.isOnline,
+            lastSeenAt: presenceRequester.lastSeenAt,
+          },
+        );
       } catch (err) {
         // ignore
       }
@@ -216,9 +235,15 @@ export class SocialService {
     await this.socialRepository.removeFriendPair(actorUserId, friendUserId);
 
     try {
-      const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
-      transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: friendUserId });
-      transportService.emitToUser(friendUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: actorUserId });
+      const transportService = this.moduleRef.get(ChatGatewayTransportService, {
+        strict: false,
+      });
+      transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, {
+        userId: friendUserId,
+      });
+      transportService.emitToUser(friendUserId, SOCIAL_EVENTS.UNFRIENDED, {
+        userId: actorUserId,
+      });
     } catch (err) {
       // ignore
     }
@@ -319,10 +344,16 @@ export class SocialService {
     await this.socialRepository.removeFriendPair(actorUserId, targetUserId);
 
     try {
-      const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
-      transportService.emitToUser(targetUserId, SOCIAL_EVENTS.REQUEST_CANCELLED, {
-        userId: actorUserId,
+      const transportService = this.moduleRef.get(ChatGatewayTransportService, {
+        strict: false,
       });
+      transportService.emitToUser(
+        targetUserId,
+        SOCIAL_EVENTS.REQUEST_CANCELLED,
+        {
+          userId: actorUserId,
+        },
+      );
     } catch (err) {
       // ignore
     }
@@ -363,18 +394,27 @@ export class SocialService {
       'PENDING_RECEIVED',
     );
 
-    const requesterUser = await this.usersRepository.findByUserId(requesterUserId);
+    const requesterUser =
+      await this.usersRepository.findByUserId(requesterUserId);
     if (requesterUser) {
       try {
-        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
-        const presenceRequester = this.presenceService.getPresence(requesterUserId);
-        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.REQUEST_RECEIVED, {
-          userId: requesterUserId,
-          name: requesterUser.name,
-          email: requesterUser.email,
-          isOnline: presenceRequester.isOnline,
-          lastSeenAt: presenceRequester.lastSeenAt,
-        });
+        const transportService = this.moduleRef.get(
+          ChatGatewayTransportService,
+          { strict: false },
+        );
+        const presenceRequester =
+          this.presenceService.getPresence(requesterUserId);
+        transportService.emitToUser(
+          actorUserId,
+          SOCIAL_EVENTS.REQUEST_RECEIVED,
+          {
+            userId: requesterUserId,
+            name: requesterUser.name,
+            email: requesterUser.email,
+            isOnline: presenceRequester.isOnline,
+            lastSeenAt: presenceRequester.lastSeenAt,
+          },
+        );
       } catch (err) {
         // ignore
       }
@@ -424,7 +464,7 @@ export class SocialService {
         return {
           userId: user.userId,
           name: user.name,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
           ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
           connectedAt: item.updatedAt,
         };
@@ -450,9 +490,18 @@ export class SocialService {
 
     if (wasFriends) {
       try {
-        const transportService = this.moduleRef.get(ChatGatewayTransportService, { strict: false });
-        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: dto.targetUserId });
-        transportService.emitToUser(dto.targetUserId, SOCIAL_EVENTS.UNFRIENDED, { userId: actorUserId });
+        const transportService = this.moduleRef.get(
+          ChatGatewayTransportService,
+          { strict: false },
+        );
+        transportService.emitToUser(actorUserId, SOCIAL_EVENTS.UNFRIENDED, {
+          userId: dto.targetUserId,
+        });
+        transportService.emitToUser(
+          dto.targetUserId,
+          SOCIAL_EVENTS.UNFRIENDED,
+          { userId: actorUserId },
+        );
       } catch (err) {
         // ignore
       }

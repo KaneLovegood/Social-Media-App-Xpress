@@ -203,7 +203,8 @@ export class NewsFeedRepository {
       new PutCommand({
         TableName: this.tableName,
         Item: item,
-        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+        ConditionExpression:
+          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
       }),
     );
   }
@@ -227,7 +228,8 @@ export class NewsFeedRepository {
       new PutCommand({
         TableName: this.tableName,
         Item: item,
-        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+        ConditionExpression:
+          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
       }),
     );
   }
@@ -290,7 +292,8 @@ export class NewsFeedRepository {
       new PutCommand({
         TableName: this.tableName,
         Item: item,
-        ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+        ConditionExpression:
+          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
       }),
     );
   }

@@ -187,7 +187,9 @@ describe('AuthService', () => {
         status: 'ACTIVE',
       },
     ]);
-    (sessionRepository.findActiveSessionByFingerprint as jest.Mock).mockResolvedValue(null);
+    (
+      sessionRepository.findActiveSessionByFingerprint as jest.Mock
+    ).mockResolvedValue(null);
 
     await expect(
       authService.login({
@@ -218,7 +220,9 @@ describe('AuthService', () => {
         status: 'ACTIVE',
       },
     ]);
-    (sessionRepository.findActiveSessionByFingerprint as jest.Mock).mockResolvedValue({
+    (
+      sessionRepository.findActiveSessionByFingerprint as jest.Mock
+    ).mockResolvedValue({
       sessionId: 'session-1',
       status: 'ACTIVE',
     });
