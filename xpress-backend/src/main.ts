@@ -10,38 +10,21 @@ import { AppModule } from './app.module';
  * Supports comma-separated exact origins and regex literals, e.g.
  * CORS_ORIGINS=http://localhost:3000,/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/
  */
-const defaultCorsOrigins: (string | RegExp)[] = [
-  'https://new-technology-xpress.vercel.app',
-  /^https:\/\/new-technology-xpress(?:-[a-z0-9-]+)?\.vercel\.app$/i,
-  'http://localhost',
-  'https://localhost',
-  'capacitor://localhost',
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:5173',
-  /^http:\/\/10\.0\.2\.2(:\d+)?$/i,
-  /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/i,
-  /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/i,
-];
-
 function corsOriginsFromEnv(): (string | RegExp)[] {
   const raw = (process.env.CORS_ORIGINS ?? '').trim();
-  if (!raw) return defaultCorsOrigins;
+  if (!raw) return [];
 
-  return [
-    ...defaultCorsOrigins,
-    ...raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((origin) => {
-        const regexMatch = origin.match(/^\/(.+)\/([a-z]*)$/i);
-        if (!regexMatch) return origin;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((origin) => {
+      const regexMatch = origin.match(/^\/(.+)\/([a-z]*)$/i);
+      if (!regexMatch) return origin;
 
-        const [, pattern, flags] = regexMatch;
-        return new RegExp(pattern, flags);
-      }),
-  ];
+      const [, pattern, flags] = regexMatch;
+      return new RegExp(pattern, flags);
+    });
 }
 
 const corsOriginList = corsOriginsFromEnv();
