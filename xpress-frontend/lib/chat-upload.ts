@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth-client';
+import { authFetch } from './auth-client';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
@@ -15,15 +15,9 @@ export async function getPresignedUrl(
   contentType: string,
   fileSize: number,
 ): Promise<PresignedUrlResponse> {
-  const token = getAccessToken();
-  if (!token) {
-    throw new Error('User is not authenticated');
-  }
-
-  const response = await fetch(`${API_BASE_URL}/chat/presigned-url`, {
+  const response = await authFetch(`${API_BASE_URL}/chat/presigned-url`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ fileName, contentType, fileSize }),
