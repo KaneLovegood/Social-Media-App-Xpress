@@ -5,34 +5,63 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { ServerOptions } from 'socket.io';
 import { AppModule } from './app.module';
 
-/** Extra browser origins (comma-separated), e.g. CORS_ORIGINS=https://my-fe.vercel.app */
-function extraCorsOrigins(): string[] {
-  const raw = (process.env.CORS_ORIGINS ?? '').trim();
-  if (!raw) return [];
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
-const corsOriginList: (string | RegExp)[] = [
+/**
+ * Browser origins allowed by REST and Socket.IO.
+ * Supports comma-separated exact origins and regex literals, e.g.
+ * CORS_ORIGINS=http://localhost:3000,/^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/
+ */
+const defaultCorsOrigins: (string | RegExp)[] = [
+  'https://new-technology-xpress.vercel.app',
+  /^https:\/\/new-technology-xpress(?:-[a-z0-9-]+)?\.vercel\.app$/i,
   'http://localhost',
   'https://localhost',
   'capacitor://localhost',
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5173',
-  'http://deploy-frontend-01.s3-website-us-east-1.amazonaws.com',
-  'https://new-technology-xpress-fe.onrender.com',
-  'https://xpress-ten-ashen.vercel.app',
-  'https://xpress-sandy.vercel.app',
-  'https://xpress-s5va.vercel.app',
-  /\.devtunnels\.ms$/,
-  /^http:\/\/10\.0\.2\.2(:\d+)?$/,
-  /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/,
-  /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/,
-  ...extraCorsOrigins(),
+  /^http:\/\/10\.0\.2\.2(:\d+)?$/i,
+  /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/i,
+  /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/i,
 ];
+
+function corsOriginsFromEnv(): (string | RegExp)[] {
+  const raw = (process.env.CORS_ORIGINS ?? '').trim();
+  if (!raw) return defaultCorsOrigins;
+
+  return [
+    ...defaultCorsOrigins,
+    ...raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((origin) => {
+        const regexMatch = origin.match(/^\/(.+)\/([a-z]*)$/i);
+        if (!regexMatch) return origin;
+
+        const [, pattern, flags] = regexMatch;
+        return new RegExp(pattern, flags);
+      }),
+  ];
+}
+
+const corsOriginList = corsOriginsFromEnv();
+const isCorsOriginAllowed = (origin: string): boolean =>
+  corsOriginList.some((allowedOrigin) => {
+    if (typeof allowedOrigin === 'string') return allowedOrigin === origin;
+    return allowedOrigin.test(origin);
+  });
+
+const corsOrigin = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void,
+) => {
+  if (!origin || isCorsOriginAllowed(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`CORS origin not allowed: ${origin}`), false);
+};
 
 class SocketIoCorsAdapter extends IoAdapter {
   override createIOServer(port: number, options?: ServerOptions) {
@@ -40,10 +69,10 @@ class SocketIoCorsAdapter extends IoAdapter {
     return super.createIOServer(port, {
       ...options,
       cors: {
-        origin: corsOriginList,
+        ...(options?.cors ?? {}),
+        origin: corsOrigin,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         credentials: true,
-        ...(options?.cors ?? {}),
       },
     });
   }
@@ -53,7 +82,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: corsOriginList,
+    origin: corsOrigin,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: 'Content-Type, Authorization, Idempotency-Key',
