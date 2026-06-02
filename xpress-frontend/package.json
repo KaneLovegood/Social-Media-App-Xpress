@@ -9,8 +9,8 @@
     "lint": "eslint",
     "prepare": "husky",
     "cap:sync": "cap sync",
-    "cap:android": "cap open android",
-    "cap:ios": "cap open ios",
+    "cap:android": "cap sync && cap open android",
+    "cap:ios": "cap sync && cap open ios",
     "fix:rsc": "node scripts/fix-rsc-paths.mjs",
     "build:mobile": "next build && node scripts/fix-rsc-paths.mjs && cap sync",
     "export": "next export"
