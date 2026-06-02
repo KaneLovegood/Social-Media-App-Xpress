@@ -16,17 +16,15 @@ export interface StoredUser {
 
 interface SessionPayload {
   accessToken: string;
-  refreshToken: string;
   tokenType: string;
   user: StoredUser;
 }
 
 const ACCESS_TOKEN_KEY = "xpress_access_token";
-const REFRESH_TOKEN_KEY = "xpress_refresh_token";
+const LEGACY_REFRESH_TOKEN_KEY = "xpress_refresh_token";
 const USER_KEY = "xpress_user";
 const AUTH_NOTICE_KEY = "xpress_auth_notice";
 const AUTH_LOCKED_KEY = "xpress_auth_locked";
-const TOKEN_COOKIE = "xpress_access_token";
 export const USER_UPDATED_EVENT = "xpress:user-updated";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
@@ -42,16 +40,6 @@ function emitUserUpdated() {
   window.dispatchEvent(new Event(USER_UPDATED_EVENT));
 }
 
-function writeAccessCookie(token: string) {
-  if (!isBrowser()) return;
-  document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=2592000; samesite=lax`;
-}
-
-function clearAccessCookie() {
-  if (!isBrowser()) return;
-  document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; samesite=lax`;
-}
-
 async function fetchWithToken(
   input: string,
   init: RequestInit,
@@ -61,15 +49,11 @@ async function fetchWithToken(
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, credentials: "include" });
 }
 
 export function getAccessToken(): string {
   return secureGetSync(ACCESS_TOKEN_KEY) ?? '';
-}
-
-export function getRefreshToken(): string {
-  return secureGetSync(REFRESH_TOKEN_KEY) ?? '';
 }
 
 export function getStoredUser(): StoredUser | null {
@@ -85,6 +69,7 @@ export function getStoredUser(): StoredUser | null {
 
 export async function hydrateAuth(): Promise<void> {
   await hydrateSecureStorage();
+  await secureRemove(LEGACY_REFRESH_TOKEN_KEY);
 }
 
 export async function updateStoredUser(user: StoredUser): Promise<void> {
@@ -97,12 +82,12 @@ export async function persistSession(session: SessionPayload): Promise<void> {
 
   await Promise.all([
     secureSet(ACCESS_TOKEN_KEY, session.accessToken),
-    secureSet(REFRESH_TOKEN_KEY, session.refreshToken),
+    secureRemove(LEGACY_REFRESH_TOKEN_KEY),
     secureSet(USER_KEY, JSON.stringify(session.user)),
   ]);
   window.sessionStorage.removeItem(AUTH_LOCKED_KEY);
   window.sessionStorage.removeItem(AUTH_NOTICE_KEY);
-  writeAccessCookie(session.accessToken);
+  emitUserUpdated();
 }
 
 export async function clearSession(): Promise<void> {
@@ -110,10 +95,10 @@ export async function clearSession(): Promise<void> {
 
   await Promise.all([
     secureRemove(ACCESS_TOKEN_KEY),
-    secureRemove(REFRESH_TOKEN_KEY),
+    secureRemove(LEGACY_REFRESH_TOKEN_KEY),
     secureRemove(USER_KEY),
   ]);
-  clearAccessCookie();
+  emitUserUpdated();
 }
 
 function setAuthNotice(message: string) {
@@ -155,13 +140,7 @@ export function consumeAuthNotice(): string {
 }
 
 export async function logoutSession(): Promise<void> {
-  const refreshToken = getRefreshToken();
   const accessToken = getAccessToken();
-
-  if (!refreshToken && !accessToken) {
-    await clearSession();
-    return;
-  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -173,10 +152,11 @@ export async function logoutSession(): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/auth/logout`, {
     method: "POST",
     headers,
-    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+    credentials: "include",
+    body: JSON.stringify({}),
   });
 
-  if (!response.ok) {
+  if (!response.ok && response.status !== 401) {
     const data = (await response.json().catch(() => ({}))) as {
       message?: unknown;
     };
@@ -191,17 +171,13 @@ export async function refreshAccessToken(): Promise<string> {
     throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    return forceReLogin("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
-  }
-
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        credentials: "include",
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -242,7 +218,11 @@ export async function authFetch(
     throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
   }
 
-  const accessToken = getAccessToken();
+  let accessToken = getAccessToken();
+  if (!accessToken && retryOnUnauthorized) {
+    accessToken = await refreshAccessToken().catch(() => "");
+  }
+
   let response = await fetchWithToken(input, init, accessToken);
 
   if (response.status !== 401 || !retryOnUnauthorized) {
@@ -269,7 +249,7 @@ export async function authFetch(
  * caller should then redirect to /login).
  */
 export async function validateSession(): Promise<boolean> {
-  const accessToken = getAccessToken();
+  const accessToken = await getValidAccessToken();
   if (!accessToken) return false;
 
   try {

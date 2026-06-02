@@ -58,6 +58,7 @@ export default function AiChatBox({
       peerName="Logistics AI Assistant"
       orderTitle="Hỗ trợ thông minh Logistics"
       typingText={isLoading ? "AI Assistant đang gõ máy..." : ""}
+      typingSenderId={isLoading ? "ai-assistant" : undefined}
       isPeerOnline={true}
       activeMessages={messages}
       currentUserId={currentUserId}

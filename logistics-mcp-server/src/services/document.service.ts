@@ -199,10 +199,9 @@ export class DocumentService {
     const documentId = Math.random().toString(36).substring(7);
     const fileHash = metadata.fileHash || "";
 
-    for (const [index, chunk] of chunks.entries()) {
+    const indexPromises = chunks.map(async (chunk, index) => {
       const embedding = await this.searchService.getEmbedding(chunk);
-
-      await this.searchService.collection.insertOne({
+      return {
         documentId,
         fileHash,
         content: chunk,
@@ -212,7 +211,13 @@ export class DocumentService {
         chunkIndex: index,
         metadata: metadata || {},
         indexedAt: new Date(),
-      } as IndexedDocument);
+      } as IndexedDocument;
+    });
+
+    const docsToInsert = await Promise.all(indexPromises);
+
+    if (docsToInsert.length > 0) {
+      await this.searchService.collection.insertMany(docsToInsert);
     }
 
     // Update cache with chunk count and embedding status if fileHash is available

@@ -1,20 +1,15 @@
-import { getAccessToken } from '../lib/auth-client';
+import { authFetch } from '../lib/auth-client';
 import { McpChatRequest, McpChatResponse, McpChatMessage } from '../types/mcp.type';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
 
 export async function sendMcpMessage(data: McpChatRequest): Promise<McpChatResponse> {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/mcp/chat`, {
+  const response = await authFetch(`${API_BASE_URL}/mcp/chat`, {
     method: 'POST',
     headers,
     body: JSON.stringify(data),
@@ -35,16 +30,11 @@ export async function sendMcpMessage(data: McpChatRequest): Promise<McpChatRespo
 }
 
 export async function getAiChatHistory(): Promise<McpChatMessage[]> {
-  const token = getAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/mcp/chat/history`, {
+  const response = await authFetch(`${API_BASE_URL}/mcp/chat/history`, {
     method: 'GET',
     headers,
   });
