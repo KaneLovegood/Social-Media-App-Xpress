@@ -748,10 +748,10 @@ export default function ChatInfoPanel({
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
-                    {images.slice(0, 8).map((image) => (
+                    {images.slice(0, 8).map((image, index) => (
                       <button
                         type="button"
-                        key={`${image.timestamp}-${image.url}`}
+                        key={`${index}_${image.timestamp}-${image.url}`}
                         className="relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
                         onClick={handleOpenMediaGallery}
                       >

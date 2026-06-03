@@ -43,9 +43,9 @@ export default function MediaGalleryModal({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {images.map((image) => (
+              {images.map((image, index) => (
                 <div
-                  key={`${image.timestamp}-${image.url}`}
+                  key={`${index}_${image.timestamp}-${image.url}`}
                   className="group relative aspect-square overflow-hidden rounded-lg bg-slate-100"
                 >
                   {image.type === "VIDEO" ? (
