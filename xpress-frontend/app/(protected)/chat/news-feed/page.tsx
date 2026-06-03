@@ -1104,7 +1104,7 @@ export default function NewsFeedPage() {
           >
             <TextAlignJustify className="h-5 w-5" />
           </button>
-          <h1 className="bg-linear-to-r from-[#003e9e] via-[#005fd1] to-[#008cff] bg-clip-text text-xl font-black tracking-tight text-transparent">
+          <h1 className="font-heading bg-linear-to-r from-[#003e9e] via-[#005fd1] to-[#008cff] bg-clip-text text-xl font-black tracking-tight text-transparent">
             Bản tin
           </h1>
           <div className="hidden items-center rounded-full bg-white/95 px-4 py-2 shadow-sm ring-1 ring-[#d8e1f2] md:flex md:w-80">
@@ -1159,7 +1159,7 @@ export default function NewsFeedPage() {
         <main ref={feedContainerRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:pb-6 lg:px-10">
           <div className="mx-auto w-full max-w-3xl space-y-6">
             <div className="rounded-2xl border border-[#dbe5f7] bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5d6a88]">Bảng tin hôm nay</p>
+              <p className="font-heading text-xs font-semibold uppercase tracking-[0.14em] text-[#5d6a88]">Bảng tin hôm nay</p>
               <p className="mt-1 text-sm text-[#3a435a]">{danhSachBaiViet.length} bài viết mới trong cộng đồng của bạn.</p>
             </div>
 
@@ -1749,7 +1749,7 @@ export default function NewsFeedPage() {
           <div className="rounded-2xl border border-[#dde6f8] bg-white p-4 shadow-sm">
             <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#5d6578]">Gợi ý kết bạn</h3>
+              <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-[#5d6578]">Gợi ý kết bạn</h3>
               <button type="button" className="text-xs font-bold text-[#0052cc] hover:underline">
                 Xem tất cả
               </button>
@@ -1780,7 +1780,7 @@ export default function NewsFeedPage() {
           </div>
 
           <div className="space-y-4 rounded-2xl border border-[#dde6f8] bg-linear-to-br from-[#f5f8ff] to-[#eef3fb] p-4 shadow-sm">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#5d6578]">Xu hướng</h3>
+            <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-[#5d6578]">Xu hướng</h3>
             {xuHuong.map((item) => (
               <div key={item.tag} className="rounded-xl px-2 py-1.5 transition-colors hover:bg-white/70">
                 <p className="text-[10px] font-bold text-[#727687]">{item.tag}</p>

@@ -230,6 +230,31 @@ export async function disableTwoFactor(code: string): Promise<ProfileModel> {
   return toProfileModel(data.user);
 }
 
+export async function updateProfileInfo(payload: {
+  name: string;
+}): Promise<ProfileModel> {
+  const response = await authFetch(`${API_BASE_URL}/auth/profile`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as {
+    message?: unknown;
+    success?: boolean;
+    user?: StoredUser;
+  };
+
+  if (!response.ok || !data.success || !data.user) {
+    throw new Error(getErrorMessage(data.message));
+  }
+
+  await updateStoredUser(data.user);
+  return toProfileModel(data.user);
+}
+
 export async function updateProfileAvatar(file: File): Promise<ProfileModel> {
   if (!file.type.startsWith('image/')) {
     throw new Error('Vui lòng chọn file ảnh hợp lệ.');
