@@ -510,9 +510,18 @@ export default function ChatInfoPanel({
           <div className="scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-slate-200 px-6 py-6">
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
-                  {avatarLabel}
-                </div>
+                {room.avatarUrl ? (
+                  <img
+                    src={room.avatarUrl}
+                    alt={room.title}
+                    className="h-24 w-24 rounded-full object-cover shadow-md"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
+                    {avatarLabel}
+                  </div>
+                )}
                 <div className="mt-4">
                   <h2 className="max-w-56 truncate text-lg font-bold text-slate-900">
                     {room.title}

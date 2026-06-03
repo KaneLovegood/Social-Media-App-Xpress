@@ -7,6 +7,8 @@ export interface SidebarChatItem {
   id: string;
   roomType: "PRIVATE" | "GROUP";
   title: string;
+  avatarUrl?: string;
+  emoji?: string;
   preview: string;
   age: string;
   unreadCount: number;
@@ -122,9 +124,23 @@ export default function ChatSidebar({
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-zinc-900">
-                      {room.title}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {room.avatarUrl ? (
+                        <img
+                          src={room.avatarUrl}
+                          alt={room.title}
+                          className="h-9 w-9 shrink-0 rounded-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : room.roomType === "GROUP" ? (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-xs font-bold text-[#0040a2]">
+                          {room.emoji ?? room.title.slice(0, 2).toUpperCase()}
+                        </div>
+                      ) : null}
+                      <p className="truncate text-sm font-semibold text-zinc-900">
+                        {room.title}
+                      </p>
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-zinc-500">
                         {room.age}

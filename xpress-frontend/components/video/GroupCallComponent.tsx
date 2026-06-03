@@ -221,14 +221,12 @@ export default function GroupCallComponent({
     return participants;
   }, [callMode, participants]);
 
-  const videoGridColumns = useMemo(() => {
+  const videoGridClass = useMemo(() => {
     const count = Math.max(1, videoParticipants.length);
-    if (count <= 1) return 1;
-    if (count === 2) return 2;
-    if (count === 3) return 3;
-    if (count <= 4) return 2;
-    if (count <= 6) return 3;
-    return 4;
+    if (count <= 1) return "grid-cols-1";
+    if (count === 2) return "grid-cols-1 sm:grid-cols-2";
+    if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
+    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
   }, [videoParticipants.length]);
 
   const remoteMembers = useMemo(
@@ -589,7 +587,11 @@ export default function GroupCallComponent({
     // Bao hiem race condition: host gui offer truoc khi member mount → offer mat.
     // Moi participant sau khi co stream se emit GROUP_CALL_START de bao "san sang".
     // Cac participant dang trong call nhan duoc se gui offer lai dung luc da co listener.
-    socket.emit(CHAT_EVENTS.GROUP_CALL_START, { roomId, callMode });
+    socket.emit(CHAT_EVENTS.GROUP_CALL_START, {
+      senderId: currentUserId,
+      roomId,
+      callMode,
+    });
 
     await handlePendingOffers();
 
@@ -844,47 +846,43 @@ export default function GroupCallComponent({
   };
 
   return (
-    <section className="fixed inset-0 z-50 bg-[#e8ebf3] animate-fade-in">
-      <div className="relative flex h-full w-full flex-col overflow-hidden px-4 pb-24 pt-4 md:px-6 md:pb-6">
-        <div className="flex items-center justify-between rounded-2xl bg-white/75 px-4 py-3 shadow-sm backdrop-blur">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d7790]">
+    <section className="fixed inset-0 z-[1000] bg-[#e8ebf3] animate-fade-in">
+      <div className="flex h-full w-full flex-col overflow-hidden px-3 py-3 sm:px-4 md:px-6">
+        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="min-w-0">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[#6d7790] sm:text-[11px]">
               Group {callMode === "video" ? "Video" : "Voice"} Call
             </p>
-            <h2 className="mt-1 truncate text-lg font-bold text-[#0f1c3c]">
+            <h2 className="mt-0.5 truncate text-base font-bold leading-tight text-[#0f1c3c] sm:text-lg">
               {groupDetails.title}
             </h2>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-[#6d7790]">
+          <div className="shrink-0 text-right">
+            <p className="text-[11px] text-[#6d7790] sm:text-xs">
               {callDirection === "outgoing" ? "Đang gọi" : "Đang tham gia"}
             </p>
-            <p className="text-sm font-semibold text-[#0f1c3c]">
+            <p className="text-sm font-semibold tabular-nums text-[#0f1c3c]">
               {formatDuration(elapsedSeconds)}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden md:mt-4">
           {callMode === "video" ? (
             <div
-              className="grid min-h-0 flex-1 gap-3 overflow-y-auto"
-              style={{
-                gridTemplateColumns: `repeat(${videoGridColumns}, minmax(0, 1fr))`,
-                gridAutoRows: "minmax(0, 1fr)",
-              }}
+              className={`grid min-h-0 flex-1 ${videoGridClass} auto-rows-[minmax(0,1fr)] gap-2 overflow-hidden sm:gap-3`}
             >
               {videoParticipants.length > 0 ? (
                 videoParticipants.map((participant) => (
                   <div
                     key={participant.userId}
-                    className="relative h-full min-h-0 overflow-hidden rounded-3xl bg-[#15213e] shadow-lg"
+                    className="relative min-h-0 overflow-hidden rounded-2xl bg-[#15213e] shadow-lg md:rounded-3xl"
                   >
                     {participant.stream ? (
                       <StreamVideo
                         stream={participant.stream}
                         muted={participant.userId === currentUserId}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-[#1c294b]">
@@ -893,7 +891,7 @@ export default function GroupCallComponent({
                         </div>
                       </div>
                     )}
-                    <div className="absolute left-3 top-3 rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+                    <div className="absolute left-3 top-3 max-w-[75%] truncate rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
                       {participant.userId === currentUserId
                         ? "Bạn"
                         : participant.name}
@@ -912,11 +910,11 @@ export default function GroupCallComponent({
               )}
             </div>
           ) : (
-            <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid min-h-0 flex-1 grid-cols-2 auto-rows-[minmax(0,1fr)] gap-3 overflow-hidden md:grid-cols-3 xl:grid-cols-4">
               {participants.map((participant) => (
                 <div
                   key={participant.userId}
-                  className="flex min-h-45 flex-col items-center justify-center rounded-3xl border border-[#d7def0] bg-white/75 px-4 py-5 text-center shadow-sm"
+                  className="flex min-h-0 flex-col items-center justify-center rounded-3xl border border-[#d7def0] bg-white/75 px-4 py-5 text-center shadow-sm"
                 >
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#dfe7fb] text-lg font-bold text-[#28437f]">
                     {initials(participant.name)}
@@ -934,7 +932,7 @@ export default function GroupCallComponent({
             </div>
           )}
 
-          <div className="absolute bottom-6 left-1/2 w-[calc(100%-28px)] max-w-180 -translate-x-1/2 rounded-4xl bg-white/80 px-4 py-3 shadow-[0_24px_40px_rgba(18,27,51,0.12)] backdrop-blur">
+          <div className="shrink-0 rounded-4xl bg-white/85 px-4 py-3 shadow-[0_18px_36px_rgba(18,27,51,0.12)] backdrop-blur sm:mx-auto sm:w-fit sm:min-w-90">
             <div className="flex items-center justify-center gap-3">
               <button
                 type="button"
@@ -1005,7 +1003,7 @@ export default function GroupCallComponent({
               <button
                 type="button"
                 onClick={handleEnd}
-                className="inline-flex h-16 min-w-28 items-center justify-center rounded-full bg-[#c21d2f] px-4 text-sm font-semibold text-white"
+                className="inline-flex h-14 min-w-24 items-center justify-center rounded-full bg-[#c21d2f] px-4 text-sm font-semibold text-white md:h-16 md:min-w-28"
               >
                 End Call
               </button>

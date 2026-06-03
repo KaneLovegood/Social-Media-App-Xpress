@@ -3,6 +3,8 @@ import { ChevronLeft, Phone, TextAlignJustify, Video } from "lucide-react";
 interface ChatHeaderProps {
   peerName: string;
   orderTitle: string;
+  avatarUrl?: string;
+  avatarFallback?: string;
   typingText: string;
   isPeerOnline: boolean;
   isGroup: boolean;
@@ -21,6 +23,8 @@ const initials = (value: string) => {
 export default function ChatHeader({
   peerName,
   orderTitle,
+  avatarUrl,
+  avatarFallback,
   typingText,
   isPeerOnline,
   isGroup,
@@ -47,9 +51,18 @@ export default function ChatHeader({
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-sm font-bold text-[#294486] md:flex">
-            {initials(peerName)}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={peerName}
+              className="hidden h-10 w-10 shrink-0 rounded-full object-cover md:block"
+              loading="lazy"
+            />
+          ) : (
+            <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-sm font-bold text-[#294486] md:flex">
+              {avatarFallback ?? initials(peerName)}
+            </div>
+          )}
           <div className="min-w-0">
             <p className="truncate text-[22px] font-bold leading-none text-zinc-900 md:text-base md:leading-tight lg:text-lg">
               {peerName}

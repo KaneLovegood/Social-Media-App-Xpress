@@ -1,13 +1,22 @@
-﻿"use client";
+"use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Camera, Loader2, X } from "lucide-react";
 import { fetchFriends, SocialUser } from "@/lib/social";
-import { createGroupRoom } from "@/lib/chat-groups";
+import { createGroupRoom, type GroupRoomDetails } from "@/lib/chat-groups";
+import { getPresignedUrl, uploadFileToS3 } from "@/lib/chat-upload";
 
 interface CreateGroupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreated: (roomId: string) => void;
+  onCreated: (groupDetails: GroupRoomDetails) => void;
 }
 
 export default function CreateGroupModal({
@@ -22,8 +31,12 @@ export default function CreateGroupModal({
   const [searchKeyword, setSearchKeyword] = useState("");
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [friends, setFriends] = useState<SocialUser[]>([]);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -43,6 +56,17 @@ export default function CreateGroupModal({
       mounted = false;
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreviewUrl("");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [avatarFile]);
 
   const selectedCount = selectedMemberIds.length;
   const canSubmit = useMemo(
@@ -72,12 +96,61 @@ export default function CreateGroupModal({
 
   if (!isOpen) return null;
 
+  const resetForm = () => {
+    setTitle("");
+    setSearchKeyword("");
+    setSelectedMemberIds([]);
+    setAvatarFile(null);
+    setAvatarPreviewUrl("");
+    setError("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const toggleMember = (userId: string) => {
     setSelectedMemberIds((prev) =>
       prev.includes(userId)
         ? prev.filter((item) => item !== userId)
         : [...prev, userId],
     );
+  };
+
+  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Vui long chon tep anh cho anh dai dien nhom.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Anh dai dien nhom khong duoc vuot qua 5MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setAvatarFile(file);
+    setError("");
+  };
+
+  const uploadGroupAvatar = async (): Promise<string | undefined> => {
+    if (!avatarFile) return undefined;
+
+    setIsUploadingAvatar(true);
+    try {
+      const signed = await getPresignedUrl(
+        avatarFile.name,
+        avatarFile.type,
+        avatarFile.size,
+      );
+      await uploadFileToS3(signed.uploadUrl, avatarFile);
+      return signed.publicUrl;
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -95,16 +168,16 @@ export default function CreateGroupModal({
     setError("");
 
     try {
+      const avatarUrl = await uploadGroupAvatar();
       const result = await createGroupRoom({
         title: title.trim(),
+        ...(avatarUrl ? { avatarUrl } : {}),
         memberUserIds: selectedMemberIds,
       });
 
-      onCreated(result.roomId);
+      onCreated(result);
       onClose();
-      setTitle("");
-      setSearchKeyword("");
-      setSelectedMemberIds([]);
+      resetForm();
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -133,20 +206,14 @@ export default function CreateGroupModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              onClose();
+              resetForm();
+            }}
             className="rounded-full p-2 text-[#8a95ae] transition hover:bg-[#f1f4fb] hover:text-[#2f3e66]"
             aria-label="Đóng popup tạo nhóm"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-6 w-6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <path d="M6 6 18 18" />
-              <path d="M18 6 6 18" />
-            </svg>
+            <X className="h-6 w-6" />
           </button>
         </div>
 
@@ -154,23 +221,47 @@ export default function CreateGroupModal({
           <div className="flex min-h-0 flex-col border-r border-[#e3e8f2] bg-white">
             <div className="border-b border-[#edf1f7] px-6 pb-4 pt-5">
               <div className="flex items-center gap-3 rounded-[14px] border border-[#e6ebf5] bg-[#f7f9fd] px-3 py-2.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                />
                 <button
                   type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#e7ecf7] text-[#6f7fa3]"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e7ecf7] text-[#6f7fa3]"
                   aria-label="Tải ảnh nhóm"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <rect x="4" y="6" width="16" height="12" rx="2" />
-                    <circle cx="9" cy="10" r="1.5" />
-                    <path d="m20 15-4.5-4.5L8 18" />
-                  </svg>
+                  {avatarPreviewUrl ? (
+                    <img
+                      src={avatarPreviewUrl}
+                      alt="Ảnh đại diện nhóm"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                  {avatarPreviewUrl ? (
+                    <span className="absolute inset-x-0 bottom-0 bg-black/45 py-0.5 text-[9px] font-semibold text-white">
+                      Đổi
+                    </span>
+                  ) : null}
                 </button>
+                {avatarFile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAvatarFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#9aa7c3] transition hover:bg-[#edf2fb] hover:text-[#33466f]"
+                    aria-label="Xóa ảnh đại diện nhóm"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
@@ -260,16 +351,7 @@ export default function CreateGroupModal({
                       className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#9ba9c4] transition hover:bg-[#f1f5ff] hover:text-[#4b5f88]"
                       aria-label={`Bỏ chọn ${friend.name}`}
                     >
-                      <svg
-                        viewBox="0 0 24 24"
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M6 6 18 18" />
-                        <path d="M18 6 6 18" />
-                      </svg>
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                 ))}
@@ -288,7 +370,16 @@ export default function CreateGroupModal({
                 disabled={!canSubmit}
                 className="w-full rounded-[11px] bg-[#1f76ff] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(31,118,255,0.28)] transition hover:bg-[#0f69f7] disabled:cursor-not-allowed disabled:bg-[#9ec0f8]"
               >
-                {isSubmitting ? "Đang tạo..." : "Tạo nhóm ngay"}
+                {isSubmitting ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    {isUploadingAvatar ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {isUploadingAvatar ? "Đang tải ảnh..." : "Đang tạo..."}
+                  </span>
+                ) : (
+                  "Tạo nhóm ngay"
+                )}
               </button>
               {selectedCount < MIN_SELECTED_OTHERS ? (
                 <p className="mt-2 text-xs text-[#c2410c]">
@@ -297,7 +388,10 @@ export default function CreateGroupModal({
               ) : null}
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => {
+                  onClose();
+                  resetForm();
+                }}
                 className="mt-2.5 w-full rounded-[11px] px-4 py-2.5 text-sm font-medium text-[#8a96b0] transition hover:bg-white"
               >
                 Hủy bỏ
@@ -313,8 +407,7 @@ export default function CreateGroupModal({
         </div>
 
         <div className="border-t border-[#e3e8f2] bg-white px-6 py-2 text-[11px] text-[#9aa5bf]">
-          Mẹo: bạn có thể tìm kiếm theo tên hoặc email để thêm thành
-          viên nhanh hơn.
+          Mẹo: bạn có thể tìm kiếm theo tên hoặc email để thêm thành viên nhanh hơn.
         </div>
       </form>
     </div>
