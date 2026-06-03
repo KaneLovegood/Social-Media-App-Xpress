@@ -1,4 +1,4 @@
-import { Quote, Ellipsis, CornerUpRight } from 'lucide-react';
+import { Ellipsis } from 'lucide-react';
 
 interface MessageActionsButtonsProps {
   menuOpen: boolean;
@@ -23,22 +23,6 @@ export default function MessageActionsButtons({
     }`}>
       <button
         type="button"
-        className="pointer-events-auto hidden lg:flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm font-bold text-zinc-700 hover:bg-zinc-100"
-        onClick={onReply}
-        aria-label="Trả lời"
-      >
-        <Quote className="h-3 w-3" />
-      </button>
-      <button
-        type="button"
-        className="pointer-events-auto hidden lg:flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm font-bold text-zinc-700 hover:bg-zinc-100"
-        onClick={onForward}
-        aria-label="Chuyển tiếp"
-      >
-        <CornerUpRight className="h-3 w-3" />
-      </button>
-      <button
-        type="button"
         className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-base leading-none text-zinc-700 hover:bg-zinc-100"
         onClick={onMenuToggle}
         aria-expanded={menuOpen}
@@ -49,3 +33,4 @@ export default function MessageActionsButtons({
     </div>
   );
 }
+

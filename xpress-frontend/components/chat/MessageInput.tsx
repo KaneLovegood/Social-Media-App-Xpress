@@ -19,6 +19,7 @@ import CameraCapture from "./message-input/CameraCapture";
 import { useCameraScan } from "@/hooks/use-camera-scan";
 import { fetchFriends, SocialUser } from "@/lib/social";
 import { toast } from "sonner";
+import { htmlToMarkdown } from "@/lib/chat-utils";
 
 export interface SendMessageOptions {
   messageType?: MessageType;
@@ -65,7 +66,7 @@ export default function MessageInput({
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { startCamera, stopCamera, stream, switchCamera } = useCameraScan();
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -95,14 +96,7 @@ export default function MessageInput({
   }, [attachments]);
 
   const resizeTextarea = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const maxHeightPx = 160;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeightPx)}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > maxHeightPx ? "auto" : "hidden";
+    // No-op for contenteditable rich text composer
   };
 
   useEffect(() => {
@@ -284,14 +278,14 @@ export default function MessageInput({
     });
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter") return;
     if (event.shiftKey) return;
 
     event.preventDefault();
     if (!canSend) return;
 
-    const form = event.currentTarget.form;
+    const form = event.currentTarget.closest("form");
     if (!form) return;
 
     if (typeof form.requestSubmit === "function") {
@@ -304,16 +298,22 @@ export default function MessageInput({
     );
   };
 
-  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const pastedFiles = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file")
       .map((item) => item.getAsFile())
       .filter((file): file is File => file !== null);
 
-    if (pastedFiles.length === 0) return;
+    if (pastedFiles.length > 0) {
+      event.preventDefault();
+      addFiles(pastedFiles);
+      return;
+    }
 
+    // Intercept pastes to insert as plain text and strip styled HTML
     event.preventDefault();
-    addFiles(pastedFiles);
+    const text = event.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
   };
 
   const [isDragging, setIsDragging] = useState(false);
@@ -444,19 +444,85 @@ export default function MessageInput({
   };
 
   const applyFormatting = (prefix: string, suffix: string = prefix) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-    const replacement = prefix + selectedText + suffix;
-    const newContent = text.substring(0, start) + replacement + text.substring(end);
-    setContent(newContent);
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
-    }, 0);
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    editor.focus();
+
+    if (prefix === "**") {
+      document.execCommand("bold", false);
+    } else if (prefix === "*") {
+      document.execCommand("italic", false);
+    } else if (prefix === "~~") {
+      document.execCommand("strikeThrough", false);
+    } else if (prefix === "<u>") {
+      document.execCommand("underline", false);
+    } else if (prefix === "`") {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        const codeNode = document.createElement("code");
+        codeNode.className = "bg-slate-100 rounded px-1 py-0.5 text-red-600 font-mono text-xs";
+        codeNode.textContent = selectedText || "code";
+        range.deleteContents();
+        range.insertNode(codeNode);
+        
+        const newRange = document.createRange();
+        newRange.setStartAfter(codeNode);
+        newRange.setEndAfter(codeNode);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+    } else if (prefix === "> ") {
+      document.execCommand("formatBlock", false, "blockquote");
+    }
+
+    const html = editor.innerHTML;
+    setContent(htmlToMarkdown(html));
+  };
+
+  const toggleChangeCase = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+    editor.focus();
+    
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString();
+      if (selectedText) {
+        let nextText = "";
+        if (selectedText === selectedText.toUpperCase() && selectedText !== selectedText.toLowerCase()) {
+          // Full uppercase -> lowercase
+          nextText = selectedText.toLowerCase();
+        } else if (selectedText === selectedText.toLowerCase()) {
+          // Lowercase -> capitalized
+          nextText = selectedText.split(/(\s+)/).map(word => {
+            if (!word.trim()) return word;
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+          }).join("");
+        } else {
+          // Capitalized -> uppercase
+          nextText = selectedText.toUpperCase();
+        }
+        
+        range.deleteContents();
+        range.insertNode(document.createTextNode(nextText));
+        
+        const html = editor.innerHTML;
+        setContent(htmlToMarkdown(html));
+      }
+    }
+  };
+
+  const applyColor = (color: string) => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand("foreColor", false, color);
+    const html = editor.innerHTML;
+    setContent(htmlToMarkdown(html));
   };
 
   const QUICK_REPLIES = [
@@ -613,7 +679,7 @@ export default function MessageInput({
       />
 
       {isFormatBarOpen && (
-        <div className="flex gap-2.5 px-4 py-1.5 bg-slate-50 border-t border-b border-slate-200 text-[#0d2b5a]">
+        <div className="flex gap-2.5 px-4 py-1.5 bg-slate-50 border-t border-b border-slate-200 text-[#0d2b5a] flex-wrap items-center">
           <button
             type="button"
             onClick={() => applyFormatting("**")}
@@ -632,28 +698,45 @@ export default function MessageInput({
           </button>
           <button
             type="button"
+            onClick={() => applyFormatting("<u>", "</u>")}
+            className="underline hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer font-semibold"
+            title="Underline"
+          >
+            U
+          </button>
+          <button
+            type="button"
             onClick={() => applyFormatting("~~")}
             className="line-through hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer"
             title="Strikethrough"
           >
             S
           </button>
+
           <button
             type="button"
-            onClick={() => applyFormatting("`")}
-            className="font-mono hover:bg-zinc-200 px-2 py-0.5 rounded text-xs transition cursor-pointer"
-            title="Inline Code"
+            onClick={toggleChangeCase}
+            className="hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer font-semibold"
+            title="Đổi chữ hoa/thường (Aa)"
           >
-            &lt;&gt;
+            Aa
           </button>
-          <button
-            type="button"
-            onClick={() => applyFormatting("> ", "")}
-            className="hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition font-serif cursor-pointer"
-            title="Blockquote"
-          >
-            &quot;
-          </button>
+
+          <div className="h-5 w-px bg-slate-200 self-center mx-1 hidden sm:block" />
+          
+          <div className="flex items-center gap-1.5">
+            {["#111827", "#0052cc", "#ef4444", "#10b981", "#f97316", "#8b5cf6", "#ec4899"].map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => applyColor(color)}
+                className="w-4 h-4 rounded-full border border-slate-350 hover:scale-110 active:scale-95 transition cursor-pointer"
+                style={{ backgroundColor: color }}
+                title={`Màu ${color}`}
+              />
+            ))}
+          </div>
+
           <button
             type="button"
             onClick={() => setIsFormatBarOpen(false)}

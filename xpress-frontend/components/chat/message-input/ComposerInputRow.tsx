@@ -1,13 +1,14 @@
-import { ClipboardEvent, KeyboardEvent, RefObject } from "react";
+import { ClipboardEvent, KeyboardEvent, RefObject, useEffect } from "react";
+import { htmlToMarkdown, markdownToHtml } from "@/lib/chat-utils";
 
 interface ComposerInputRowProps {
   content: string;
   canSend: boolean;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
+  textareaRef: RefObject<HTMLDivElement | null>;
   onOpenFilePicker: () => void;
   onContentChange: (value: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
   onSendLike: () => void;
 }
 
@@ -21,6 +22,27 @@ export default function ComposerInputRow({
   onPaste,
   onSendLike,
 }: ComposerInputRowProps) {
+  // Synchronize outside content updates (like clearing input or selecting emojis)
+  useEffect(() => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+
+    const expectedHtml = markdownToHtml(content);
+    if (editor.innerHTML !== expectedHtml) {
+      editor.innerHTML = expectedHtml;
+    }
+  }, [content, textareaRef]);
+
+  const handleInput = () => {
+    const editor = textareaRef.current;
+    if (!editor) return;
+    const html = editor.innerHTML;
+    const markdown = htmlToMarkdown(html);
+    onContentChange(markdown);
+  };
+
+  const isEmpty = !content;
+
   return (
     <div className="flex items-end gap-2 px-3 py-2">
       <button
@@ -41,16 +63,22 @@ export default function ComposerInputRow({
         </svg>
       </button>
 
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={(event) => onContentChange(event.target.value)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        rows={1}
-        placeholder="Nhập @, tin nhắn..."
-        className="min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] text-[#344f75] outline-none placeholder:text-[#4c6384]"
-      />
+      <div className="relative flex-1 min-h-9 max-h-40 overflow-y-auto">
+        <div
+          ref={textareaRef}
+          contentEditable
+          onInput={handleInput}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          className="w-full bg-transparent px-1 py-1.5 text-[15px] text-[#344f75] outline-none break-words"
+          style={{ whiteSpace: "pre-wrap" }}
+        />
+        {isEmpty && (
+          <div className="absolute left-1 top-1.5 pointer-events-none text-[15px] text-[#4c6384] select-none">
+            Nhập @, tin nhắn...
+          </div>
+        )}
+      </div>
 
       <button
         type={canSend ? "submit" : "button"}
