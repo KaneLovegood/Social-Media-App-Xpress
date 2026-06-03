@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { extractGroupInviteCode, joinGroupByInvite } from "@/lib/chat-groups";
+import {
+  extractGroupInviteCode,
+  joinGroupByInviteWithTimeout,
+} from "@/lib/chat-groups";
 
 export default function JoinGroupPage() {
   const searchParams = useSearchParams();
@@ -23,7 +26,7 @@ export default function JoinGroupPage() {
       };
     }
 
-    void joinGroupByInvite(inviteCode)
+    void joinGroupByInviteWithTimeout(inviteCode)
       .then((details) => {
         if (cancelled) return;
         router.replace(`/chat/me?roomId=${encodeURIComponent(details.roomId)}`);

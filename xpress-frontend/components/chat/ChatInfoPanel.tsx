@@ -8,6 +8,7 @@ import {
   GroupRoomDetails,
   fetchRoomFiles,
   fetchRoomImages,
+  normalizeGroupInviteLink,
   promoteGroupMember,
   removeGroupMember,
   transferGroupAdmin,
@@ -371,6 +372,15 @@ export default function ChatInfoPanel({
   };
 
   const toAbsoluteInviteLink = (value: string): string => {
+    const normalizedValue =
+      typeof window === "undefined"
+        ? value
+        : normalizeGroupInviteLink(value, window.location.origin);
+
+    if (normalizedValue !== value) {
+      return normalizedValue;
+    }
+
     if (/^https?:\/\//i.test(value)) {
       return value;
     }
@@ -391,7 +401,11 @@ export default function ChatInfoPanel({
     setGroupActionError("");
     try {
       const result = await createGroupInviteLink(groupDetails.roomId);
-      setShareLink(toAbsoluteInviteLink(result.inviteLink));
+      setShareLink(
+        toAbsoluteInviteLink(
+          result.inviteLink || `/chat/join?code=${result.inviteCode}`,
+        ),
+      );
       setShowShareQr(true);
     } catch (error) {
       setGroupActionError(

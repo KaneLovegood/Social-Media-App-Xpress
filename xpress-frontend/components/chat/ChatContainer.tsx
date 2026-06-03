@@ -7,7 +7,7 @@ import {
   leaveGroup,
   dissolveGroup,
   fetchGroupRoomDetails,
-  joinGroupByInvite,
+  joinGroupByInviteWithTimeout,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
 import {
@@ -901,14 +901,14 @@ export default function ChatContainer({
   };
 
   const handleJoinGroupByInvite = async (inviteCode: string) => {
-    const details = await joinGroupByInvite(inviteCode);
+    const details = await joinGroupByInviteWithTimeout(inviteCode);
     setGroupDetailsByRoom((prev) => ({
       ...prev,
       [details.roomId]: details,
     }));
-    await reloadRooms();
     setActiveRoomId(details.roomId);
     setIsMobileInfoOpen(false);
+    void reloadRooms();
   };
 
   const handleLeaveGroup = async () => {

@@ -216,7 +216,7 @@ export async function createGroupInviteLink(roomId: string) {
   }>(response);
 }
 
-export async function joinGroupByInvite(inviteCode: string) {
+export async function joinGroupByInvite(inviteCode: string, signal?: AbortSignal) {
   const response = await authFetch(
     `${API_BASE_URL}/chat/group-invites/${encodeURIComponent(inviteCode)}/join`,
     {
@@ -224,10 +224,43 @@ export async function joinGroupByInvite(inviteCode: string) {
       headers: {
         "Content-Type": "application/json",
       },
+      signal,
     },
   );
 
   return parseResponse<GroupRoomDetails>(response);
+}
+
+export async function joinGroupByInviteWithTimeout(
+  inviteCode: string,
+  timeoutMs = 12000,
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await joinGroupByInvite(inviteCode, controller.signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Ket noi tham gia nhom qua lau. Vui long thu lai.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+export function toGroupInvitePath(inviteCode: string): string {
+  return `/chat/join?code=${encodeURIComponent(inviteCode)}`;
+}
+
+export function normalizeGroupInviteLink(value: string, origin = ""): string {
+  const inviteCode = extractGroupInviteCode(value);
+  if (!inviteCode) return value;
+
+  const path = toGroupInvitePath(inviteCode);
+  return origin ? `${origin}${path}` : path;
 }
 
 export function extractGroupInviteCode(value: string): string {
