@@ -94,6 +94,21 @@ export class ChatGateway
       participants.delete(userId);
       if (participants.size === 0) {
         this.activeGroupCallParticipants.delete(roomId);
+        this.transportService.emitToGroup(roomId, CHAT_EVENTS.GROUP_CALL_END, {
+          senderId: userId,
+          roomId,
+          reason: 'left',
+          endForAll: true,
+          remainingParticipantIds: [],
+        });
+      } else {
+        this.transportService.emitToGroup(roomId, CHAT_EVENTS.GROUP_CALL_END, {
+          senderId: userId,
+          roomId,
+          reason: 'left',
+          endForAll: false,
+          remainingParticipantIds: Array.from(participants),
+        });
       }
     }
 
@@ -350,6 +365,7 @@ export class ChatGateway
         senderId: userId,
         roomId: payload.roomId,
         callMode: payload.callMode,
+        activeParticipantIds: Array.from(participants),
       },
     );
   }
@@ -443,10 +459,42 @@ export class ChatGateway
     if (!endForAll) {
       const participants = this.activeGroupCallParticipants.get(payload.roomId);
       participants?.delete(userId);
-      if (participants && participants.size === 0) {
+
+      if (!participants || participants.size === 0) {
         this.activeGroupCallParticipants.delete(payload.roomId);
+
+        const outcome =
+          payload.reason === 'cancelled' ? 'self_cancelled' : 'connected_ended';
+
+        const callLogMessage = await this.chatService.createGroupCallLogMessage(
+          userId,
+          payload.roomId,
+          { mode: callMode, outcome },
+        );
+
+        this.transportService.emitToGroup(
+          payload.roomId,
+          CHAT_EVENTS.GROUP_CALL_END,
+          {
+            senderId: userId,
+            roomId: payload.roomId,
+            callMode,
+            reason: payload.reason,
+            endForAll: true,
+            remainingParticipantIds: [],
+            callLogMessage,
+          },
+        );
+
+        this.transportService.emitToGroup(
+          payload.roomId,
+          CHAT_EVENTS.GROUP_MESSAGE,
+          callLogMessage,
+        );
+        return;
       }
 
+      const remainingParticipantIds = Array.from(participants);
       const callLogMessage =
         await this.chatService.createGroupCallLeaveSystemMessage(
           userId,
@@ -463,6 +511,7 @@ export class ChatGateway
           callMode,
           reason: payload.reason,
           endForAll: false,
+          remainingParticipantIds,
           callLogMessage,
         },
       );

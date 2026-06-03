@@ -65,7 +65,10 @@ self.addEventListener('fetch', (event) => {
         });
         return response;
       }).catch(() => {
-        // Fallback for network error
+        return new Response('', {
+          status: 503,
+          statusText: 'Service Unavailable',
+        });
       });
     })
   );

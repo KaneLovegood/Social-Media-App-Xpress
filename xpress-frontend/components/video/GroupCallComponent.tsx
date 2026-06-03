@@ -1,16 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AgoraRTC, {
+  IAgoraRTCRemoteUser,
+  ICameraVideoTrack,
+  IRemoteAudioTrack,
+  IRemoteVideoTrack,
+} from "agora-rtc-sdk-ng";
 import { Socket } from "socket.io-client";
+import { fetchAgoraToken } from "@/lib/chat-actions";
+import { GroupRoomDetails } from "@/lib/chat-groups";
 import { CHAT_EVENTS } from "@/lib/realtime/events";
 import {
-  GroupCallAnswerPayload,
   GroupCallEndPayload,
-  GroupCallIcePayload,
-  GroupCallOfferPayload,
   GroupCallStartedPayload,
 } from "@/lib/realtime/types";
-import { GroupRoomDetails } from "@/lib/chat-groups";
+import { useAgora } from "@/hooks/useAgora";
 
 type CallMode = "voice" | "video";
 
@@ -27,20 +32,17 @@ interface GroupCallComponentProps {
   onClose: () => void;
 }
 
-interface RemoteStreamState {
+interface ParticipantView {
   userId: string;
   name: string;
-  stream: MediaStream | null;
+  isLocal: boolean;
+  remoteUser?: IAgoraRTCRemoteUser;
 }
 
-const rtcConfig: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
+const AGORA_APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID || "";
 
 function formatDuration(value: number): string {
-  const minutes = Math.floor(value / 60)
-    .toString()
-    .padStart(2, "0");
+  const minutes = Math.floor(value / 60).toString().padStart(2, "0");
   const seconds = (value % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
 }
@@ -51,92 +53,56 @@ function initials(value: string): string {
   return chars.join("") || "GC";
 }
 
-function StreamVideo({
-  stream,
-  muted,
+function toAgoraGroupChannel(roomId: string): string {
+  return `grp${roomId.replace(/[^a-zA-Z0-9]/g, "")}`.slice(0, 64);
+}
+
+function memberName(groupDetails: GroupRoomDetails, userId: string): string {
+  return (
+    groupDetails.members.find((member) => member.userId === userId)?.name ??
+    userId
+  );
+}
+
+function AgoraVideo({
+  track,
   className,
 }: {
-  stream: MediaStream | null;
-  muted?: boolean;
+  track: ICameraVideoTrack | IRemoteVideoTrack | null;
   className?: string;
 }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element || !track) return;
 
-    let mounted = true;
-    let attempt = 0;
-
-    const tryPlay = async () => {
-      if (!mounted) return;
-      try {
-        await element.play();
-      } catch {
-        attempt += 1;
-        if (attempt <= 5) {
-          window.setTimeout(tryPlay, 200 * attempt);
-        }
-      }
-    };
-
-    element.srcObject = stream;
-
-    if (stream) {
-      // If metadata is available, play right away; otherwise wait for loadedmetadata.
-      const onLoaded = () => {
-        void tryPlay();
-      };
-
-      element.addEventListener("loadedmetadata", onLoaded);
-
-      // Try immediately too; often works in modern browsers.
-      void tryPlay();
-
-      const handleTrackChange = () => {
-        element.srcObject = stream;
-        attempt = 0;
-        void tryPlay();
-      };
-
-      stream.addEventListener("addtrack", handleTrackChange);
-      stream.addEventListener("removetrack", handleTrackChange);
-
-      // If srcObject gets detached elsewhere, ensure we re-assign on visibility change.
-      const handleVisibility = () => {
-        if (document.visibilityState === "visible") {
-          element.srcObject = stream;
-          attempt = 0;
-          void tryPlay();
-        }
-      };
-
-      document.addEventListener("visibilitychange", handleVisibility);
-
-      return () => {
-        mounted = false;
-        element.removeEventListener("loadedmetadata", onLoaded);
-        stream.removeEventListener("addtrack", handleTrackChange);
-        stream.removeEventListener("removetrack", handleTrackChange);
-        document.removeEventListener("visibilitychange", handleVisibility);
-      };
-    }
+    element.replaceChildren();
+    track.play(element);
 
     return () => {
-      mounted = false;
+      track.stop();
+      element.replaceChildren();
     };
-  }, [stream]);
+  }, [track]);
 
-  return (
-    <video ref={ref} autoPlay playsInline muted={muted} className={className} />
-  );
+  return <div ref={ref} className={className} />;
+}
+
+function AgoraAudio({ track }: { track: IRemoteAudioTrack | null }) {
+  useEffect(() => {
+    if (!track) return;
+    track.play();
+    return () => track.stop();
+  }, [track]);
+
+  return null;
 }
 
 export default function GroupCallComponent({
   socket,
   currentUserId,
   currentUserName,
-  callHostUserId,
   roomId,
   groupDetails,
   callMode,
@@ -144,705 +110,236 @@ export default function GroupCallComponent({
   onLeave,
   onClose,
 }: GroupCallComponentProps) {
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(
-    new Map(),
-  );
-  const pendingOffersRef = useRef<Map<string, GroupCallOfferPayload>>(
-    new Map(),
-  );
-  const retryOfferTimersRef = useRef<Map<string, number>>(new Map());
-  const remoteStreamsRef = useRef<RemoteStreamState[]>([]);
-  const inCallMemberIdsRef = useRef<string[]>([]);
-  const remoteMediaStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const client = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+  }, []);
+
+  const {
+    localAudioTrack,
+    localVideoTrack,
+    remoteUsers,
+    joinState,
+    join,
+    leave,
+  } = useAgora(client);
+
+  const onLeaveRef = useRef(onLeave);
+  const onCloseRef = useRef(onClose);
   const startedRef = useRef(false);
-  const [remoteStreams, setRemoteStreams] = useState<RemoteStreamState[]>([]);
-  const [inCallMemberIds, setInCallMemberIds] = useState<string[]>(() => {
-    const initial = new Set<string>([currentUserId]);
-    if (callHostUserId) {
-      initial.add(callHostUserId);
-    }
-    return Array.from(initial);
-  });
   const [muted, setMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
+  const [cameraOff, setCameraOff] = useState(callMode !== "video");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [isActive, setIsActive] = useState(false);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [joining, setJoining] = useState(true);
+  const [joinError, setJoinError] = useState("");
+  const [inCallMemberIds, setInCallMemberIds] = useState<string[]>([
+    currentUserId,
+  ]);
 
-  const participants = useMemo<RemoteStreamState[]>(() => {
-    const byUserId = new Map<string, RemoteStreamState>();
+  const channelName = useMemo(() => toAgoraGroupChannel(roomId), [roomId]);
 
-    byUserId.set(currentUserId, {
-      userId: currentUserId,
-      name: currentUserName,
-      stream: localStream,
-    });
+  useEffect(() => {
+    onLeaveRef.current = onLeave;
+  }, [onLeave]);
 
-    for (const stream of remoteStreams) {
-      byUserId.set(stream.userId, stream);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const remoteUserById = useMemo(() => {
+    const byId = new Map<string, IAgoraRTCRemoteUser>();
+    for (const user of remoteUsers) {
+      byId.set(String(user.uid), user);
     }
+    return byId;
+  }, [remoteUsers]);
 
-    const roster = inCallMemberIds.map((userId) => {
-      const member = groupDetails.members.find(
-        (item) => item.userId === userId,
-      );
-      return (
-        byUserId.get(userId) ?? {
-          userId,
-          name: member?.name ?? userId,
-          stream: null,
-        }
-      );
-    });
+  const participants = useMemo<ParticipantView[]>(() => {
+    const orderedIds = new Set<string>([currentUserId]);
+    inCallMemberIds.forEach((userId) => orderedIds.add(userId));
+    remoteUsers.forEach((user) => orderedIds.add(String(user.uid)));
 
-    if (!roster.find((item) => item.userId === currentUserId)) {
-      roster.unshift({
-        userId: currentUserId,
-        name: currentUserName,
-        stream: localStream,
-      });
-    }
-
-    return roster;
+    return Array.from(orderedIds).map((userId) => ({
+      userId,
+      name:
+        userId === currentUserId
+          ? currentUserName
+          : memberName(groupDetails, userId),
+      isLocal: userId === currentUserId,
+      remoteUser: remoteUserById.get(userId),
+    }));
   }, [
     currentUserId,
     currentUserName,
-    groupDetails.members,
+    groupDetails,
     inCallMemberIds,
-    localStream,
-    remoteStreams,
+    remoteUserById,
+    remoteUsers,
   ]);
 
-  const videoParticipants = useMemo(() => {
-    if (callMode !== "video") return [] as RemoteStreamState[];
-    return participants;
-  }, [callMode, participants]);
-
   const videoGridClass = useMemo(() => {
-    const count = Math.max(1, videoParticipants.length);
+    const count = Math.max(1, participants.length);
     if (count <= 1) return "grid-cols-1";
     if (count === 2) return "grid-cols-1 sm:grid-cols-2";
     if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
     return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
-  }, [videoParticipants.length]);
-
-  const remoteMembers = useMemo(
-    () =>
-      groupDetails.members.filter((member) => member.userId !== currentUserId),
-    [currentUserId, groupDetails.members],
-  );
-
-  // ...existing code...
-
-  useEffect(() => {
-    remoteStreamsRef.current = remoteStreams;
-  }, [remoteStreams]);
-
-  useEffect(() => {
-    inCallMemberIdsRef.current = inCallMemberIds;
-  }, [inCallMemberIds]);
-
-  useEffect(() => {
-    setInCallMemberIds((prev) => {
-      const next = new Set(prev);
-      next.add(currentUserId);
-      if (callHostUserId) {
-        next.add(callHostUserId);
-      }
-      return Array.from(next);
-    });
-  }, [callHostUserId, currentUserId]);
-
-  const addInCallMember = useCallback((userId: string) => {
-    if (!userId) return;
-
-    setInCallMemberIds((prev) => {
-      if (prev.includes(userId)) return prev;
-      return [...prev, userId];
-    });
-  }, []);
-
-  const removeInCallMember = useCallback(
-    (userId: string) => {
-      if (!userId || userId === currentUserId) return;
-
-      remoteMediaStreamsRef.current.delete(userId);
-      setInCallMemberIds((prev) => prev.filter((id) => id !== userId));
-      setRemoteStreams((prev) => prev.filter((item) => item.userId !== userId));
-    },
-    [currentUserId],
-  );
-
-  const resolveEndReason = useCallback(() => {
-    if (callDirection === "outgoing" && remoteStreamsRef.current.length === 0) {
-      return "cancelled";
-    }
-
-    return "ended";
-  }, [callDirection]);
+  }, [participants.length]);
 
   const stopConference = useCallback(
-    (
+    async (
       notifyRoom: boolean,
-      reason?: "ended" | "cancelled" | "left",
-      endForAll = true,
+      reason: "ended" | "cancelled" | "left" = "left",
+      endForAll = false,
     ) => {
       if (notifyRoom && socket) {
         socket.emit(CHAT_EVENTS.GROUP_CALL_END, {
           senderId: currentUserId,
           roomId,
           callMode,
-          reason: reason ?? resolveEndReason(),
+          reason,
           endForAll,
         } satisfies GroupCallEndPayload);
       }
 
-      for (const [userId, peer] of peerConnectionsRef.current.entries()) {
-        peer.close();
-        peerConnectionsRef.current.delete(userId);
-      }
-
-      for (const stream of remoteStreamsRef.current) {
-        if (stream.stream) {
-          stream.stream.getTracks().forEach((track) => track.stop());
-        }
-      }
-
-      const localStream = localStreamRef.current;
-      if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop());
-        localStreamRef.current = null;
-        setLocalStream(null);
-      }
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
-
-      remoteMediaStreamsRef.current.clear();
-      pendingIceCandidatesRef.current.clear();
-      pendingOffersRef.current.clear();
-      for (const timerId of retryOfferTimersRef.current.values()) {
-        window.clearTimeout(timerId);
-      }
-      retryOfferTimersRef.current.clear();
       startedRef.current = false;
-      setRemoteStreams([]);
-      setInCallMemberIds(() => {
-        const base = new Set<string>([currentUserId]);
-        if (callHostUserId) {
-          base.add(callHostUserId);
-        }
-        return Array.from(base);
-      });
-      setMuted(false);
-      setCameraOff(false);
+      setJoining(false);
       setElapsedSeconds(0);
-      setIsActive(false);
+      setMuted(false);
+      setCameraOff(callMode !== "video");
+      setInCallMemberIds([currentUserId]);
+      await leave();
 
       if (notifyRoom) {
         if (endForAll) {
-          onClose();
+          onCloseRef.current();
         } else {
-          onLeave();
+          onLeaveRef.current();
         }
       }
     },
-    [
-      callHostUserId,
-      callMode,
-      currentUserId,
-      onClose,
-      resolveEndReason,
-      roomId,
-      socket,
-    ],
+    [callMode, currentUserId, leave, roomId, socket],
   );
-
-  const clearRetryOfferTimer = useCallback((remoteUserId: string) => {
-    const timerId = retryOfferTimersRef.current.get(remoteUserId);
-    if (timerId) {
-      window.clearTimeout(timerId);
-      retryOfferTimersRef.current.delete(remoteUserId);
-    }
-  }, []);
-
-  const emitIceCandidate = useCallback(
-    (receiverId: string, candidate: RTCIceCandidateInit) => {
-      if (!socket) return;
-
-      socket.emit(CHAT_EVENTS.GROUP_CALL_ICE, {
-        senderId: currentUserId,
-        roomId,
-        receiverId,
-        callMode,
-        candidate,
-      } satisfies GroupCallIcePayload);
-    },
-    [callMode, roomId, socket, currentUserId],
-  );
-
-  const ensurePeerConnection = useCallback(
-    async (remoteUserId: string) => {
-      const existing = peerConnectionsRef.current.get(remoteUserId);
-      if (existing) return existing;
-
-      const localStream = localStreamRef.current;
-      if (!localStream) {
-        throw new Error("Local stream not ready");
-      }
-
-      const peer = new RTCPeerConnection(rtcConfig);
-      peerConnectionsRef.current.set(remoteUserId, peer);
-
-      localStream.getTracks().forEach((track) => {
-        peer.addTrack(track, localStream);
-      });
-
-      peer.ontrack = (event) => {
-        const remoteStream =
-          remoteMediaStreamsRef.current.get(remoteUserId) ?? new MediaStream();
-
-        if (!remoteMediaStreamsRef.current.has(remoteUserId)) {
-          remoteMediaStreamsRef.current.set(remoteUserId, remoteStream);
-        }
-
-        if (!remoteStream.getTracks().includes(event.track)) {
-          remoteStream.addTrack(event.track);
-        }
-
-        clearRetryOfferTimer(remoteUserId);
-        addInCallMember(remoteUserId);
-
-        setRemoteStreams((prev) => {
-          const next = prev.filter((item) => item.userId !== remoteUserId);
-          const participant =
-            groupDetails.members.find(
-              (member) => member.userId === remoteUserId,
-            )?.name ?? remoteUserId;
-          next.push({
-            userId: remoteUserId,
-            name: participant,
-            stream: remoteStream,
-          });
-          return next;
-        });
-      };
-
-      peer.onicecandidate = (event) => {
-        if (!event.candidate) return;
-        emitIceCandidate(remoteUserId, event.candidate.toJSON());
-      };
-
-      peer.onconnectionstatechange = () => {
-        if (peer.connectionState === "connected") {
-          clearRetryOfferTimer(remoteUserId);
-        }
-      };
-
-      return peer;
-    },
-    [
-      addInCallMember,
-      clearRetryOfferTimer,
-      emitIceCandidate,
-      groupDetails.members,
-    ],
-  );
-
-  const createAndSendOffer = useCallback(
-    async (remoteUserId: string, force = false) => {
-      if (!socket || !localStreamRef.current) return false;
-      if (remoteUserId === currentUserId) return false;
-
-      const shouldInitiate = currentUserId < remoteUserId;
-      if (!force && !shouldInitiate) {
-        return false;
-      }
-
-      const hasRemoteStream = remoteStreamsRef.current.some(
-        (item) => item.userId === remoteUserId && item.stream,
-      );
-      if (hasRemoteStream) {
-        clearRetryOfferTimer(remoteUserId);
-        return true;
-      }
-
-      const peer = await ensurePeerConnection(remoteUserId);
-      if (peer.signalingState !== "stable") {
-        if (force) {
-          try {
-            await peer.setLocalDescription({ type: "rollback" });
-          } catch {
-            return false;
-          }
-        } else {
-          return false;
-        }
-      }
-
-      const offer = await peer.createOffer({ iceRestart: force });
-      await peer.setLocalDescription(offer);
-
-      socket.emit(CHAT_EVENTS.GROUP_CALL_OFFER, {
-        senderId: currentUserId,
-        roomId,
-        receiverId: remoteUserId,
-        callMode,
-        offer,
-      } satisfies GroupCallOfferPayload);
-
-      return true;
-    },
-    [
-      callMode,
-      clearRetryOfferTimer,
-      currentUserId,
-      ensurePeerConnection,
-      roomId,
-      socket,
-    ],
-  );
-
-  const scheduleOfferRetry = useCallback(
-    (remoteUserId: string) => {
-      clearRetryOfferTimer(remoteUserId);
-
-      const timerId = window.setTimeout(() => {
-        void createAndSendOffer(remoteUserId, true)
-          .then((sent) => {
-            if (!sent) {
-              scheduleOfferRetry(remoteUserId);
-            }
-          })
-          .catch(() => {
-            scheduleOfferRetry(remoteUserId);
-          });
-      }, 3000);
-
-      retryOfferTimersRef.current.set(remoteUserId, timerId);
-    },
-    [clearRetryOfferTimer, createAndSendOffer],
-  );
-
-  const flushPendingIce = useCallback(async (remoteUserId: string) => {
-    const peer = peerConnectionsRef.current.get(remoteUserId);
-    if (!peer || !peer.remoteDescription) return;
-
-    const queued = pendingIceCandidatesRef.current.get(remoteUserId) ?? [];
-    pendingIceCandidatesRef.current.delete(remoteUserId);
-
-    for (const candidate of queued) {
-      await peer.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-  }, []);
-
-  const handlePendingOffers = useCallback(async () => {
-    const entries = Array.from(pendingOffersRef.current.values());
-    if (entries.length === 0) return;
-
-    pendingOffersRef.current.clear();
-
-    for (const payload of entries) {
-      if (payload.roomId !== roomId || payload.receiverId !== currentUserId) {
-        continue;
-      }
-
-      const peer = await ensurePeerConnection(payload.senderId);
-      await peer.setRemoteDescription(new RTCSessionDescription(payload.offer));
-      await flushPendingIce(payload.senderId);
-
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-
-      socket?.emit(CHAT_EVENTS.GROUP_CALL_ANSWER, {
-        senderId: currentUserId,
-        roomId,
-        receiverId: payload.senderId,
-        callMode: payload.callMode,
-        answer,
-      } satisfies GroupCallAnswerPayload);
-    }
-  }, [currentUserId, ensurePeerConnection, flushPendingIce, roomId, socket]);
-
-  const startConference = useCallback(async () => {
-    if (!socket || startedRef.current) return;
-
-    startedRef.current = true;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: callMode === "video",
-    });
-
-    localStreamRef.current = stream;
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
-    setLocalStream(stream);
-    setIsActive(true);
-
-    // Bao hiem race condition: host gui offer truoc khi member mount → offer mat.
-    // Moi participant sau khi co stream se emit GROUP_CALL_START de bao "san sang".
-    // Cac participant dang trong call nhan duoc se gui offer lai dung luc da co listener.
-    socket.emit(CHAT_EVENTS.GROUP_CALL_START, {
-      senderId: currentUserId,
-      roomId,
-      callMode,
-    });
-
-    await handlePendingOffers();
-
-    for (const member of remoteMembers) {
-      const sent = await createAndSendOffer(member.userId);
-      if (sent) {
-        scheduleOfferRetry(member.userId);
-      }
-    }
-  }, [
-    callMode,
-    createAndSendOffer,
-    handlePendingOffers,
-    remoteMembers,
-    roomId,
-    scheduleOfferRetry,
-    socket,
-  ]);
 
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    const onStarted = async (payload: GroupCallStartedPayload) => {
+    const onStarted = (payload: GroupCallStartedPayload) => {
       if (payload.roomId !== roomId) return;
-
-      addInCallMember(payload.senderId);
-
-      if (!startedRef.current) {
-        // Chua start → start ngay
-        try {
-          await startConference();
-        } catch {
-          stopConference(false);
-        }
-        return;
-      }
-
-      // Da trong call → thanh vien moi vua san sang (phat hien qua GROUP_CALL_START).
-      // Neu currentUserId < newJoiner thi ta gui offer cho ho.
-      // Neu currentUserId > newJoiner thi newJoiner se tu offer ta (trong startConference cua ho).
-      const newJoinerId = payload.senderId;
-      if (!newJoinerId || newJoinerId === currentUserId) return;
-      if (!localStreamRef.current) return;
-      if (peerConnectionsRef.current.has(newJoinerId)) return;
-
-      try {
-        const sent = await createAndSendOffer(newJoinerId);
-        if (sent) {
-          scheduleOfferRetry(newJoinerId);
-        }
-      } catch {
-        // Ignore
-      }
-    };
-
-    const onOffer = async (payload: GroupCallOfferPayload) => {
-      if (payload.roomId !== roomId || payload.receiverId !== currentUserId) {
-        return;
-      }
-
-      if (!localStreamRef.current) {
-        pendingOffersRef.current.set(payload.senderId, payload);
-        return;
-      }
-
-      const peer = await ensurePeerConnection(payload.senderId);
-      if (peer.signalingState !== "stable") {
-        try {
-          await peer.setLocalDescription({ type: "rollback" });
-        } catch {
-          // Ignore rollback errors. In-flight negotiation may finish naturally.
-        }
-      }
-      await peer.setRemoteDescription(new RTCSessionDescription(payload.offer));
-      await flushPendingIce(payload.senderId);
-
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-
-      socket.emit(CHAT_EVENTS.GROUP_CALL_ANSWER, {
-        senderId: currentUserId,
-        roomId,
-        receiverId: payload.senderId,
-        callMode: payload.callMode,
-        answer,
-      } satisfies GroupCallAnswerPayload);
-    };
-
-    const onAnswer = async (payload: GroupCallAnswerPayload) => {
-      if (payload.roomId !== roomId || payload.receiverId !== currentUserId) {
-        return;
-      }
-
-      const peer = peerConnectionsRef.current.get(payload.senderId);
-      if (!peer) return;
-
-      await peer.setRemoteDescription(
-        new RTCSessionDescription(payload.answer),
-      );
-      await flushPendingIce(payload.senderId);
-    };
-
-    const onIce = async (payload: GroupCallIcePayload) => {
-      if (payload.roomId !== roomId || payload.receiverId !== currentUserId) {
-        return;
-      }
-
-      const peer = peerConnectionsRef.current.get(payload.senderId);
-      if (!peer || !peer.remoteDescription) {
-        const queued =
-          pendingIceCandidatesRef.current.get(payload.senderId) ?? [];
-        queued.push(payload.candidate);
-        pendingIceCandidatesRef.current.set(payload.senderId, queued);
-        return;
-      }
-
-      await peer.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      setInCallMemberIds((prev) => {
+        const next = new Set(prev);
+        next.add(currentUserId);
+        payload.activeParticipantIds?.forEach((userId) => {
+          if (userId) next.add(userId);
+        });
+        if (payload.senderId) next.add(payload.senderId);
+        return Array.from(next);
+      });
     };
 
     const onEnd = (payload: GroupCallEndPayload) => {
       if (payload.roomId !== roomId) return;
 
       if (!payload.endForAll && payload.senderId !== currentUserId) {
-        const leaverId = payload.senderId;
-        const peer = peerConnectionsRef.current.get(leaverId);
-        if (peer) {
-          peer.close();
-          peerConnectionsRef.current.delete(leaverId);
+        setInCallMemberIds((prev) =>
+          prev.filter((userId) => userId !== payload.senderId),
+        );
+        return;
+      }
+
+      void stopConference(false).then(() => {
+        if (!payload.endForAll && payload.senderId === currentUserId) {
+          onLeaveRef.current();
+          return;
         }
-
-        pendingIceCandidatesRef.current.delete(leaverId);
-        pendingOffersRef.current.delete(leaverId);
-        clearRetryOfferTimer(leaverId);
-        removeInCallMember(leaverId);
-        return;
-      }
-
-      stopConference(false);
-
-      if (!payload.endForAll && payload.senderId === currentUserId) {
-        onLeave();
-        return;
-      }
-
-      onClose();
+        onCloseRef.current();
+      });
     };
 
     socket.on(CHAT_EVENTS.GROUP_CALL_STARTED, onStarted);
-    socket.on(CHAT_EVENTS.GROUP_CALL_OFFER, onOffer);
-    socket.on(CHAT_EVENTS.GROUP_CALL_ANSWER, onAnswer);
-    socket.on(CHAT_EVENTS.GROUP_CALL_ICE, onIce);
     socket.on(CHAT_EVENTS.GROUP_CALL_END, onEnd);
 
     return () => {
       socket.off(CHAT_EVENTS.GROUP_CALL_STARTED, onStarted);
-      socket.off(CHAT_EVENTS.GROUP_CALL_OFFER, onOffer);
-      socket.off(CHAT_EVENTS.GROUP_CALL_ANSWER, onAnswer);
-      socket.off(CHAT_EVENTS.GROUP_CALL_ICE, onIce);
       socket.off(CHAT_EVENTS.GROUP_CALL_END, onEnd);
     };
-  }, [
-    callMode,
-    createAndSendOffer,
-    currentUserId,
-    flushPendingIce,
-    scheduleOfferRetry,
-    onClose,
-    roomId,
-    socket,
-    startConference,
-    stopConference,
-    ensurePeerConnection,
-    addInCallMember,
-    clearRetryOfferTimer,
-    removeInCallMember,
-  ]);
+  }, [currentUserId, roomId, socket, stopConference]);
 
   useEffect(() => {
-    if (
-      !socket ||
-      !roomId ||
-      !groupDetails.members.length ||
-      startedRef.current
-    ) {
-      return;
-    }
+    if (!socket || !AGORA_APP_ID || startedRef.current) return;
 
-    if (callDirection !== "outgoing" && callDirection !== "incoming") {
-      return;
-    }
+    startedRef.current = true;
 
-    // Defer startConference to avoid synchronous setState inside effect
-    setTimeout(() => {
-      void startConference().catch(() => {
-        stopConference(false);
-      });
+    const timerId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setJoining(true);
+          setJoinError("");
+          const { token } = await fetchAgoraToken(channelName);
+          await join(
+            AGORA_APP_ID,
+            channelName,
+            token,
+            currentUserId,
+            callMode === "video",
+          );
+
+          socket.emit(CHAT_EVENTS.GROUP_CALL_START, {
+            senderId: currentUserId,
+            roomId,
+            callMode,
+          });
+
+          setJoining(false);
+        } catch (error) {
+          startedRef.current = false;
+          setJoining(false);
+          setJoinError(
+            error instanceof Error
+              ? error.message
+              : "Khong the ket noi cuoc goi nhom.",
+          );
+        }
+      })();
     }, 0);
-  }, [
-    callDirection,
-    groupDetails.members.length,
-    roomId,
-    socket,
-    startConference,
-    stopConference,
-  ]);
+
+    return () => window.clearTimeout(timerId);
+  }, [callMode, channelName, currentUserId, join, roomId, socket]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!joinState) return;
 
     const timer = window.setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [isActive]);
+  }, [joinState]);
 
   useEffect(
     () => () => {
-      stopConference(false);
+      void stopConference(false);
     },
     [stopConference],
   );
 
   const toggleMute = () => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
+    if (!localAudioTrack) return;
 
     const next = !muted;
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = !next;
-    });
+    void localAudioTrack.setEnabled(!next);
     setMuted(next);
   };
 
   const toggleCamera = () => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
+    if (!localVideoTrack) return;
 
     const next = !cameraOff;
-    stream.getVideoTracks().forEach((track) => {
-      track.enabled = !next;
-    });
+    void localVideoTrack.setEnabled(!next);
     setCameraOff(next);
   };
 
   const handleEnd = () => {
-    const othersInCall = inCallMemberIdsRef.current.filter(
-      (userId) => userId !== currentUserId,
-    ).length;
-    const shouldEndForAll = othersInCall === 0;
-    stopConference(true, shouldEndForAll ? "ended" : "left", shouldEndForAll);
+    void stopConference(true, "left", false);
   };
 
   return (
@@ -859,7 +356,11 @@ export default function GroupCallComponent({
           </div>
           <div className="shrink-0 text-right">
             <p className="text-[11px] text-[#6d7790] sm:text-xs">
-              {callDirection === "outgoing" ? "Đang gọi" : "Đang tham gia"}
+              {joining
+                ? "Dang ket noi"
+                : callDirection === "outgoing"
+                  ? "Dang goi"
+                  : "Dang tham gia"}
             </p>
             <p className="text-sm font-semibold tabular-nums text-[#0f1c3c]">
               {formatDuration(elapsedSeconds)}
@@ -872,42 +373,48 @@ export default function GroupCallComponent({
             <div
               className={`grid min-h-0 flex-1 ${videoGridClass} auto-rows-[minmax(0,1fr)] gap-2 overflow-hidden sm:gap-3`}
             >
-              {videoParticipants.length > 0 ? (
-                videoParticipants.map((participant) => (
+              {participants.map((participant) => {
+                const videoTrack = participant.isLocal
+                  ? localVideoTrack
+                  : (participant.remoteUser?.videoTrack ?? null);
+                const audioTrack = participant.isLocal
+                  ? null
+                  : (participant.remoteUser?.audioTrack ?? null);
+                const hasVideo =
+                  Boolean(videoTrack) &&
+                  !(participant.isLocal && cameraOff);
+
+                return (
                   <div
                     key={participant.userId}
                     className="relative min-h-0 overflow-hidden rounded-2xl bg-[#15213e] shadow-lg md:rounded-3xl"
                   >
-                    {participant.stream ? (
-                      <StreamVideo
-                        stream={participant.stream}
-                        muted={participant.userId === currentUserId}
-                        className="h-full w-full object-contain"
+                    {hasVideo ? (
+                      <AgoraVideo
+                        track={videoTrack}
+                        className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-[#1c294b]">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#dfe7fb] text-lg font-bold text-[#28437f]">
-                          {initials(participant.name)}
+                      <div className="flex h-full w-full items-center justify-center bg-[#1c294b] px-4 text-center">
+                        <div>
+                          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#dfe7fb] text-lg font-bold text-[#28437f]">
+                            {initials(participant.name)}
+                          </div>
+                          <p className="mt-3 text-xs font-semibold text-white/80">
+                            {participant.isLocal && cameraOff
+                              ? "Camera dang tat"
+                              : "Dang ket noi video..."}
+                          </p>
                         </div>
                       </div>
                     )}
+                    <AgoraAudio track={audioTrack} />
                     <div className="absolute left-3 top-3 max-w-[75%] truncate rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-                      {participant.userId === currentUserId
-                        ? "Bạn"
-                        : participant.name}
+                      {participant.isLocal ? "Ban" : participant.name}
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-[#c9d3ea] bg-white/60 text-center text-sm text-[#5f6d89]">
-                  <div>
-                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#dfe7fb] text-2xl font-bold text-[#28437f]">
-                      {initials(groupDetails.title)}
-                    </div>
-                    <p className="mt-4">Đang chờ các thành viên kết nối...</p>
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           ) : (
             <div className="grid min-h-0 flex-1 grid-cols-2 auto-rows-[minmax(0,1fr)] gap-3 overflow-hidden md:grid-cols-3 xl:grid-cols-4">
@@ -916,6 +423,9 @@ export default function GroupCallComponent({
                   key={participant.userId}
                   className="flex min-h-0 flex-col items-center justify-center rounded-3xl border border-[#d7def0] bg-white/75 px-4 py-5 text-center shadow-sm"
                 >
+                  <AgoraAudio
+                    track={participant.remoteUser?.audioTrack ?? null}
+                  />
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#dfe7fb] text-lg font-bold text-[#28437f]">
                     {initials(participant.name)}
                   </div>
@@ -923,14 +433,18 @@ export default function GroupCallComponent({
                     {participant.name}
                   </p>
                   <p className="mt-1 text-xs text-[#6d7790]">
-                    {participant.userId === currentUserId
-                      ? "Bạn"
-                      : "Đã kết nối"}
+                    {participant.isLocal ? "Ban" : "Da ket noi"}
                   </p>
                 </div>
               ))}
             </div>
           )}
+
+          {joinError ? (
+            <div className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-700">
+              {joinError}
+            </div>
+          ) : null}
 
           <div className="shrink-0 rounded-4xl bg-white/85 px-4 py-3 shadow-[0_18px_36px_rgba(18,27,51,0.12)] backdrop-blur sm:mx-auto sm:w-fit sm:min-w-90">
             <div className="flex items-center justify-center gap-3">
