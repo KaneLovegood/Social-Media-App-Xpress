@@ -17,6 +17,8 @@ interface RejoinableGroupCall {
 interface ChatContentProps {
   peerName: string;
   orderTitle: string;
+  avatarUrl?: string;
+  avatarFallback?: string;
   typingText: string;
   isPeerOnline: boolean;
   isGroup: boolean;
@@ -65,6 +67,8 @@ interface ChatContentProps {
 export default function ChatContent({
   peerName,
   orderTitle,
+  avatarUrl,
+  avatarFallback,
   typingText,
   isPeerOnline,
   isGroup,
@@ -154,6 +158,8 @@ export default function ChatContent({
       <ChatHeader
         peerName={peerName}
         orderTitle={orderTitle}
+        avatarUrl={avatarUrl}
+        avatarFallback={avatarFallback}
         typingText={typingText}
         isPeerOnline={isPeerOnline}
         isGroup={isGroup}

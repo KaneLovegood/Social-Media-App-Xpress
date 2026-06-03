@@ -2,6 +2,7 @@ import {
   ChatMessage,
   ReplyPreview as ReplyPreviewType,
 } from "@/lib/realtime/types";
+import { useState } from "react";
 import MessageActionsMenu from "../message-action/MessageActionsMenu";
 import MessageBubbleCard from "./MessageBubbleCard";
 
@@ -35,6 +36,30 @@ function getInitial(name: string): string {
   return (name || "?").trim().charAt(0).toUpperCase();
 }
 
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+function SmilePlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <path d="M9 9h.01" />
+      <path d="M15 9h.01" />
+      <path d="M19 5v4" />
+      <path d="M17 7h4" />
+    </svg>
+  );
+}
+
 export default function MessageItemRow({
   message,
   currentUserId,
@@ -60,6 +85,8 @@ export default function MessageItemRow({
   onImageClick,
   onReplyPreviewClick,
 }: MessageItemRowProps) {
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const [localReaction, setLocalReaction] = useState("");
   const isOwn = message.senderId === currentUserId;
   const isSystemMessage = message.messageType === "SYSTEM";
   const canRecall = isOwn;
@@ -194,6 +221,45 @@ export default function MessageItemRow({
               onImageClick={onImageClick}
               onReplyPreviewClick={onReplyPreviewClick}
             />
+
+            {!isOwn && !isMultiSelectMode && !message.isRecalled ? (
+              <div className="absolute -bottom-4 left-2 z-10">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setReactionPickerOpen((prev) => !prev)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600"
+                    aria-label="Thả cảm xúc"
+                  >
+                    {localReaction ? (
+                      <span className="text-sm leading-none">{localReaction}</span>
+                    ) : (
+                      <SmilePlusIcon />
+                    )}
+                  </button>
+                  {reactionPickerOpen ? (
+                    <div className="absolute bottom-8 left-0 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1.5 shadow-lg">
+                      {QUICK_REACTIONS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            setLocalReaction((prev) =>
+                              prev === emoji ? "" : emoji,
+                            );
+                            setReactionPickerOpen(false);
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-base transition hover:bg-slate-100"
+                          aria-label={`Thả cảm xúc ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             {!isMultiSelectMode && (
               <div
