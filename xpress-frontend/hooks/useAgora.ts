@@ -164,6 +164,24 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
     };
   }, [client]);
 
+  const switchCamera = useCallback(async () => {
+    const videoTrack = tracksRef.current.video;
+    if (!videoTrack) return;
+    
+    try {
+      const cameras = await AgoraRTC.getCameras();
+      if (cameras.length <= 1) return;
+      
+      const activeDeviceId = videoTrack.getMediaStreamTrack().getSettings().deviceId;
+      const nextDevice = cameras.find((cam) => cam.deviceId !== activeDeviceId);
+      if (nextDevice) {
+        await videoTrack.setDevice(nextDevice.deviceId);
+      }
+    } catch (err) {
+      console.error('Failed to switch Agora camera:', err);
+    }
+  }, []);
+
   return {
     localAudioTrack,
     localVideoTrack,
@@ -171,5 +189,6 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
     joinState,
     join,
     leave,
+    switchCamera,
   };
 };

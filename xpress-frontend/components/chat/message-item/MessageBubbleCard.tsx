@@ -282,6 +282,38 @@ export default function MessageBubbleCard({
     );
   }
 
+  // Parse Contact Card: [Danh thiếp] Tên: <Tên> | Email: <Email> | UserId: <UserId>
+  if (message.content && message.content.startsWith("[Danh thiếp]")) {
+    const parts = message.content.replace("[Danh thiếp]", "").split("|");
+    const namePart = parts.find(p => p.includes("Tên:"))?.replace("Tên:", "").trim() || "";
+    const emailPart = parts.find(p => p.includes("Email:"))?.replace("Email:", "").trim() || "";
+    const uidPart = parts.find(p => p.includes("UserId:"))?.replace("UserId:", "").trim() || "";
+
+    return (
+      <div className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 shadow-sm min-w-56 max-w-[280px]">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white shadow-md text-sm">
+            {namePart ? namePart.charAt(0).toUpperCase() : "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-800">{namePart}</p>
+            <p className="truncate text-xs text-slate-500 mt-0.5">{emailPart}</p>
+          </div>
+        </div>
+        <div className="mt-3.5 border-t border-slate-200/60 pt-3 flex justify-between items-center text-[11px] font-semibold text-blue-600">
+          <span>Danh thiếp liên hệ</span>
+          <button 
+            type="button" 
+            onClick={() => router.push(`/chat/contacts?userId=${uidPart}`)}
+            className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 shadow-xs transition"
+          >
+            Nhắn tin
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Default: Text messages
   return (
     <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-30">

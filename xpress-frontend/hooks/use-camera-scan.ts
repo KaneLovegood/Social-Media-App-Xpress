@@ -8,6 +8,7 @@ export const useCameraScan = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -20,17 +21,20 @@ export const useCameraScan = () => {
     setIsCapturing(false);
   }, []);
 
-  const startCamera = useCallback(async () => {
-    // Nếu đang có stream rồi thì không start lại
-    if (streamRef.current) return streamRef.current;
+  const startCamera = useCallback(async (currentFacing?: "user" | "environment") => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
 
     try {
       setIsCapturing(true);
       setError(null);
       
+      const targetFacing = currentFacing || facingMode;
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
-          facingMode: "environment",
+          facingMode: targetFacing,
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
@@ -46,13 +50,21 @@ export const useCameraScan = () => {
       setIsCapturing(false);
       return null;
     }
-  }, []);
+  }, [facingMode]);
+
+  const switchCamera = useCallback(async () => {
+    const nextFacing = facingMode === "user" ? "environment" : "user";
+    setFacingMode(nextFacing);
+    return await startCamera(nextFacing);
+  }, [facingMode, startCamera]);
 
   return {
     stream,
     error,
     isCapturing,
+    facingMode,
     startCamera,
     stopCamera,
+    switchCamera,
   };
 };

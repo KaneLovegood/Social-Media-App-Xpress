@@ -44,6 +44,12 @@ export default function AudioCallOverlay({
             remoteAudioTrack?.stop();
         };
     }, [remoteAudioTrack]);
+
+    useEffect(() => {
+        if (remoteAudioTrack) {
+            remoteAudioTrack.setVolume(speakerBoost ? 1000 : 100);
+        }
+    }, [remoteAudioTrack, speakerBoost]);
     const controls = isIncomingRinging ? (
         <>
             <button

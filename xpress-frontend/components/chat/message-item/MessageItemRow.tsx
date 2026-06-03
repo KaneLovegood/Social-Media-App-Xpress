@@ -2,7 +2,7 @@ import {
   ChatMessage,
   ReplyPreview as ReplyPreviewType,
 } from "@/lib/realtime/types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MessageActionsMenu from "../message-action/MessageActionsMenu";
 import MessageBubbleCard from "./MessageBubbleCard";
 
@@ -87,7 +87,40 @@ export default function MessageItemRow({
 }: MessageItemRowProps) {
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const [localReaction, setLocalReaction] = useState("");
+  const [showMobileActions, setShowMobileActions] = useState(false);
   const isOwn = message.senderId === currentUserId;
+
+  useEffect(() => {
+    if (!showMobileActions) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      const bubbleEl = document.getElementById(`msg-bubble-${message.messageId}`);
+      const actionsEl = document.getElementById(`msg-actions-${message.messageId}`);
+      if (
+        bubbleEl && !bubbleEl.contains(target) &&
+        actionsEl && !actionsEl.contains(target)
+      ) {
+        setShowMobileActions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [showMobileActions, message.messageId]);
+
+  const handleBubbleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a') || target.closest('.cursor-pointer')) {
+      return;
+    }
+    setShowMobileActions((prev) => !prev);
+  };
+
   const isSystemMessage = message.messageType === "SYSTEM";
   const canRecall = isOwn;
   const isConversationGenerated = message.messageType === "CALL_LOG";
@@ -208,19 +241,25 @@ export default function MessageItemRow({
             )}
           </div>
 
-          <div className={`relative ${isOwn ? "pl-25" : "pr-25"}`}>
-            <MessageBubbleCard
-              message={message}
-              isOwn={isOwn}
-              currentUserId={currentUserId}
-              currentUserName={currentUserName}
-              peerName={peerName}
-              senderName={senderName}
-              senderNameById={senderNameById}
-              onRedial={onRedial}
-              onImageClick={onImageClick}
-              onReplyPreviewClick={onReplyPreviewClick}
-            />
+          <div className={`relative ${isOwn ? "pl-24" : "pr-24"}`}>
+            <div
+              id={`msg-bubble-${message.messageId}`}
+              onClick={handleBubbleClick}
+              className="cursor-pointer"
+            >
+              <MessageBubbleCard
+                message={message}
+                isOwn={isOwn}
+                currentUserId={currentUserId}
+                currentUserName={currentUserName}
+                peerName={peerName}
+                senderName={senderName}
+                senderNameById={senderNameById}
+                onRedial={onRedial}
+                onImageClick={onImageClick}
+                onReplyPreviewClick={onReplyPreviewClick}
+              />
+            </div>
 
             {!isOwn && !isMultiSelectMode && !message.isRecalled ? (
               <div className="absolute -bottom-4 left-2 z-10">
@@ -263,6 +302,7 @@ export default function MessageItemRow({
 
             {!isMultiSelectMode && (
               <div
+                id={`msg-actions-${message.messageId}`}
                 className={`absolute top-1/2 -translate-y-1/2 ${
                   isOwn ? "left-0" : "right-0"
                 }`}
@@ -277,6 +317,8 @@ export default function MessageItemRow({
                   canRecall={canRecall && !message.isRecalled}
                   isPinned={isPinned}
                   isStarred={isStarred}
+                  forceShow={showMobileActions}
+                  onCloseMobileActions={() => setShowMobileActions(false)}
                   onReply={() =>
                     onReply({
                       messageId: message.messageId,

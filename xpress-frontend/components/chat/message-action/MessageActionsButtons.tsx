@@ -5,6 +5,7 @@ interface MessageActionsButtonsProps {
   onReply: () => void;
   onForward: () => void;
   onMenuToggle: () => void;
+  forceShow?: boolean;
 }
 
 export default function MessageActionsButtons({
@@ -12,9 +13,14 @@ export default function MessageActionsButtons({
   onReply,
   onForward,
   onMenuToggle,
+  forceShow = false,
 }: MessageActionsButtonsProps) {
   return (
-    <div className={`pointer-events-none flex items-center gap-1 transition ${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+    <div className={`flex items-center gap-1 transition ${
+      menuOpen || forceShow
+        ? 'opacity-100 pointer-events-auto'
+        : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
+    }`}>
       <button
         type="button"
         className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm font-bold text-zinc-700 hover:bg-zinc-100"
