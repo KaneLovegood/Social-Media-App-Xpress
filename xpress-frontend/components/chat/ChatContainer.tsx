@@ -456,12 +456,6 @@ export default function ChatContainer({
   );
 
   useEffect(() => {
-    if (activeRoomId === "AI_ASSISTANT") return;
-
-    if (activeRoomId && rooms.some((room) => room.id === activeRoomId)) {
-      return;
-    }
-
     if (initialRoomId === "AI_ASSISTANT") {
       setActiveRoomId("AI_ASSISTANT");
       return;
@@ -476,7 +470,14 @@ export default function ChatContainer({
       const room = rooms.find((item) => item.peerUserId === initialPeerUserId);
       if (room) {
         setActiveRoomId(room.id);
+        return;
       }
+    }
+
+    if (activeRoomId === "AI_ASSISTANT") return;
+
+    if (activeRoomId && rooms.some((room) => room.id === activeRoomId)) {
+      return;
     }
   }, [activeRoomId, initialPeerUserId, initialRoomId, rooms]);
 
@@ -1116,6 +1117,7 @@ export default function ChatContainer({
             />
             <ChatAppRail
               activeNav="chat"
+              avatarUrl={currentUserAvatarUrl || undefined}
               initials={toInitials(currentUserName) || undefined}
               onLogout={handleLogout}
               mobileOpen
