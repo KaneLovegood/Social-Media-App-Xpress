@@ -6,6 +6,8 @@ import {
   Info,
   ListCollapse,
   Trash2,
+  Quote,
+  CornerUpRight,
 } from 'lucide-react';
 
 interface MessageActionsPanelProps {
@@ -13,6 +15,8 @@ interface MessageActionsPanelProps {
   canRecall: boolean;
   isPinned?: boolean;
   isStarred?: boolean;
+  onReply: () => void;
+  onForward: () => void;
   onCopy: () => void;
   onPin: () => void;
   onMark: () => void;
@@ -39,6 +43,8 @@ type ActionItem = {
 };
 
 const ACTIONS: ActionItem[] = [
+  { icon: Quote, label: 'Trả lời', action: 'onReply' },
+  { icon: CornerUpRight, label: 'Chuyển tiếp', action: 'onForward' },
   { icon: Copy, label: 'Copy tin nhắn', action: 'onCopy' },
   { icon: Pin, label: 'Ghim tin nhắn', action: 'onPin' },
   { icon: Star, label: 'Đánh dấu tin nhắn', action: 'onMark' },
