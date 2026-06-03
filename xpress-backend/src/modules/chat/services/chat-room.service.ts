@@ -235,7 +235,7 @@ export class ChatRoomService {
     return {
       roomId,
       inviteCode: room.inviteCode,
-      inviteLink: `/chat/join/${room.inviteCode}`,
+      inviteLink: `/chat/join?code=${encodeURIComponent(room.inviteCode)}`,
     };
   }
 
@@ -766,7 +766,7 @@ export class ChatRoomService {
       emoji: room.emoji,
       createdByUserId: room.createdByUserId,
       inviteCode: room.inviteCode,
-      inviteLink: `/chat/join/${room.inviteCode}`,
+      inviteLink: `/chat/join?code=${encodeURIComponent(room.inviteCode)}`,
       memberCount: room.memberCount,
       pinnedMessageId: room.pinnedMessageId,
       lastMessageAt: room.lastMessageAt,

@@ -1,18 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { joinGroupByInvite } from "@/lib/chat-groups";
+import { extractGroupInviteCode, joinGroupByInvite } from "@/lib/chat-groups";
 
 export default function JoinGroupPage() {
-  const params = useParams<{ inviteCode: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const inviteCode = params.inviteCode;
+  const inviteCode = extractGroupInviteCode(
+    searchParams.get("code") ?? searchParams.get("inviteCode") ?? "",
+  );
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!inviteCode) {
+      setError("Link moi nhom khong hop le.");
+      return () => {
+        cancelled = true;
+      };
+    }
 
     void joinGroupByInvite(inviteCode)
       .then((details) => {

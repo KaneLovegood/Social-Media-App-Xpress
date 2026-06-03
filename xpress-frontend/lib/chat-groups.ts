@@ -236,11 +236,21 @@ export function extractGroupInviteCode(value: string): string {
 
   try {
     const url = new URL(trimmed);
+    const code = url.searchParams.get("code") ?? url.searchParams.get("inviteCode");
+    if (code) {
+      return code;
+    }
+
     const match = url.pathname.match(/\/chat\/join\/([^/?#]+)/i);
     if (match?.[1]) {
       return decodeURIComponent(match[1]);
     }
   } catch {
+    const queryMatch = trimmed.match(/[?&](?:code|inviteCode)=([^&#]+)/i);
+    if (queryMatch?.[1]) {
+      return decodeURIComponent(queryMatch[1]);
+    }
+
     const match = trimmed.match(/\/chat\/join\/([^/?#]+)/i);
     if (match?.[1]) {
       return decodeURIComponent(match[1]);
