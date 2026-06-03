@@ -89,12 +89,17 @@ function AgoraVideo({
   return <div ref={ref} className={className} />;
 }
 
-function AgoraAudio({ track }: { track: IRemoteAudioTrack | null }) {
+function AgoraAudio({ track, speakerBoost }: { track: IRemoteAudioTrack | null; speakerBoost: boolean }) {
   useEffect(() => {
     if (!track) return;
     track.play();
     return () => track.stop();
   }, [track]);
+
+  useEffect(() => {
+    if (!track) return;
+    track.setVolume(speakerBoost ? 1000 : 100);
+  }, [track, speakerBoost]);
 
   return null;
 }
@@ -122,6 +127,7 @@ export default function GroupCallComponent({
     joinState,
     join,
     leave,
+    switchCamera,
   } = useAgora(client);
 
   const onLeaveRef = useRef(onLeave);
@@ -129,6 +135,7 @@ export default function GroupCallComponent({
   const startedRef = useRef(false);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(callMode !== "video");
+  const [speakerBoost, setSpeakerBoost] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [joining, setJoining] = useState(true);
   const [joinError, setJoinError] = useState("");
@@ -408,7 +415,7 @@ export default function GroupCallComponent({
                         </div>
                       </div>
                     )}
-                    <AgoraAudio track={audioTrack} />
+                    <AgoraAudio track={audioTrack} speakerBoost={speakerBoost} />
                     <div className="absolute left-3 top-3 max-w-[75%] truncate rounded-full bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
                       {participant.isLocal ? "Ban" : participant.name}
                     </div>
@@ -425,6 +432,7 @@ export default function GroupCallComponent({
                 >
                   <AgoraAudio
                     track={participant.remoteUser?.audioTrack ?? null}
+                    speakerBoost={speakerBoost}
                   />
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#dfe7fb] text-lg font-bold text-[#28437f]">
                     {initials(participant.name)}
@@ -481,37 +489,68 @@ export default function GroupCallComponent({
                 )}
               </button>
 
+              <button
+                type="button"
+                onClick={() => setSpeakerBoost((prev) => !prev)}
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-full ${speakerBoost ? 'bg-[#152b58] text-white' : 'bg-[#eef2f7] text-[#243356]'}`}
+                aria-label="Tối đa âm lượng"
+                title={speakerBoost ? "Khôi phục âm lượng thường" : "Tối đa âm lượng"}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 10v4h4l5 4V6l-5 4H3Z" />
+                  <path d="M16 9a4 4 0 0 1 0 6" />
+                  <path d="M18.5 6.5a7 7 0 0 1 0 11" />
+                </svg>
+              </button>
+
               {callMode === "video" ? (
-                <button
-                  type="button"
-                  onClick={toggleCamera}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#eef2f7] text-[#243356]"
-                  aria-label="Toggle camera"
-                >
-                  {cameraOff ? (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleCamera}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#eef2f7] text-[#243356]"
+                    aria-label="Toggle camera"
+                  >
+                    {cameraOff ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="m4 4 16 16" />
+                        <rect x="3" y="6" width="13" height="12" rx="2" />
+                      </svg>
+                    ) : (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect x="3" y="6" width="13" height="12" rx="2" />
+                        <path d="m16 10 5-3v10l-5-3" />
+                      </svg>
+                    )}
+                  </button>
+                  {!cameraOff && (
+                    <button
+                      type="button"
+                      onClick={switchCamera}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#eef2f7] text-[#243356]"
+                      aria-label="Switch camera"
                     >
-                      <path d="m4 4 16 16" />
-                      <rect x="3" y="6" width="13" height="12" rx="2" />
-                    </svg>
-                  ) : (
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <rect x="3" y="6" width="13" height="12" rx="2" />
-                      <path d="m16 10 5-3v10l-5-3" />
-                    </svg>
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 2v6h-6" />
+                        <path d="M3 22v-6h6" />
+                        <path d="M21 13a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                        <path d="M3 11a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                      </svg>
+                    </button>
                   )}
-                </button>
+                </>
               ) : null}
 
               <button

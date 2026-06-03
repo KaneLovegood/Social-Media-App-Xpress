@@ -59,7 +59,7 @@ export default function ComposerInputRow({
         aria-label={canSend ? "Send message" : "Send like"}
       >
         {canSend ? (
-          <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor">
+          <svg viewBox="0 0 24 24" className="h-4.5 w-4.5 rotate-180" fill="currentColor">
             <path d="m4 12 15-7-3 7 3 7-15-7Z" />
           </svg>
         ) : (
