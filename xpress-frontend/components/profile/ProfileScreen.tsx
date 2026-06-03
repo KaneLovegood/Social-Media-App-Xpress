@@ -4,8 +4,10 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState, useSyncExternalSto
 import {
   Bell,
   Camera,
+  Check,
   KeyRound,
   Lock,
+  Pencil,
   Shield,
   ShieldCheck,
   TextAlignJustify,
@@ -20,6 +22,7 @@ import {
   sendTwoFactorDisableOtp,
   sendTwoFactorSetupOtp,
   updateProfileAvatar,
+  updateProfileInfo,
 } from '@/modules/profile/profile.service';
 
 const noopSubscribe = () => () => {};
@@ -31,6 +34,10 @@ type PasswordForm = {
 };
 
 type TwoFactorMode = 'enable' | 'disable';
+
+type ProfileForm = {
+  name: string;
+};
 
 function StatusDot({ status }: { status: 'online' | 'offline' | 'unknown' }) {
   if (status === 'online') {
@@ -49,6 +56,8 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<ReturnType<typeof getProfileModel> | null>(null);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isTwoFactorModalOpen, setIsTwoFactorModalOpen] = useState(false);
@@ -58,6 +67,11 @@ export default function ProfileScreen() {
   const [twoFactorOtp, setTwoFactorOtp] = useState('');
   const [twoFactorError, setTwoFactorError] = useState('');
   const [twoFactorSuccess, setTwoFactorSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState<ProfileForm>({
+    name: '',
+  });
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
   const [passwordForm, setPasswordForm] = useState<PasswordForm>({
     currentPassword: '',
     newPassword: '',
@@ -66,6 +80,7 @@ export default function ProfileScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const profileDialogRef = useRef<HTMLDivElement | null>(null);
   const passwordDialogRef = useRef<HTMLDivElement | null>(null);
   const twoFactorDialogRef = useRef<HTMLDivElement | null>(null);
 
@@ -79,11 +94,12 @@ export default function ProfileScreen() {
   }, [isHydrated]);
 
   useEffect(() => {
-    if (!isPasswordModalOpen && !isTwoFactorModalOpen) return;
+    if (!isProfileModalOpen && !isPasswordModalOpen && !isTwoFactorModalOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const focusId = window.setTimeout(() => {
+      if (isProfileModalOpen) profileDialogRef.current?.focus();
       if (isPasswordModalOpen) passwordDialogRef.current?.focus();
       if (isTwoFactorModalOpen) twoFactorDialogRef.current?.focus();
     }, 0);
@@ -91,10 +107,12 @@ export default function ProfileScreen() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.key === 'Escape' &&
+        !isSavingProfile &&
         !isChangingPassword &&
         !isSubmittingTwoFactor &&
         !isSendingTwoFactorOtp
       ) {
+        setIsProfileModalOpen(false);
         setIsPasswordModalOpen(false);
         setIsTwoFactorModalOpen(false);
       }
@@ -109,6 +127,8 @@ export default function ProfileScreen() {
     };
   }, [
     isChangingPassword,
+    isProfileModalOpen,
+    isSavingProfile,
     isSubmittingTwoFactor,
     isPasswordModalOpen,
     isSendingTwoFactorOtp,
@@ -133,6 +153,57 @@ export default function ProfileScreen() {
       );
     } finally {
       setIsUploadingAvatar(false);
+    }
+  };
+
+  const openProfileModal = () => {
+    if (!profile) return;
+    setProfileForm({
+      name: profile.displayName,
+    });
+    setProfileError('');
+    setProfileSuccess('');
+    setIsProfileModalOpen(true);
+  };
+
+  const closeProfileModal = () => {
+    if (isSavingProfile) return;
+    setIsProfileModalOpen(false);
+  };
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+
+    const name = profileForm.name.trim();
+    if (!name) {
+      setProfileError('Vui lòng nhập tên hiển thị.');
+      return;
+    }
+
+    if (name.length > 80) {
+      setProfileError('Tên hiển thị tối đa 80 ký tự.');
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+      const nextProfile = await updateProfileInfo({ name });
+      setProfile(nextProfile);
+      setProfileForm({ name: nextProfile.displayName });
+      setProfileSuccess('Đã cập nhật thông tin người dùng.');
+      window.setTimeout(() => {
+        setIsProfileModalOpen(false);
+      }, 700);
+    } catch (error) {
+      setProfileError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể cập nhật thông tin, vui lòng thử lại.',
+      );
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -310,7 +381,7 @@ export default function ProfileScreen() {
             >
               <TextAlignJustify className="h-5 w-5" />
             </button>
-            <h1 className="text-lg font-bold tracking-tight text-[#191c1e] lg:text-xl">Cài đặt & Cá nhân</h1>
+            <h1 className="font-heading text-lg font-bold tracking-tight text-[#191c1e] lg:text-xl">Cài đặt & Cá nhân</h1>
           </div>
         </header>
 
@@ -356,8 +427,21 @@ export default function ProfileScreen() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-2xl font-black tracking-tight text-[#191c1e]">{profile.displayName}</h2>
-                  <p className="mt-1 text-sm font-medium text-[#727687]">{profile.email}</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-2xl font-black tracking-tight text-[#191c1e]">{profile.displayName}</h2>
+                      <p className="mt-1 text-sm font-medium text-[#727687]">{profile.email}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openProfileModal}
+                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#d8dce2] bg-white px-4 text-sm font-bold text-[#2c3342] hover:bg-[#f6f7f9]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Chỉnh sửa
+                    </button>
+                  </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <span className="rounded-lg bg-[#dae2ff] px-3 py-1.5 text-xs font-semibold text-[#0040a2]">
@@ -412,7 +496,7 @@ export default function ProfileScreen() {
                     Đổi mật khẩu
                   </button>
                   {isPasswordChangeDisabled ? (
-                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[240px] -translate-x-1/2 rounded-lg bg-[#191c1e] px-3 py-2 text-center text-xs font-semibold leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-60 -translate-x-1/2 rounded-lg bg-[#191c1e] px-3 py-2 text-center text-xs font-semibold leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
                       {passwordDisabledTooltip}
                     </span>
                   ) : null}
@@ -474,6 +558,103 @@ export default function ProfileScreen() {
             </article>
           </section>
         </div>
+
+        {isProfileModalOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+            <button
+              type="button"
+              aria-label="Đóng chỉnh sửa thông tin"
+              className="absolute inset-0 h-full w-full"
+              onClick={closeProfileModal}
+            />
+
+            <div
+              ref={profileDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-profile-title"
+              tabIndex={-1}
+              className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.24)] outline-none"
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#dae2ff] text-[#0052cc]">
+                    <Pencil className="h-5 w-5" />
+                  </span>
+                  <h2 id="edit-profile-title" className="text-lg font-bold text-[#191c1e]">
+                    Chỉnh sửa thông tin
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeProfileModal}
+                  disabled={isSavingProfile}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#727687] hover:bg-[#f3f4f6] disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Đóng"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form className="space-y-4" onSubmit={handleProfileSubmit}>
+                <div className="space-y-1.5">
+                  <label htmlFor="displayName" className="text-sm font-semibold text-[#424655]">
+                    Tên hiển thị
+                  </label>
+                  <input
+                    id="displayName"
+                    type="text"
+                    autoComplete="name"
+                    required
+                    maxLength={80}
+                    value={profileForm.name}
+                    onChange={(event) => {
+                      setProfileForm({ name: event.target.value });
+                      setProfileError('');
+                      setProfileSuccess('');
+                    }}
+                    className="h-10 w-full rounded-lg border border-[#d8dce2] bg-white px-3 text-sm text-[#191c1e] outline-none focus:border-[#0052cc] focus:ring-2 focus:ring-[#dae2ff]"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="profileEmail" className="text-sm font-semibold text-[#424655]">
+                    Email
+                  </label>
+                  <input
+                    id="profileEmail"
+                    type="email"
+                    value={profile.email}
+                    readOnly
+                    className="h-10 w-full cursor-not-allowed rounded-lg border border-[#d8dce2] bg-[#f3f4f6] px-3 text-sm text-[#727687] outline-none"
+                  />
+                </div>
+
+                {profileError ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {profileError}
+                  </p>
+                ) : null}
+
+                {profileSuccess ? (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    {profileSuccess}
+                  </p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#0052cc] px-4 text-sm font-bold text-white hover:bg-[#0044aa] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Check className="h-4 w-4" />
+                  {isSavingProfile ? 'Đang cập nhật...' : 'Lưu thay đổi'}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         {isPasswordModalOpen ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">

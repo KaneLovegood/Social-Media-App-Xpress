@@ -1,13 +1,6 @@
 import { AuthAntigravityBackground } from "@/components/auth/auth-antigravity-background";
-import { PT_Sans } from "next/font/google";
 import Image from "next/image";
 import type { ReactNode } from "react";
-
-const ptSans = PT_Sans({
-  weight: ["400", "700"],
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-});
 
 type AuthShellProps = {
   children: ReactNode;
@@ -16,7 +9,7 @@ type AuthShellProps = {
 export function AuthShell({ children }: AuthShellProps) {
   return (
     <main
-      className={`relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1f41a9] px-4 py-10 ${ptSans.className}`}
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#1f41a9] px-4 py-10"
     >
       <AuthAntigravityBackground />
       <div

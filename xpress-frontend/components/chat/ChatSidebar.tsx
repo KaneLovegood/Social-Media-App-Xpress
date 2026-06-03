@@ -98,15 +98,15 @@ export default function ChatSidebar({
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               type="text"
-              placeholder="Tim kiem cuoc hoi thoai..."
+              placeholder="Tìm kiếm cuộc trò chuyện..."
               className="w-full border-none bg-transparent text-sm text-zinc-700 placeholder:text-zinc-500 outline-none"
             />
           </div>
           <div className="mt-3 flex gap-3 text-xs font-semibold">
             <span className="border-b-2 border-[#0068ff] pb-1 text-[#0068ff]">
-              Tat ca
+              Tất cả
             </span>
-            <span className="pb-1 text-zinc-500">Chua doc</span>
+            <span className="pb-1 text-zinc-500">Chưa đọc</span>
           </div>
         </header>
 
@@ -158,7 +158,7 @@ export default function ChatSidebar({
                     }`}
                   >
                     {room.roomType === "GROUP"
-                      ? `Nhom - ${room.preview}`
+                      ? `Nhóm - ${room.preview}`
                       : room.preview}
                   </p>
                 </button>
@@ -167,7 +167,7 @@ export default function ChatSidebar({
           })}
           {filteredRooms.length === 0 ? (
             <li className="px-4 py-10 text-center text-sm text-zinc-500">
-              Khong tim thay cuoc hoi thoai phu hop.
+              Không tìm thấy cuộc hội thoại nào phù hợp với từ khóa &rdquo;{searchTerm}&rdquo;
             </li>
           ) : null}
         </ul>

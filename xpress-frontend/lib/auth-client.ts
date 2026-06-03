@@ -78,6 +78,7 @@ export async function hydrateAuth(): Promise<void> {
 export async function updateStoredUser(user: StoredUser): Promise<void> {
   if (!isBrowser()) return;
   await secureSet(USER_KEY, JSON.stringify(user));
+  emitUserUpdated();
 }
 
 export async function persistSession(session: SessionPayload): Promise<void> {
