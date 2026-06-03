@@ -112,20 +112,31 @@ export class GroupRoomsRepository {
   async findRoomByInviteCode(
     inviteCode: string,
   ): Promise<ChatGroupRoomEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new ScanCommand({
-        TableName: this.tableName,
-        FilterExpression:
-          'entityType = :entityType AND inviteCode = :inviteCode',
-        ExpressionAttributeValues: {
-          ':entityType': 'CHAT_GROUP_ROOM',
-          ':inviteCode': inviteCode,
-        },
-        Limit: 1,
-      }),
-    );
+    let exclusiveStartKey: Record<string, unknown> | undefined;
 
-    return (result.Items?.[0] as ChatGroupRoomEntity) ?? null;
+    do {
+      const result = await this.ddbDocClient.send(
+        new ScanCommand({
+          TableName: this.tableName,
+          FilterExpression:
+            'entityType = :entityType AND inviteCode = :inviteCode',
+          ExpressionAttributeValues: {
+            ':entityType': 'CHAT_GROUP_ROOM',
+            ':inviteCode': inviteCode,
+          },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      const room = result.Items?.[0] as ChatGroupRoomEntity | undefined;
+      if (room) {
+        return room;
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return null;
   }
 
   async ensureInviteCode(roomId: string): Promise<ChatGroupRoomEntity> {
