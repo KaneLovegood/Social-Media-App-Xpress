@@ -7,6 +7,7 @@ import {
   leaveGroup,
   dissolveGroup,
   fetchGroupRoomDetails,
+  joinGroupByInvite,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
 import {
@@ -899,6 +900,17 @@ export default function ChatContainer({
     setActiveRoomId(roomId);
   };
 
+  const handleJoinGroupByInvite = async (inviteCode: string) => {
+    const details = await joinGroupByInvite(inviteCode);
+    setGroupDetailsByRoom((prev) => ({
+      ...prev,
+      [details.roomId]: details,
+    }));
+    await reloadRooms();
+    setActiveRoomId(details.roomId);
+    setIsMobileInfoOpen(false);
+  };
+
   const handleLeaveGroup = async () => {
     if (!activeRoom || activeRoom.roomType !== "GROUP") return;
     try {
@@ -1057,6 +1069,7 @@ export default function ChatContainer({
             currentUserName={currentUserName}
             onSelectRoom={handleSelectRoom}
             onCreateGroup={handleCreateGroup}
+            onJoinGroupByInvite={handleJoinGroupByInvite}
             onOpenRail={() => setIsMobileRailOpen(true)}
             onLogout={handleLogout}
           />

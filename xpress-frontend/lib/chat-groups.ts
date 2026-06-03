@@ -64,7 +64,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const msg = (data && typeof data === "object" && "message" in data)
-      ? toErrorMessage((data as any).message)
+      ? toErrorMessage((data as { message?: unknown }).message)
       : response.statusText || "Đã có lỗi xảy ra";
     throw new Error(`${response.status} ${msg}`);
   }
@@ -228,6 +228,26 @@ export async function joinGroupByInvite(inviteCode: string) {
   );
 
   return parseResponse<GroupRoomDetails>(response);
+}
+
+export function extractGroupInviteCode(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    const match = url.pathname.match(/\/chat\/join\/([^/?#]+)/i);
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  } catch {
+    const match = trimmed.match(/\/chat\/join\/([^/?#]+)/i);
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+
+  return trimmed;
 }
 
 export async function sendGroupMessage(roomId: string, content: string) {

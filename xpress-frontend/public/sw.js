@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xpress-pwa-cache-v1';
+const CACHE_NAME = 'xpress-pwa-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
@@ -37,6 +37,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  const isNextAsset =
+    url.pathname.startsWith('/_next/') ||
+    url.pathname.endsWith('.hot-update.json') ||
+    url.pathname.endsWith('.hot-update.js');
+
+  if (isNextAsset || event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
