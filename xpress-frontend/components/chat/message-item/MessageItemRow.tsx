@@ -241,7 +241,7 @@ export default function MessageItemRow({
             )}
           </div>
 
-          <div className={`relative ${isOwn ? "pl-24" : "pr-24"}`}>
+          <div className={`relative ${isOwn ? "pl-8 lg:pl-24" : "pr-8 lg:pr-24"}`}>
             <div
               id={`msg-bubble-${message.messageId}`}
               onClick={handleBubbleClick}
@@ -303,7 +303,7 @@ export default function MessageItemRow({
             {!isMultiSelectMode && (
               <div
                 id={`msg-actions-${message.messageId}`}
-                className={`absolute top-1/2 -translate-y-1/2 ${
+                className={`absolute bottom-2 lg:top-1/2 lg:-translate-y-1/2 lg:bottom-auto ${
                   isOwn ? "left-0" : "right-0"
                 }`}
               >

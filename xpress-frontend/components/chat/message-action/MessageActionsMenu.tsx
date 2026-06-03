@@ -150,6 +150,8 @@ export default function MessageActionsMenu({
                         canRecall={canRecall}
                         isPinned={isPinned}
                         isStarred={isStarred}
+                        onReply={onReply}
+                        onForward={onForward}
                         onCopy={onCopy}
                         onPin={onPin}
                         onMark={onMark}
