@@ -152,6 +152,7 @@ Luôn trả lời bằng tiếng Việt.`;
           tools: openaiTools.length > 0 ? openaiTools : undefined,
           tool_choice: 'auto',
           temperature: 0,
+          max_tokens: 2048,
         });
 
         const responseMessage = completion.choices[0].message;
@@ -223,6 +224,7 @@ Luôn trả lời bằng tiếng Việt.`;
             model: process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini',
             messages: messages,
             temperature: 0,
+            max_tokens: 2048,
           });
           finalReply =
             finalCompletion.choices[0].message.content ||
