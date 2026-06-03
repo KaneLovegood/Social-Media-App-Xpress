@@ -1,10 +1,11 @@
-import { PointerEvent, RefObject, useEffect, useRef, useState } from 'react';
+import { PointerEvent, useEffect, useRef, useState } from 'react';
 import { ICameraVideoTrack, IRemoteAudioTrack, IRemoteVideoTrack } from 'agora-rtc-sdk-ng';
 
 interface VideoCallOverlayProps {
     localVideoTrack: ICameraVideoTrack | null;
     remoteVideoTrack: IRemoteVideoTrack | null;
     remoteAudioTrack: IRemoteAudioTrack | null;
+    isRemoteVideoReady: boolean;
     timerText: string;
     muted: boolean;
     cameraOff: boolean;
@@ -17,6 +18,7 @@ export default function VideoCallOverlay({
     localVideoTrack,
     remoteVideoTrack,
     remoteAudioTrack,
+    isRemoteVideoReady,
     timerText,
     muted,
     cameraOff,
@@ -47,18 +49,26 @@ export default function VideoCallOverlay({
     }, [remoteAudioTrack]);
 
     useEffect(() => {
-        if (remoteVideoTrack && remoteVideoRef.current) {
-            remoteVideoTrack.play(remoteVideoRef.current);
+        const element = remoteVideoRef.current;
+        if (remoteVideoTrack && element) {
+            element.replaceChildren();
+            remoteVideoTrack.play(element);
         }
         return () => {
             remoteVideoTrack?.stop();
+            element?.replaceChildren();
         };
     }, [remoteVideoTrack]);
 
     useEffect(() => {
-        if (localVideoTrack && localVideoRef.current && !cameraOff) {
-            localVideoTrack.play(localVideoRef.current);
+        const element = localVideoRef.current;
+        if (localVideoTrack && element && !cameraOff) {
+            element.replaceChildren();
+            localVideoTrack.play(element);
         }
+        return () => {
+            element?.replaceChildren();
+        };
     }, [localVideoTrack, cameraOff]);
 
     const handlePreviewPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -123,6 +133,14 @@ export default function VideoCallOverlay({
                     ref={remoteVideoRef}
                     className="absolute inset-0 z-0 h-full w-full bg-zinc-900"
                 />
+                {!isRemoteVideoReady ? (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900 text-center text-white">
+                        <div>
+                            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            <p className="mt-4 text-sm font-semibold">Dang ket noi video...</p>
+                        </div>
+                    </div>
+                ) : null}
 
                 <div className="relative z-20 flex items-center gap-3">
                     <div className="rounded-full bg-black/35 px-4 py-2 text-sm font-semibold text-white">{timerText}</div>

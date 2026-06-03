@@ -473,16 +473,30 @@ export function useChatSocketHandlers(props: SocketHandlerProps) {
         }));
       }
 
+      const remainingParticipantIds =
+        payload.remainingParticipantIds?.filter(Boolean) ?? [];
+      const hasRemainingParticipants = remainingParticipantIds.length > 0;
+
       if (!payload.endForAll && payload.senderId !== currentUserId) {
+        if (isRejoinableCallRoom && !hasRemainingParticipants) {
+          setRejoinableGroupCall(null);
+        }
         return;
       }
 
       if (!payload.endForAll && payload.senderId === currentUserId) {
-        setRejoinableGroupCall({
-          roomId: payload.roomId,
-          callMode: payload.callMode ?? "voice",
-          callHostUserId: props.groupCallHostUserId || currentUserId,
-        });
+        if (hasRemainingParticipants) {
+          setRejoinableGroupCall({
+            roomId: payload.roomId,
+            callMode: payload.callMode ?? "voice",
+            callHostUserId:
+              remainingParticipantIds[0] ||
+              props.groupCallHostUserId ||
+              currentUserId,
+          });
+        } else {
+          setRejoinableGroupCall(null);
+        }
       }
 
       if (payload.endForAll) {

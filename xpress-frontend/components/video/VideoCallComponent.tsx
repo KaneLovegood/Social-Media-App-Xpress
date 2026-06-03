@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { Socket } from 'socket.io-client';
-import AgoraRTC, { IAgoraRTCClient } from 'agora-rtc-sdk-ng';
+import AgoraRTC from 'agora-rtc-sdk-ng';
 import { sendChatAction, fetchAgoraToken } from '@/lib/chat-actions';
 import { CALL_EVENTS } from '@/lib/realtime/events';
 import {
   CallEndPayload,
+  CallAnswerPayload,
   CallOfferPayload,
 } from '@/lib/realtime/types';
 import { useAgora } from '@/hooks/useAgora';
@@ -33,7 +34,6 @@ export default function VideoCallComponent({
   currentUserId,
   peerUserId,
   peerName,
-  orderTitle,
   callMode,
   callDirection,
   onModeChange,
@@ -49,12 +49,12 @@ export default function VideoCallComponent({
     localAudioTrack,
     localVideoTrack,
     remoteUsers,
-    joinState,
     join,
     leave,
   } = useAgora(client);
 
-  const [incomingOffer, setIncomingOffer] = useState<any | null>(null);
+  const [incomingOffer, setIncomingOffer] =
+    useState<RTCSessionDescriptionInit | null>(null);
   const [active, setActive] = useState(false);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
@@ -110,7 +110,7 @@ export default function VideoCallComponent({
 
     try {
       const { token } = await fetchAgoraToken(channelName);
-      await join(AGORA_APP_ID, channelName, token, currentUserId);
+      await join(AGORA_APP_ID, channelName, token, currentUserId, callMode === 'video');
       
       // Notify peer via socket (Legacy WebRTC event names used for ringing)
       socket.emit(CALL_EVENTS.OFFER, {
@@ -123,14 +123,14 @@ export default function VideoCallComponent({
     } catch (error) {
       console.error('Failed to start call:', error);
     }
-  }, [channelName, currentUserId, join, peerUserId, socket]);
+  }, [callMode, channelName, currentUserId, join, peerUserId, socket]);
 
   const acceptIncomingCall = useCallback(async () => {
     if (!incomingOffer || !socket || !AGORA_APP_ID) return;
 
     try {
       const { token } = await fetchAgoraToken(channelName);
-      await join(AGORA_APP_ID, channelName, token, currentUserId);
+      await join(AGORA_APP_ID, channelName, token, currentUserId, callMode === 'video');
 
       socket.emit(CALL_EVENTS.ANSWER, {
         receiverId: peerUserId,
@@ -145,7 +145,7 @@ export default function VideoCallComponent({
     } catch (error) {
       console.error('Failed to accept call:', error);
     }
-  }, [channelName, currentUserId, incomingOffer, join, peerUserId, socket]);
+  }, [callMode, channelName, currentUserId, incomingOffer, join, peerUserId, socket]);
 
   const declineCall = useCallback(async () => {
     await sendChatAction('decline_call', { peerUserId, metadata: { triggeredBy: currentUserId } });
@@ -183,7 +183,7 @@ export default function VideoCallComponent({
       setIncomingOffer(payload.offer);
     };
 
-    const onAnswer = (payload: any) => {
+    const onAnswer = (payload: CallAnswerPayload) => {
       if (payload.senderId !== peerUserId || payload.receiverId !== currentUserId) return;
       setHasStartedCall(true);
       setActive(true);
@@ -215,14 +215,22 @@ export default function VideoCallComponent({
     const shouldStart = callMode === 'voice' || callMode === 'video';
     if (!shouldStart) return;
 
-    void startCall();
+    const timerId = window.setTimeout(() => {
+      void startCall();
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
   }, [active, callDirection, callMode, hasStartedCall, incomingOffer, showOverlay, socket, startCall]);
 
   useEffect(() => {
     if (!showOverlay || active || !incomingOffer) return;
     if (callDirection !== 'incoming') return;
 
-    void acceptIncomingCall();
+    const timerId = window.setTimeout(() => {
+      void acceptIncomingCall();
+    }, 0);
+
+    return () => window.clearTimeout(timerId);
   }, [acceptIncomingCall, active, callDirection, incomingOffer, showOverlay]);
 
   const toggleMute = () => {
@@ -266,7 +274,7 @@ export default function VideoCallComponent({
         onEndCall={() => void stopCall(true, true)}
         onAcceptIncoming={() => void acceptIncomingCall()}
         onDeclineIncoming={() => void declineCall()}
-        remoteAudioTrack={remoteUser?.audioTrack}
+        remoteAudioTrack={remoteUser?.audioTrack ?? null}
       />
     );
   }
@@ -276,8 +284,9 @@ export default function VideoCallComponent({
   return (
     <VideoCallOverlay
       localVideoTrack={localVideoTrack}
-      remoteVideoTrack={remoteUser?.videoTrack}
-      remoteAudioTrack={remoteUser?.audioTrack}
+      remoteVideoTrack={remoteUser?.videoTrack ?? null}
+      remoteAudioTrack={remoteUser?.audioTrack ?? null}
+      isRemoteVideoReady={Boolean(remoteUser?.videoTrack)}
       timerText={formatDuration(ringSeconds)}
       muted={muted}
       cameraOff={cameraOff}
