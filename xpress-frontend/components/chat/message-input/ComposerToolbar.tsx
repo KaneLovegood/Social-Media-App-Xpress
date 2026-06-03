@@ -7,8 +7,12 @@ interface ComposerToolbarProps {
   onOpenCamera: () => void;
   onOpenImagePicker: () => void;
   onOpenFilePicker: () => void;
-  onTakePhoto: () => void;
   onEmojiSelect: (emoji: string) => void;
+  onOpenCard: () => void;
+  onOpenCrop: () => void;
+  onOpenFormat: () => void;
+  onOpenLightning: () => void;
+  onOpenNote: () => void;
 }
 
 const toolbarItems = [
@@ -16,7 +20,6 @@ const toolbarItems = [
   "camera",
   "image",
   "attach",
-  "takePhoto",
   "card",
   "crop",
   "format",
@@ -26,21 +29,6 @@ const toolbarItems = [
 ] as const;
 
 function ToolbarIcon({ item }: { item: (typeof toolbarItems)[number] }) {
-  if (item === "takePhoto") {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        className="h-4.5 w-4.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-        <circle cx="12" cy="13" r="3" />
-      </svg>
-    );
-  }
-
   if (item === "emoji") {
     return (
       <svg
@@ -192,8 +180,12 @@ export default function ComposerToolbar({
   onOpenCamera,
   onOpenImagePicker,
   onOpenFilePicker,
-  onTakePhoto,
   onEmojiSelect,
+  onOpenCard,
+  onOpenCrop,
+  onOpenFormat,
+  onOpenLightning,
+  onOpenNote,
 }: ComposerToolbarProps) {
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
@@ -218,8 +210,16 @@ export default function ComposerToolbar({
                   onOpenImagePicker();
                 } else if (item === "attach") {
                   onOpenFilePicker();
-                } else if (item === "takePhoto") {
-                  onTakePhoto();
+                } else if (item === "card") {
+                  onOpenCard();
+                } else if (item === "crop") {
+                  onOpenCrop();
+                } else if (item === "format") {
+                  onOpenFormat();
+                } else if (item === "lightning") {
+                  onOpenLightning();
+                } else if (item === "note") {
+                  onOpenNote();
                 }
               }}
               className="relative inline-flex h-8 w-8 items-center justify-center rounded-md transition hover:bg-zinc-100"

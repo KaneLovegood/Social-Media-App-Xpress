@@ -10,7 +10,7 @@ interface CameraCaptureProps {
 }
 
 export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
-  const { stream, error, isCapturing, startCamera, stopCamera } = useCameraScan();
+  const { stream, error, isCapturing, startCamera, stopCamera, switchCamera } = useCameraScan();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -140,13 +140,33 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
               </button>
             </>
           ) : (
-            <button
-              onClick={handleCapture}
-              disabled={!isCapturing}
-              className="group flex h-20 w-20 items-center justify-center rounded-full border-4 border-white/30 transition hover:border-white disabled:opacity-50"
-            >
-              <div className="h-16 w-16 rounded-full bg-white transition group-active:scale-90" />
-            </button>
+            <div className="flex w-full items-center justify-around px-10">
+              <div className="w-14 h-14" /> {/* spacer to keep capture button centered */}
+              
+              <button
+                onClick={handleCapture}
+                disabled={!isCapturing}
+                className="group flex h-20 w-20 items-center justify-center rounded-full border-4 border-white/30 transition hover:border-white disabled:opacity-50"
+              >
+                <div className="h-16 w-16 rounded-full bg-white transition group-active:scale-90" />
+              </button>
+
+              <button
+                onClick={switchCamera}
+                disabled={!isCapturing}
+                className="flex flex-col items-center gap-1.5 text-white/70 hover:text-white disabled:opacity-50"
+                title="Xoay camera"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 2v6h-6" />
+                    <path d="M3 22v-6h6" />
+                    <path d="M21 13a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                    <path d="M3 11a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                  </svg>
+                </div>
+              </button>
+            </div>
           )}
         </div>
       </div>

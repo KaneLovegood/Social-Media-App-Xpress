@@ -17,6 +17,8 @@ import ComposerToolbar from "./message-input/ComposerToolbar";
 import { PendingAttachment } from "./message-input/types";
 import CameraCapture from "./message-input/CameraCapture";
 import { useCameraScan } from "@/hooks/use-camera-scan";
+import { fetchFriends, SocialUser } from "@/lib/social";
+import { toast } from "sonner";
 
 export interface SendMessageOptions {
   messageType?: MessageType;
@@ -65,8 +67,19 @@ export default function MessageInput({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const { startCamera, stopCamera, stream } = useCameraScan();
+  const { startCamera, stopCamera, stream, switchCamera } = useCameraScan();
   const [isCameraActive, setIsCameraActive] = useState(false);
+
+  // 5 Action states
+  const [isFormatBarOpen, setIsFormatBarOpen] = useState(false);
+  const [isLightningOpen, setIsLightningOpen] = useState(false);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteText, setNoteText] = useState("");
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [friendsList, setFriendsList] = useState<SocialUser[]>([]);
+  const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+  const [searchFriendQuery, setSearchFriendQuery] = useState("");
 
   const canSend = useMemo(
     () => content.trim().length > 0 || attachments.length > 0,
@@ -383,6 +396,88 @@ export default function MessageInput({
     onSend("👍");
   };
 
+  const handleOpenCardModal = async () => {
+    setIsCardModalOpen(true);
+    setIsLoadingFriends(true);
+    try {
+      const res = await fetchFriends();
+      setFriendsList(res.items);
+    } catch (err) {
+      console.error("Failed to fetch friends:", err);
+    } finally {
+      setIsLoadingFriends(false);
+    }
+  };
+
+  const handleScreenCapture = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+      const video = document.createElement("video");
+      video.srcObject = displayStream;
+      video.autoplay = true;
+      video.playsInline = true;
+      
+      video.onloadedmetadata = () => {
+        setTimeout(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const file = new File([blob], `screenshot-${Date.now()}.png`, { type: "image/png" });
+                addFiles([file]);
+                toast.success("Chụp ảnh màn hình thành công!");
+              }
+              displayStream.getTracks().forEach(track => track.stop());
+            }, "image/png");
+          }
+        }, 500);
+      };
+    } catch (err) {
+      console.warn("Screen capture failed or cancelled:", err);
+    }
+  };
+
+  const applyFormatting = (prefix: string, suffix: string = prefix) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+    const replacement = prefix + selectedText + suffix;
+    const newContent = text.substring(0, start) + replacement + text.substring(end);
+    setContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+    }, 0);
+  };
+
+  const QUICK_REPLIES = [
+    "Dạ vâng, tôi xin lỗi vì sự bất tiện.",
+    "Ok, tôi đã nhận được thông tin.",
+    "Tôi đang xử lý, vui lòng đợi trong giây lát.",
+    "Chào bạn! Tôi có thể giúp gì cho bạn?",
+    "Cảm ơn bạn nhiều nhé!",
+    "Chúc bạn một ngày tốt lành!",
+  ];
+
+  const filteredFriends = useMemo(() => {
+    const query = searchFriendQuery.trim().toLowerCase();
+    if (!query) return friendsList;
+    return friendsList.filter(
+      (f) =>
+        f.name.toLowerCase().includes(query) ||
+        f.email.toLowerCase().includes(query)
+    );
+  }, [friendsList, searchFriendQuery]);
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -435,8 +530,12 @@ export default function MessageInput({
         onOpenCamera={() => setIsCameraOpen(true)}
         onOpenImagePicker={openImagePicker}
         onOpenFilePicker={openFilePicker}
-        onTakePhoto={handleTakePhotoClick}
         onEmojiSelect={handleEmojiSelect}
+        onOpenCard={handleOpenCardModal}
+        onOpenCrop={handleScreenCapture}
+        onOpenFormat={() => setIsFormatBarOpen(!isFormatBarOpen)}
+        onOpenLightning={() => setIsLightningOpen(!isLightningOpen)}
+        onOpenNote={() => setIsNoteModalOpen(true)}
       />
       {isCameraOpen && (
         <CameraCapture
@@ -457,7 +556,20 @@ export default function MessageInput({
               playsInline
               className="h-full w-full object-cover"
             />
-            <div className="absolute inset-x-0 bottom-6 flex justify-center gap-6">
+            <div className="absolute inset-x-0 bottom-6 flex justify-center items-center gap-6">
+              <button
+                type="button"
+                onClick={switchCamera}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-white shadow-lg transition active:scale-90"
+                title="Xoay camera"
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 2v6h-6" />
+                  <path d="M3 22v-6h6" />
+                  <path d="M21 13a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                  <path d="M3 11a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={handleCapture}
@@ -499,6 +611,235 @@ export default function MessageInput({
         onPaste={handlePaste}
         onSendLike={handleSendLike}
       />
+
+      {isFormatBarOpen && (
+        <div className="flex gap-2.5 px-4 py-1.5 bg-slate-50 border-t border-b border-slate-200 text-[#0d2b5a]">
+          <button
+            type="button"
+            onClick={() => applyFormatting("**")}
+            className="font-bold hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer"
+            title="Bold"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={() => applyFormatting("*")}
+            className="italic hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer"
+            title="Italic"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onClick={() => applyFormatting("~~")}
+            className="line-through hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition cursor-pointer"
+            title="Strikethrough"
+          >
+            S
+          </button>
+          <button
+            type="button"
+            onClick={() => applyFormatting("`")}
+            className="font-mono hover:bg-zinc-200 px-2 py-0.5 rounded text-xs transition cursor-pointer"
+            title="Inline Code"
+          >
+            &lt;&gt;
+          </button>
+          <button
+            type="button"
+            onClick={() => applyFormatting("> ", "")}
+            className="hover:bg-zinc-200 px-2 py-0.5 rounded text-sm transition font-serif cursor-pointer"
+            title="Blockquote"
+          >
+            &quot;
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsFormatBarOpen(false)}
+            className="ml-auto text-slate-400 hover:text-slate-600 px-2 rounded text-xs transition cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
+
+      {isLightningOpen && (
+        <div className="absolute bottom-full left-3 z-50 mb-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 px-1">
+            <span className="text-xs font-bold text-slate-600">Mẫu trả lời nhanh</span>
+            <button
+              type="button"
+              onClick={() => setIsLightningOpen(false)}
+              className="text-slate-400 hover:text-slate-600 text-[10px] cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
+          <div className="max-h-48 overflow-y-auto mt-1 space-y-1">
+            {QUICK_REPLIES.map((reply) => (
+              <button
+                key={reply}
+                type="button"
+                onClick={() => {
+                  setContent(reply);
+                  setIsLightningOpen(false);
+                  textareaRef.current?.focus();
+                }}
+                className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-slate-50 text-slate-700 transition truncate cursor-pointer"
+                title={reply}
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isNoteModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-rise-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-800">Tạo ghi chú nhanh</h3>
+              <button
+                type="button"
+                onClick={() => setIsNoteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mt-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Tiêu đề ghi chú</label>
+                <input
+                  type="text"
+                  placeholder="Nhập tiêu đề..."
+                  value={noteTitle}
+                  onChange={(e) => setNoteTitle(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-hidden"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Nội dung ghi chú</label>
+                <textarea
+                  rows={6}
+                  placeholder="Nhập nội dung chi tiết..."
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-hidden resize-none"
+                />
+              </div>
+            </div>
+            
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setIsNoteModalOpen(false)}
+                className="rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 px-4 py-2 text-xs font-semibold transition cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!noteText.trim()) {
+                    toast.error("Nội dung ghi chú không được để trống!");
+                    return;
+                  }
+                  const title = noteTitle.trim() || "Ghi-chu";
+                  const blob = new Blob([noteText], { type: "text/plain;charset=utf-8" });
+                  const file = new File([blob], `${title}-${Date.now()}.txt`, { type: "text/plain" });
+                  addFiles([file]);
+                  setIsNoteModalOpen(false);
+                  setNoteTitle("");
+                  setNoteText("");
+                  toast.success("Đã đính kèm ghi chú thành công!");
+                }}
+                className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-semibold shadow-xs transition cursor-pointer"
+              >
+                Tạo & Đính kèm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCardModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-rise-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-800">Chia sẻ danh thiếp</h3>
+              <button
+                type="button"
+                onClick={() => setIsCardModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm bạn bè..."
+                  value={searchFriendQuery}
+                  onChange={(e) => setSearchFriendQuery(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-hidden"
+                />
+                <div className="absolute left-3 top-2.5 text-slate-400">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 max-h-60 overflow-y-auto space-y-2">
+              {isLoadingFriends ? (
+                <div className="flex justify-center py-6">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                </div>
+              ) : filteredFriends.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-6">Không tìm thấy bạn bè nào</p>
+              ) : (
+                filteredFriends.map((friend) => (
+                  <div
+                    key={friend.userId}
+                    onClick={() => {
+                      onSend(`[Danh thiếp] Tên: ${friend.name} | Email: ${friend.email} | UserId: ${friend.userId}`);
+                      setIsCardModalOpen(false);
+                      toast.success(`Đã chia sẻ danh thiếp của ${friend.name}`);
+                    }}
+                    className="flex items-center gap-3 rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50 cursor-pointer transition"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-600 text-sm">
+                      {friend.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-slate-800">{friend.name}</p>
+                      <p className="truncate text-[10px] text-slate-400 mt-0.5">{friend.email}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline px-2.5 py-1.5 bg-blue-50 rounded-md cursor-pointer"
+                    >
+                      Chia sẻ
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

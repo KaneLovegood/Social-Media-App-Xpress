@@ -51,6 +51,7 @@ export default function VideoCallComponent({
     remoteUsers,
     join,
     leave,
+    switchCamera,
   } = useAgora(client);
 
   const [incomingOffer, setIncomingOffer] =
@@ -290,8 +291,11 @@ export default function VideoCallComponent({
       timerText={formatDuration(ringSeconds)}
       muted={muted}
       cameraOff={cameraOff}
+      speakerBoost={speakerBoost}
       onToggleMute={toggleMute}
       onToggleCamera={toggleCamera}
+      onSwitchCamera={switchCamera}
+      onToggleSpeaker={() => setSpeakerBoost((prev) => !prev)}
       onEndCall={() => void stopCall(true, true)}
     />
   );
