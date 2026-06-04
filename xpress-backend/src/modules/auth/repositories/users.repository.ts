@@ -240,6 +240,30 @@ export class UsersRepository {
     );
   }
 
+  async updateProfile(
+    userId: string,
+    profile: { name: string },
+  ): Promise<void> {
+    await this.ddbDocClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `USER#${userId}`,
+          SK: `PROFILE#${userId}`,
+        },
+        ConditionExpression: 'attribute_exists(PK)',
+        UpdateExpression: 'SET #name = :name, updatedAt = :updatedAt',
+        ExpressionAttributeNames: {
+          '#name': 'name',
+        },
+        ExpressionAttributeValues: {
+          ':name': profile.name,
+          ':updatedAt': new Date().toISOString(),
+        },
+      }),
+    );
+  }
+
   async updateTwoFactorEnabled(
     userId: string,
     enabled: boolean,

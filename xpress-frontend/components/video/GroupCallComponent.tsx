@@ -188,8 +188,8 @@ export default function GroupCallComponent({
     const count = Math.max(1, participants.length);
     if (count <= 1) return "grid-cols-1";
     if (count === 2) return "grid-cols-1 sm:grid-cols-2";
-    if (count <= 4) return "grid-cols-1 sm:grid-cols-2";
-    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+    if (count <= 4) return "grid-cols-2";
+    return "grid-cols-2 lg:grid-cols-3";
   }, [participants.length]);
 
   const stopConference = useCallback(

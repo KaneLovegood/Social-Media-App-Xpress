@@ -23,6 +23,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { UpdateAvatarDto } from './dto/update-avatar.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
 import { VerifyTwoFactorSetupDto } from './dto/verify-two-factor-setup.dto';
@@ -206,10 +207,7 @@ export class AuthService {
       }
     }
 
-    return this.createAndSendEmailOtp(
-      normalizedEmail,
-      purpose,
-    );
+    return this.createAndSendEmailOtp(normalizedEmail, purpose);
   }
 
   async verifyEmailOtp(dto: VerifyEmailOtpDto) {
@@ -392,11 +390,7 @@ export class AuthService {
     );
 
     if (!user.twoFactorEnabled) {
-      await this.consumeEmailOtp(
-        user.email,
-        'TWO_FACTOR_SETUP',
-        dto.code,
-      );
+      await this.consumeEmailOtp(user.email, 'TWO_FACTOR_SETUP', dto.code);
       await this.usersRepository.updateTwoFactorEnabled(user.userId, true);
     }
 
@@ -624,6 +618,42 @@ export class AuthService {
         role: user.role,
         status: user.status,
         avatarUrl,
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
+      },
+    };
+  }
+
+  async updateProfile(
+    userId: string,
+    currentSessionId: string,
+    dto: UpdateProfileDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+
+    const name = dto.name.trim();
+    await this.usersRepository.updateProfile(userId, { name });
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
         authProvider:
           currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
         passwordAuthEnabled:
@@ -940,10 +970,7 @@ export class AuthService {
     purpose: EmailOtpPurpose,
     code: string,
   ): Promise<void> {
-    const otp = await this.emailOtpRepository.findOtp(
-      normalizedEmail,
-      purpose,
-    );
+    const otp = await this.emailOtpRepository.findOtp(normalizedEmail, purpose);
     if (!otp) {
       throw new BadRequestException('OTP không tồn tại hoặc đã hết hạn');
     }
@@ -960,10 +987,7 @@ export class AuthService {
 
     const matched = await bcrypt.compare(code, otp.codeHash);
     if (!matched) {
-      await this.emailOtpRepository.incrementAttempts(
-        normalizedEmail,
-        purpose,
-      );
+      await this.emailOtpRepository.incrementAttempts(normalizedEmail, purpose);
       throw new BadRequestException('OTP không chính xác');
     }
 

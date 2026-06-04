@@ -23,8 +23,8 @@ export default function ChatNoRoomWelcome() {
         </svg>
       </button>
 
-      <h2 className="text-3xl font-semibold text-[#132b57] lg:text-2xl">
-        Chào mừng đến với <span className="font-bold text-[#fe9617d2]">Xpress</span>
+      <h2 className="font-heading text-3xl font-semibold text-[#132b57] lg:text-2xl">
+        Chào mừng đến với <span className="font-brand font-bold text-[#fe9617d2]">Xpress</span>
       </h2>
       <p className="mt-4 max-w-2xl text-lg leading-[1.5] text-[#2a3f6a] lg:text-lg">
         Khám phá những tiện ích hỗ trợ trò chuyện cùng người thân, bạn bè
@@ -41,7 +41,7 @@ export default function ChatNoRoomWelcome() {
         />
       </div>
 
-      <h3 className="mt-6 text-2xl font-medium text-[#fe9617d2] lg:text-2xl">Giao diện thông minh</h3>
+      <h3 className="mt-6 font-heading text-2xl font-semibold text-[#fe9617d2] lg:text-2xl">Giao diện thông minh</h3>
       <p className="mt-2 text-md text-[#22365f] lg:text-lg max-w-3xl">
         Bắt đầu cuộc trò chuyện của bạn với giao diện được thiết kế tối ưu cho máy tính để bàn,
         giúp bạn dễ dàng theo dõi và quản lý các cuộc trò chuyện của mình.

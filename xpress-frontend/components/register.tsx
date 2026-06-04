@@ -15,8 +15,8 @@ export default function Register() {
       <section className="relative w-full max-w-6xl rounded-3xl border border-white/30 bg-[#f8d7c2]/80 p-4 shadow-2xl backdrop-blur-sm sm:p-8 lg:p-10">
         <div className="grid items-center gap-8 lg:grid-cols-[440px_1fr]">
           <div className="rounded-3xl border border-white/30 bg-white/40 p-6 shadow-xl backdrop-blur-md sm:p-8">
-            <p className="text-sm font-medium text-[#f25019]">Xpress</p>
-            <h1 className="mt-1 text-5xl font-bold leading-tight text-[#333333]">
+            <p className="font-brand text-sm font-semibold text-[#f25019]">Xpress</p>
+            <h1 className="mt-1 font-heading text-5xl font-bold leading-tight text-[#333333]">
               Đăng ký
             </h1>
 
