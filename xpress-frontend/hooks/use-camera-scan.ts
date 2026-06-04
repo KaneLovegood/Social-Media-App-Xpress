@@ -4,11 +4,11 @@ import { useState, useCallback, useRef } from "react";
  * Hook for camera scanning using getUserMedia
  * This hook is compatible with Capacitor as it maps Web API to native permissions
  */
-export const useCameraScan = () => {
+export const useCameraScan = (initialFacingMode: "user" | "environment" = "environment") => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(initialFacingMode);
   
   const streamRef = useRef<MediaStream | null>(null);
 

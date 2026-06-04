@@ -1,4 +1,4 @@
-import { ClipboardEvent, KeyboardEvent, RefObject, useEffect } from "react";
+import { ClipboardEvent, KeyboardEvent, RefObject, useEffect, useRef } from "react";
 import { htmlToMarkdown, markdownToHtml } from "@/lib/chat-utils";
 
 interface ComposerInputRowProps {
@@ -22,10 +22,21 @@ export default function ComposerInputRow({
   onPaste,
   onSendLike,
 }: ComposerInputRowProps) {
+  const lastMarkdownRef = useRef(content);
+
   // Synchronize outside content updates (like clearing input or selecting emojis)
   useEffect(() => {
     const editor = textareaRef.current;
     if (!editor) return;
+
+    // Skip update if content hasn't changed relative to last typed value,
+    // or if current DOM content already maps to the same markdown value.
+    // This avoids resetting the cursor caret to the start of the input.
+    if (content === lastMarkdownRef.current || htmlToMarkdown(editor.innerHTML) === content) {
+      lastMarkdownRef.current = content;
+      return;
+    }
+    lastMarkdownRef.current = content;
 
     const expectedHtml = markdownToHtml(content);
     if (editor.innerHTML !== expectedHtml) {
@@ -38,6 +49,7 @@ export default function ComposerInputRow({
     if (!editor) return;
     const html = editor.innerHTML;
     const markdown = htmlToMarkdown(html);
+    lastMarkdownRef.current = markdown;
     onContentChange(markdown);
   };
 

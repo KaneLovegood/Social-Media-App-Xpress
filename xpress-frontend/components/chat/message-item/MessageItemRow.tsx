@@ -241,7 +241,7 @@ export default function MessageItemRow({
             )}
           </div>
 
-          <div className={`relative ${isOwn ? "pl-8 lg:pl-24" : "pr-8 lg:pr-24"}`}>
+          <div className={`relative ${isOwn ? "pl-10 lg:pl-12" : "pr-10 lg:pr-12"}`}>
             <div
               id={`msg-bubble-${message.messageId}`}
               onClick={handleBubbleClick}
