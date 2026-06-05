@@ -3,6 +3,8 @@ import { ChatMessage } from "@/lib/realtime/types";
 import { useRouter } from "next/navigation";
 import ReplyPreview from "./ReplyPreview";
 import Icon from "@/components/common/Icon";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Props {
   message: ChatMessage;
@@ -65,12 +67,73 @@ function toDurationLabel(seconds?: number): string {
   return `${s} giây`;
 }
 
+const customComponents = {
+  p: ({ children }: any) => <p className="m-0 inline">{children}</p>,
+  strong: ({ children }: any) => <strong className="font-bold">{children}</strong>,
+  em: ({ children }: any) => <em className="italic">{children}</em>,
+  del: ({ children }: any) => <span className="line-through">{children}</span>,
+  code: ({ children }: any) => (
+    <code className="bg-slate-100 rounded px-1 py-0.5 text-red-600 font-mono text-xs break-all">
+      {children}
+    </code>
+  ),
+  a: ({ href, children }: any) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }: any) => (
+    <blockquote className="border-l-4 border-slate-300 pl-3 italic text-slate-500 my-1">
+      {children}
+    </blockquote>
+  ),
+  ul: ({ children }: any) => <ul className="list-disc pl-4 my-1">{children}</ul>,
+  ol: ({ children }: any) => <ol className="list-decimal pl-4 my-1">{children}</ol>,
+  li: ({ children }: any) => <li className="my-0.5">{children}</li>,
+};
+
+const parseRichText = (text: string): React.ReactNode[] => {
+  if (!text) return [];
+  
+  const regex = /(<u>.*?<\/u>|<span style="color:\s*[^"]+">.*?<\/span>)/g;
+  const parts = text.split(regex);
+  
+  return parts.map((part, index) => {
+    const uMatch = part.match(/^<u>(.*?)<\/u>$/);
+    if (uMatch) {
+      return (
+        <span key={index} className="underline">
+          {parseRichText(uMatch[1])}
+        </span>
+      );
+    }
+    
+    const colorMatch = part.match(/^<span style="color:\s*([^"]+)\s*">(.*?)<\/span>$/);
+    if (colorMatch) {
+      const color = colorMatch[1];
+      const content = colorMatch[2];
+      return (
+        <span key={index} style={{ color }}>
+          {parseRichText(content)}
+        </span>
+      );
+    }
+    
+    return (
+      <ReactMarkdown key={index} remarkPlugins={[remarkGfm]} components={customComponents}>
+        {part}
+      </ReactMarkdown>
+    );
+  });
+};
+
 export default function MessageBubbleCard({
   message,
   senderNameById,
   onImageClick,
   onReplyPreviewClick,
   senderName = "User",
+  currentUserId,
 }: Props) {
   const router = useRouter();
 
@@ -282,6 +345,48 @@ export default function MessageBubbleCard({
     );
   }
 
+  // Parse Contact Card: [Danh thiếp] Tên: <Tên> | Email: <Email> | UserId: <UserId>
+  if (message.content && message.content.startsWith("[Danh thiếp]")) {
+    const parts = message.content.replace("[Danh thiếp]", "").split("|");
+    const namePart = parts.find(p => p.includes("Tên:"))?.replace("Tên:", "").trim() || "";
+    const emailPart = parts.find(p => p.includes("Email:"))?.replace("Email:", "").trim() || "";
+    const uidPart = parts.find(p => p.includes("UserId:"))?.replace("UserId:", "").trim() || "";
+
+    return (
+      <div className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 p-4 shadow-sm min-w-56 max-w-[280px]">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600 font-bold text-white shadow-md text-sm">
+            {namePart ? namePart.charAt(0).toUpperCase() : "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-800">{namePart}</p>
+            <p className="truncate text-xs text-slate-500 mt-0.5">{emailPart}</p>
+          </div>
+        </div>
+        <div className="mt-3.5 border-t border-slate-200/60 pt-3 flex justify-between items-center text-[11px] font-semibold text-blue-600">
+          <span>Danh thiếp liên hệ</span>
+          <button 
+            type="button" 
+            onClick={() => {
+              if (uidPart) {
+                if (currentUserId) {
+                  const parts = [currentUserId, uidPart].sort();
+                  const roomId = `${parts[0]}:${parts[1]}`;
+                  router.push(`/chat/me?roomId=${encodeURIComponent(roomId)}&peerUserId=${encodeURIComponent(uidPart)}`);
+                } else {
+                  router.push(`/chat/me?peerUserId=${encodeURIComponent(uidPart)}`);
+                }
+              }
+            }}
+            className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 shadow-xs transition"
+          >
+            Nhắn tin
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Default: Text messages
   return (
     <div className="rounded-lg bg-white px-3 py-2 shadow-sm min-w-30">
@@ -296,7 +401,9 @@ export default function MessageBubbleCard({
           }
         />
       )}
-      <div className="whitespace-pre-wrap text-sm text-[#111827]">{message.content}</div>
+      <div className="whitespace-pre-wrap text-sm text-[#111827] break-words">
+        {parseRichText(message.content)}
+      </div>
     </div>
   );
 }

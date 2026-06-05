@@ -7,6 +7,7 @@ import {
   leaveGroup,
   dissolveGroup,
   fetchGroupRoomDetails,
+  joinGroupByInviteWithTimeout,
   type GroupRoomDetails,
 } from "@/lib/chat-groups";
 import {
@@ -404,6 +405,8 @@ export default function ChatContainer({
         id: room.id,
         roomType: room.roomType,
         title: room.title,
+        avatarUrl: room.avatarUrl,
+        emoji: room.emoji,
         preview: hasHiddenHistory ? "Đã xóa lịch sử" : room.preview,
         age: room.age,
         unreadCount: hasHiddenHistory ? 0 : room.unreadCount,
@@ -453,12 +456,6 @@ export default function ChatContainer({
   );
 
   useEffect(() => {
-    if (activeRoomId === "AI_ASSISTANT") return;
-
-    if (activeRoomId && rooms.some((room) => room.id === activeRoomId)) {
-      return;
-    }
-
     if (initialRoomId === "AI_ASSISTANT") {
       setActiveRoomId("AI_ASSISTANT");
       return;
@@ -473,7 +470,14 @@ export default function ChatContainer({
       const room = rooms.find((item) => item.peerUserId === initialPeerUserId);
       if (room) {
         setActiveRoomId(room.id);
+        return;
       }
+    }
+
+    if (activeRoomId === "AI_ASSISTANT") return;
+
+    if (activeRoomId && rooms.some((room) => room.id === activeRoomId)) {
+      return;
     }
   }, [activeRoomId, initialPeerUserId, initialRoomId, rooms]);
 
@@ -894,9 +898,49 @@ export default function ChatContainer({
     }
   }, [router]);
 
-  const handleGroupCreated = async (roomId: string) => {
-    await reloadRooms();
-    setActiveRoomId(roomId);
+  const handleGroupCreated = (details: GroupRoomDetails) => {
+    setGroupDetailsByRoom((prev) => ({
+      ...prev,
+      [details.roomId]: details,
+    }));
+
+    const timestamp = details.lastMessageAt ?? details.createdAt;
+    setRooms((prev) => {
+      const nextRoom: ChatRoomSummary = {
+        id: details.roomId,
+        roomType: "GROUP",
+        title: details.title,
+        peerUserId: details.roomId,
+        peerName: details.title,
+        avatarUrl: details.avatarUrl,
+        description: details.description,
+        emoji: details.emoji,
+        memberCount: details.memberCount,
+        memberRole: details.currentUserRole,
+        preview: details.lastMessagePreview ?? "Bat dau tro chuyen",
+        lastMessageAt: timestamp,
+        age: toAgeLabel(timestamp),
+        unreadCount: 0,
+        isPeerOnline: false,
+      };
+
+      return [nextRoom, ...prev.filter((room) => room.id !== details.roomId)];
+    });
+
+    setActiveRoomId(details.roomId);
+    setIsMobileInfoOpen(false);
+    void reloadRooms();
+  };
+
+  const handleJoinGroupByInvite = async (inviteCode: string) => {
+    const details = await joinGroupByInviteWithTimeout(inviteCode);
+    setGroupDetailsByRoom((prev) => ({
+      ...prev,
+      [details.roomId]: details,
+    }));
+    setActiveRoomId(details.roomId);
+    setIsMobileInfoOpen(false);
+    void reloadRooms();
   };
 
   const handleLeaveGroup = async () => {
@@ -1057,6 +1101,7 @@ export default function ChatContainer({
             currentUserName={currentUserName}
             onSelectRoom={handleSelectRoom}
             onCreateGroup={handleCreateGroup}
+            onJoinGroupByInvite={handleJoinGroupByInvite}
             onOpenRail={() => setIsMobileRailOpen(true)}
             onLogout={handleLogout}
           />
@@ -1072,6 +1117,7 @@ export default function ChatContainer({
             />
             <ChatAppRail
               activeNav="chat"
+              avatarUrl={currentUserAvatarUrl || undefined}
               initials={toInitials(currentUserName) || undefined}
               onLogout={handleLogout}
               mobileOpen
@@ -1100,6 +1146,8 @@ export default function ChatContainer({
               <ChatContent
               peerName={peerName}
               orderTitle={orderTitle}
+              avatarUrl={activeRoom?.avatarUrl}
+              avatarFallback={activeRoom?.emoji}
               typingText={typingText}
               typingSenderId={
                 activeRoom?.roomType === "GROUP" ? typingSenderId : peerUserId
@@ -1205,8 +1253,8 @@ export default function ChatContainer({
       <CreateGroupModal
         isOpen={isCreateGroupOpen}
         onClose={() => setIsCreateGroupOpen(false)}
-        onCreated={(roomId) => {
-          void handleGroupCreated(roomId);
+        onCreated={(details) => {
+          handleGroupCreated(details);
         }}
       />
 

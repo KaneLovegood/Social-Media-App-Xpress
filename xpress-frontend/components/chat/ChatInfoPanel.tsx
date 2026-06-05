@@ -8,6 +8,7 @@ import {
   GroupRoomDetails,
   fetchRoomFiles,
   fetchRoomImages,
+  normalizeGroupInviteLink,
   promoteGroupMember,
   removeGroupMember,
   transferGroupAdmin,
@@ -371,6 +372,15 @@ export default function ChatInfoPanel({
   };
 
   const toAbsoluteInviteLink = (value: string): string => {
+    const normalizedValue =
+      typeof window === "undefined"
+        ? value
+        : normalizeGroupInviteLink(value, window.location.origin);
+
+    if (normalizedValue !== value) {
+      return normalizedValue;
+    }
+
     if (/^https?:\/\//i.test(value)) {
       return value;
     }
@@ -391,7 +401,11 @@ export default function ChatInfoPanel({
     setGroupActionError("");
     try {
       const result = await createGroupInviteLink(groupDetails.roomId);
-      setShareLink(toAbsoluteInviteLink(result.inviteLink));
+      setShareLink(
+        toAbsoluteInviteLink(
+          result.inviteLink || `/chat/join?code=${result.inviteCode}`,
+        ),
+      );
       setShowShareQr(true);
     } catch (error) {
       setGroupActionError(
@@ -496,9 +510,18 @@ export default function ChatInfoPanel({
           <div className="scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-slate-200 px-6 py-6">
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
-                  {avatarLabel}
-                </div>
+                {room.avatarUrl ? (
+                  <img
+                    src={room.avatarUrl}
+                    alt={room.title}
+                    className="h-24 w-24 rounded-full object-cover shadow-md"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-linear-to-br from-sky-100 via-slate-100 to-slate-200 text-3xl font-bold text-slate-700 shadow-md">
+                    {avatarLabel}
+                  </div>
+                )}
                 <div className="mt-4">
                   <h2 className="max-w-56 truncate text-lg font-bold text-slate-900">
                     {room.title}
@@ -725,10 +748,10 @@ export default function ChatInfoPanel({
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
-                    {images.slice(0, 8).map((image) => (
+                    {images.slice(0, 8).map((image, index) => (
                       <button
                         type="button"
-                        key={`${image.timestamp}-${image.url}`}
+                        key={`${index}_${image.timestamp}-${image.url}`}
                         className="relative aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-100 transition hover:border-sky-400 hover:shadow-md"
                         onClick={handleOpenMediaGallery}
                       >

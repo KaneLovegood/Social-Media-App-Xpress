@@ -108,6 +108,7 @@ export interface GroupCallStartedPayload {
   senderId: string;
   roomId: string;
   callMode: "voice" | "video";
+  activeParticipantIds?: string[];
 }
 
 export interface GroupCallJoinPayload {
@@ -146,6 +147,8 @@ export interface GroupCallEndPayload {
   callMode?: "voice" | "video";
   reason?: string;
   endForAll?: boolean;
+  activeParticipantIds?: string[];
+  remainingParticipantIds?: string[];
   callLogMessage?: ChatMessage;
 }
 

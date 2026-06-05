@@ -128,6 +128,40 @@ export class GroupRoomsRepository {
     return (result.Items?.[0] as ChatGroupRoomEntity) ?? null;
   }
 
+  async ensureInviteCode(roomId: string): Promise<ChatGroupRoomEntity> {
+    const room = await this.findRoomById(roomId);
+    if (!room) {
+      throw new Error('ROOM_NOT_FOUND');
+    }
+
+    if (room.inviteCode) {
+      return room;
+    }
+
+    const inviteCode = randomUUID().replace(/-/g, '').slice(0, 12);
+    const result = await this.ddbDocClient.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: {
+          PK: `ROOM#${roomId}`,
+          SK: `META#${roomId}`,
+        },
+        ConditionExpression: 'attribute_exists(PK)',
+        UpdateExpression: 'SET inviteCode = :inviteCode, updatedAt = :updatedAt',
+        ExpressionAttributeValues: {
+          ':inviteCode': inviteCode,
+          ':updatedAt': new Date().toISOString(),
+        },
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+
+    return (result.Attributes as ChatGroupRoomEntity) ?? {
+      ...room,
+      inviteCode,
+    };
+  }
+
   async updateRoomMeta(
     roomId: string,
     updates: Partial<

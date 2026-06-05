@@ -18,6 +18,8 @@ interface MessageActionsMenuProps {
     onViewDetails: () => void;
     onRecall: () => void;
     onDeleteForMe: () => void;
+    forceShow?: boolean;
+    onCloseMobileActions?: () => void;
 }
 
 export default function MessageActionsMenu({
@@ -35,6 +37,8 @@ export default function MessageActionsMenu({
     onViewDetails,
     onRecall,
     onDeleteForMe,
+    forceShow = false,
+    onCloseMobileActions,
 }: MessageActionsMenuProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -53,11 +57,12 @@ export default function MessageActionsMenu({
             if (menuWrapperRef.current?.contains(targetNode)) return;
             if (menuPanelRef.current?.contains(targetNode)) return;
             setMenuOpen(false);
+            onCloseMobileActions?.();
         };
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [menuOpen]);
+    }, [menuOpen, onCloseMobileActions]);
 
     useLayoutEffect(() => {
         if (!menuOpen) return;
@@ -126,9 +131,16 @@ export default function MessageActionsMenu({
         <div className="relative" ref={menuWrapperRef}>
             <MessageActionsButtons
                 menuOpen={menuOpen}
-                onReply={onReply}
-                onForward={onForward}
+                onReply={() => {
+                    onReply();
+                    onCloseMobileActions?.();
+                }}
+                onForward={() => {
+                    onForward();
+                    onCloseMobileActions?.();
+                }}
                 onMenuToggle={() => setMenuOpen((prev) => !prev)}
+                forceShow={forceShow}
             />
 
             {menuOpen && menuStyle && typeof document !== 'undefined'
@@ -138,6 +150,8 @@ export default function MessageActionsMenu({
                         canRecall={canRecall}
                         isPinned={isPinned}
                         isStarred={isStarred}
+                        onReply={onReply}
+                        onForward={onForward}
                         onCopy={onCopy}
                         onPin={onPin}
                         onMark={onMark}
@@ -145,7 +159,10 @@ export default function MessageActionsMenu({
                         onViewDetails={onViewDetails}
                         onRecall={onRecall}
                         onDeleteForMe={onDeleteForMe}
-                        onClose={() => setMenuOpen(false)}
+                        onClose={() => {
+                            setMenuOpen(false);
+                            onCloseMobileActions?.();
+                        }}
                         style={menuStyle}
                         panelRef={menuPanelRef}
                     />,

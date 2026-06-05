@@ -1,11 +1,14 @@
-﻿import { ChevronLeft, TextAlignCenter, UserPlus2, Users2 } from "lucide-react";
+import { QrCode, TextAlignCenter, UserPlus2, Users2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import ScanGroupQrModal from "./modal/ScanGroupQrModal";
 
 export interface SidebarChatItem {
   id: string;
   roomType: "PRIVATE" | "GROUP";
   title: string;
+  avatarUrl?: string;
+  emoji?: string;
   preview: string;
   age: string;
   unreadCount: number;
@@ -19,6 +22,7 @@ interface ChatSidebarProps {
   currentUserName: string;
   onSelectRoom: (roomId: string) => void;
   onCreateGroup: () => void;
+  onJoinGroupByInvite: (inviteCode: string) => Promise<void>;
   onOpenRail: () => void;
   onLogout: () => void;
 }
@@ -29,10 +33,11 @@ export default function ChatSidebar({
   currentUserName,
   onSelectRoom,
   onCreateGroup,
+  onJoinGroupByInvite,
   onOpenRail,
-  onLogout,
 }: ChatSidebarProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [isScanOpen, setIsScanOpen] = useState(false);
 
   const filteredRooms = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -54,7 +59,7 @@ export default function ChatSidebar({
                 type="button"
                 onClick={onOpenRail}
                 className="rounded-full p-2 text-zinc-700 hover:bg-slate-100 md:hidden"
-                aria-label="Mở thanh điều hướng"
+                aria-label="Mo thanh dieu huong"
               >
                 <TextAlignCenter className="h-4 w-4" />
               </button>
@@ -62,19 +67,27 @@ export default function ChatSidebar({
                 {currentUserName}
               </h1>
             </div>
-            <div className="flex gap-1 items-center">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={onCreateGroup}
                 className="rounded-full p-2 hover:bg-slate-100 md:hover:bg-white"
-                aria-label="Tạo nhóm mới"
+                aria-label="Tao nhom moi"
               >
                 <Users2 className="h-4 w-4 text-zinc-700" />
               </button>
+              <button
+                type="button"
+                onClick={() => setIsScanOpen(true)}
+                className="rounded-full p-2 hover:bg-slate-100 md:hover:bg-white"
+                aria-label="Quet QR tham gia nhom"
+              >
+                <QrCode className="h-4 w-4 text-zinc-700" />
+              </button>
               <Link
                 href="/chat/contacts"
-                className="rounded-full p-2 flex items-center justify-center hover:bg-slate-100 md:hover:bg-white"
-                aria-label="Danh bạ"
+                className="flex items-center justify-center rounded-full p-2 hover:bg-slate-100 md:hover:bg-white"
+                aria-label="Danh ba"
               >
                 <UserPlus2 className="h-4 w-4 text-zinc-700" />
               </Link>
@@ -85,7 +98,7 @@ export default function ChatSidebar({
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               type="text"
-              placeholder="Tìm kiếm cuộc hội thoại..."
+              placeholder="Tìm kiếm cuộc trò chuyện..."
               className="w-full border-none bg-transparent text-sm text-zinc-700 placeholder:text-zinc-500 outline-none"
             />
           </div>
@@ -106,13 +119,28 @@ export default function ChatSidebar({
                 <button
                   type="button"
                   onClick={() => onSelectRoom(room.id)}
-                  className={`w-full rounded-xl px-3 py-3 text-left transition ${active ? "bg-[#dce0ff] shadow-sm" : "hover:bg-[#e6e9ff]"
-                    }`}
+                  className={`w-full rounded-xl px-3 py-3 text-left transition ${
+                    active ? "bg-[#dce0ff] shadow-sm" : "hover:bg-[#e6e9ff]"
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-zinc-900">
-                      {room.title}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {room.avatarUrl ? (
+                        <img
+                          src={room.avatarUrl}
+                          alt={room.title}
+                          className="h-9 w-9 shrink-0 rounded-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : room.roomType === "GROUP" ? (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dae2ff] text-xs font-bold text-[#0040a2]">
+                          {room.emoji ?? room.title.slice(0, 2).toUpperCase()}
+                        </div>
+                      ) : null}
+                      <p className="truncate text-sm font-semibold text-zinc-900">
+                        {room.title}
+                      </p>
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-zinc-500">
                         {room.age}
@@ -125,10 +153,12 @@ export default function ChatSidebar({
                     </div>
                   </div>
                   <p
-                    className={`mt-1 truncate text-xs ${active ? "text-[#0052cc]" : "text-zinc-500"}`}
+                    className={`mt-1 truncate text-xs ${
+                      active ? "text-[#0052cc]" : "text-zinc-500"
+                    }`}
                   >
                     {room.roomType === "GROUP"
-                      ? `Nhóm • ${room.preview}`
+                      ? `Nhóm - ${room.preview}`
                       : room.preview}
                   </p>
                 </button>
@@ -137,11 +167,16 @@ export default function ChatSidebar({
           })}
           {filteredRooms.length === 0 ? (
             <li className="px-4 py-10 text-center text-sm text-zinc-500">
-              Không tìm thấy cuộc hội thoại phù hợp.
+              Không tìm thấy cuộc hội thoại nào phù hợp với từ khóa &rdquo;{searchTerm}&rdquo;
             </li>
           ) : null}
         </ul>
       </div>
+      <ScanGroupQrModal
+        isOpen={isScanOpen}
+        onClose={() => setIsScanOpen(false)}
+        onJoin={onJoinGroupByInvite}
+      />
     </aside>
   );
 }

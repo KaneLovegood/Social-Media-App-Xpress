@@ -231,11 +231,11 @@ export class ChatRoomService {
     roomId: string,
   ): Promise<{ roomId: string; inviteCode: string; inviteLink: string }> {
     await this.assertGroupMembership(actorUserId, roomId);
-    const room = await this.getGroupRoom(roomId);
+    const room = await this.groupRoomsRepository.ensureInviteCode(roomId);
     return {
       roomId,
       inviteCode: room.inviteCode,
-      inviteLink: `/chat/join/${room.inviteCode}`,
+      inviteLink: `/chat/join?code=${encodeURIComponent(room.inviteCode)}`,
     };
   }
 
@@ -243,8 +243,9 @@ export class ChatRoomService {
     actorUserId: string,
     inviteCode: string,
   ): Promise<GroupRoomMutationResult> {
+    const normalizedInviteCode = this.normalizeInviteCode(inviteCode);
     const room =
-      await this.groupRoomsRepository.findRoomByInviteCode(inviteCode);
+      await this.groupRoomsRepository.findRoomByInviteCode(normalizedInviteCode);
     if (!room) {
       throw new NotFoundException('Ma moi khong hop le');
     }
@@ -721,7 +722,7 @@ export class ChatRoomService {
     actorUserId: string,
     roomId: string,
   ): Promise<GroupRoomDetails> {
-    const room = await this.getGroupRoom(roomId);
+    const room = await this.groupRoomsRepository.ensureInviteCode(roomId);
     const members = await this.groupRoomsRepository.listMembers(roomId);
     const loadedUsers = await Promise.all(
       members.map((member) => this.usersRepository.findByUserId(member.userId)),
@@ -766,7 +767,7 @@ export class ChatRoomService {
       emoji: room.emoji,
       createdByUserId: room.createdByUserId,
       inviteCode: room.inviteCode,
-      inviteLink: `/chat/join/${room.inviteCode}`,
+      inviteLink: `/chat/join?code=${encodeURIComponent(room.inviteCode)}`,
       memberCount: room.memberCount,
       pinnedMessageId: room.pinnedMessageId,
       lastMessageAt: room.lastMessageAt,
@@ -817,6 +818,33 @@ export class ChatRoomService {
     }
 
     return `Cuộc gọi nhóm ${modeText} bị hủy`;
+  }
+
+  private normalizeInviteCode(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    try {
+      const url = new URL(trimmed);
+      const queryCode =
+        url.searchParams.get('code') ?? url.searchParams.get('inviteCode');
+      if (queryCode) return queryCode.trim();
+
+      const match = url.pathname.match(/\/chat\/join\/([^/?#]+)/i);
+      if (match?.[1]) return decodeURIComponent(match[1]).trim();
+    } catch {
+      const queryMatch = trimmed.match(/[?&](?:code|inviteCode)=([^&#]+)/i);
+      if (queryMatch?.[1]) {
+        return decodeURIComponent(queryMatch[1]).trim();
+      }
+
+      const pathMatch = trimmed.match(/\/chat\/join\/([^/?#]+)/i);
+      if (pathMatch?.[1]) {
+        return decodeURIComponent(pathMatch[1]).trim();
+      }
+    }
+
+    return trimmed;
   }
 
   private async createGroupSystemMessage(

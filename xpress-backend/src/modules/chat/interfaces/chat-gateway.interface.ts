@@ -49,5 +49,7 @@ export interface GroupCallEndDto {
   callMode?: 'voice' | 'video';
   reason?: string;
   endForAll?: boolean;
+  activeParticipantIds?: string[];
+  remainingParticipantIds?: string[];
   callLogMessage?: MessageEntity;
 }

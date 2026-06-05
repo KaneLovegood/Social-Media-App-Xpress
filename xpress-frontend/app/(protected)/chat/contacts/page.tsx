@@ -1030,6 +1030,7 @@ export default function ContactsPage() {
           />
           <ChatAppRail
             activeNav="contacts"
+            avatarUrl={currentUser?.avatarUrl || undefined}
             initials={toInitials(currentUser?.name) || undefined}
             mobileOpen
             onRequestClose={() => setIsMobileRailOpen(false)}

@@ -22,6 +22,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SendEmailOtpDto } from './dto/send-email-otp.dto';
 import { UpdateAvatarDto } from './dto/update-avatar.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
 import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
 import { VerifyTwoFactorSetupDto } from './dto/verify-two-factor-setup.dto';
@@ -298,6 +299,20 @@ export class AuthController {
     }
 
     return this.authService.updateAvatar(userId, sessionId, dto);
+  }
+
+  @Patch('profile')
+  updateProfile(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    const userId = req.user?.userId;
+    const sessionId = req.user?.sessionId;
+    if (!userId || !sessionId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return this.authService.updateProfile(userId, sessionId, dto);
   }
 
   private resolveIp(req: Request): string {

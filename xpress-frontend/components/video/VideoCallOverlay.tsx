@@ -1,15 +1,19 @@
-import { PointerEvent, RefObject, useEffect, useRef, useState } from 'react';
+import { PointerEvent, useEffect, useRef, useState } from 'react';
 import { ICameraVideoTrack, IRemoteAudioTrack, IRemoteVideoTrack } from 'agora-rtc-sdk-ng';
 
 interface VideoCallOverlayProps {
     localVideoTrack: ICameraVideoTrack | null;
     remoteVideoTrack: IRemoteVideoTrack | null;
     remoteAudioTrack: IRemoteAudioTrack | null;
+    isRemoteVideoReady: boolean;
     timerText: string;
     muted: boolean;
     cameraOff: boolean;
+    speakerBoost: boolean;
     onToggleMute: () => void;
     onToggleCamera: () => void;
+    onSwitchCamera: () => void;
+    onToggleSpeaker: () => void;
     onEndCall: () => void;
 }
 
@@ -17,11 +21,15 @@ export default function VideoCallOverlay({
     localVideoTrack,
     remoteVideoTrack,
     remoteAudioTrack,
+    isRemoteVideoReady,
     timerText,
     muted,
     cameraOff,
+    speakerBoost,
     onToggleMute,
     onToggleCamera,
+    onSwitchCamera,
+    onToggleSpeaker,
     onEndCall,
 }: VideoCallOverlayProps) {
     const localVideoRef = useRef<HTMLDivElement | null>(null);
@@ -47,18 +55,32 @@ export default function VideoCallOverlay({
     }, [remoteAudioTrack]);
 
     useEffect(() => {
-        if (remoteVideoTrack && remoteVideoRef.current) {
-            remoteVideoTrack.play(remoteVideoRef.current);
+        if (remoteAudioTrack) {
+            remoteAudioTrack.setVolume(speakerBoost ? 1000 : 100);
+        }
+    }, [remoteAudioTrack, speakerBoost]);
+
+    useEffect(() => {
+        const element = remoteVideoRef.current;
+        if (remoteVideoTrack && element) {
+            element.replaceChildren();
+            remoteVideoTrack.play(element);
         }
         return () => {
             remoteVideoTrack?.stop();
+            element?.replaceChildren();
         };
     }, [remoteVideoTrack]);
 
     useEffect(() => {
-        if (localVideoTrack && localVideoRef.current && !cameraOff) {
-            localVideoTrack.play(localVideoRef.current);
+        const element = localVideoRef.current;
+        if (localVideoTrack && element && !cameraOff) {
+            element.replaceChildren();
+            localVideoTrack.play(element);
         }
+        return () => {
+            element?.replaceChildren();
+        };
     }, [localVideoTrack, cameraOff]);
 
     const handlePreviewPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -123,6 +145,14 @@ export default function VideoCallOverlay({
                     ref={remoteVideoRef}
                     className="absolute inset-0 z-0 h-full w-full bg-zinc-900"
                 />
+                {!isRemoteVideoReady ? (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900 text-center text-white">
+                        <div>
+                            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            <p className="mt-4 text-sm font-semibold">Dang ket noi video...</p>
+                        </div>
+                    </div>
+                ) : null}
 
                 <div className="relative z-20 flex items-center gap-3">
                     <div className="rounded-full bg-black/35 px-4 py-2 text-sm font-semibold text-white">{timerText}</div>
@@ -164,6 +194,18 @@ export default function VideoCallOverlay({
                     </button>
                     <button
                         type="button"
+                        onClick={onToggleSpeaker}
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${speakerBoost ? 'bg-[#152b58] text-white' : 'bg-white text-zinc-700'}`}
+                        title={speakerBoost ? "Khôi phục âm lượng thường" : "Tối đa âm lượng"}
+                    >
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 10v4h4l5 4V6l-5 4H3Z" />
+                            <path d="M16 9a4 4 0 0 1 0 6" />
+                            <path d="M18.5 6.5a7 7 0 0 1 0 11" />
+                        </svg>
+                    </button>
+                    <button
+                        type="button"
                         onClick={onToggleCamera}
                         className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-zinc-700"
                     >
@@ -179,6 +221,21 @@ export default function VideoCallOverlay({
                             </svg>
                         )}
                     </button>
+                    {!cameraOff && (
+                        <button
+                            type="button"
+                            onClick={onSwitchCamera}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-zinc-700"
+                            aria-label="Switch camera"
+                        >
+                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 2v6h-6" />
+                                <path d="M3 22v-6h6" />
+                                <path d="M21 13a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                                <path d="M3 11a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                            </svg>
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={onEndCall}

@@ -3,12 +3,13 @@ import AgoraRTC, {
   IAgoraRTCClient,
   ICameraVideoTrack,
   IMicrophoneAudioTrack,
+  IAgoraRTCRemoteUser,
 } from 'agora-rtc-sdk-ng';
 
 export const useAgora = (client: IAgoraRTCClient | null) => {
   const [localVideoTrack, setLocalVideoTrack] = useState<ICameraVideoTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<IMicrophoneAudioTrack | null>(null);
-  const [remoteUsers, setRemoteUsers] = useState<any[]>([]);
+  const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const [joinState, setJoinState] = useState(false);
   
   const tracksRef = useRef<{ audio: IMicrophoneAudioTrack | null; video: ICameraVideoTrack | null }>({
@@ -46,7 +47,13 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
   }, [client]);
 
   const join = useCallback(
-    async (appId: string, channel: string, token: string, uid?: string | number | null) => {
+    async (
+      appId: string,
+      channel: string,
+      token: string,
+      uid?: string | number | null,
+      withVideo = true,
+    ) => {
       if (!client || isJoining.current) return;
 
       isJoining.current = true;
@@ -57,16 +64,24 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
         let videoTrack: ICameraVideoTrack | null = null;
 
         try {
-          const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-          audioTrack = aTrack;
-          videoTrack = vTrack;
-        } catch (mediaErr) {
-          console.warn('Failed to create both Microphone and Camera tracks. Attempting microphone only...', mediaErr);
-          try {
+          if (withVideo) {
+            const [aTrack, vTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+            audioTrack = aTrack;
+            videoTrack = vTrack;
+          } else {
             audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-          } catch (audioErr) {
-            console.error('Failed to create Microphone track as well. Recording devices may be blocked or unavailable:', audioErr);
-            throw mediaErr; // Re-throw the original error to let UI catch permission issues
+          }
+        } catch (mediaErr) {
+          if (withVideo) {
+            console.warn('Failed to create both Microphone and Camera tracks. Attempting microphone only...', mediaErr);
+            try {
+              audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+            } catch (audioErr) {
+              console.error('Failed to create Microphone track as well. Recording devices may be blocked or unavailable:', audioErr);
+              throw mediaErr;
+            }
+          } else {
+            throw mediaErr;
           }
         }
 
@@ -107,7 +122,10 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
   useEffect(() => {
     if (!client) return;
 
-    const handleUserPublished = async (user: any, mediaType: 'audio' | 'video') => {
+    const handleUserPublished = async (
+      user: IAgoraRTCRemoteUser,
+      mediaType: 'audio' | 'video',
+    ) => {
       await client.subscribe(user, mediaType);
       setRemoteUsers((prevUsers) => {
         const existing = prevUsers.find((u) => u.uid === user.uid);
@@ -118,18 +136,18 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
       });
     };
 
-    const handleUserUnpublished = (user: any) => {
+    const handleUserUnpublished = (user: IAgoraRTCRemoteUser) => {
       setRemoteUsers((prevUsers) => prevUsers.filter((u) => u.uid !== user.uid));
     };
 
-    const handleUserJoined = (user: any) => {
+    const handleUserJoined = (user: IAgoraRTCRemoteUser) => {
       setRemoteUsers((prevUsers) => {
         if (prevUsers.find((u) => u.uid === user.uid)) return prevUsers;
         return [...prevUsers, user];
       });
     };
 
-    const handleUserLeft = (user: any) => {
+    const handleUserLeft = (user: IAgoraRTCRemoteUser) => {
       setRemoteUsers((prevUsers) => prevUsers.filter((u) => u.uid !== user.uid));
     };
 
@@ -146,6 +164,24 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
     };
   }, [client]);
 
+  const switchCamera = useCallback(async () => {
+    const videoTrack = tracksRef.current.video;
+    if (!videoTrack) return;
+    
+    try {
+      const cameras = await AgoraRTC.getCameras();
+      if (cameras.length <= 1) return;
+      
+      const activeDeviceId = videoTrack.getMediaStreamTrack().getSettings().deviceId;
+      const nextDevice = cameras.find((cam) => cam.deviceId !== activeDeviceId);
+      if (nextDevice) {
+        await videoTrack.setDevice(nextDevice.deviceId);
+      }
+    } catch (err) {
+      console.error('Failed to switch Agora camera:', err);
+    }
+  }, []);
+
   return {
     localAudioTrack,
     localVideoTrack,
@@ -153,5 +189,6 @@ export const useAgora = (client: IAgoraRTCClient | null) => {
     joinState,
     join,
     leave,
+    switchCamera,
   };
 };
