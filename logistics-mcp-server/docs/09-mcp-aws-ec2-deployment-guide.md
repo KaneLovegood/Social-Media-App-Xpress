@@ -1,4 +1,4 @@
-# Hướng Dẫn Triển Khai Logistics MCP Server Lên AWS EC2 & Kết Nối Đa Tác Tử (Cursor, Copilot, ChatGPT)
+# Hướng Dẫn Triển Khai Logistics MCP Server Lên AWS EC2 & Kết Nối Đa Tác Tử (Cursor, Copilot, ChatGPT)   
 
 Tài liệu này hướng dẫn chi tiết cách nâng cấp cổng kết nối **Logistics MCP Server** từ chế độ chạy cục bộ (`stdio`) sang chế độ dịch vụ mạng trực tuyến (**SSE - Server-Sent Events**), đóng gói bằng **Docker**, triển khai lên máy ảo **AWS EC2**, và cấu hình tên miền bảo mật **HTTPS** qua **Nginx** & **Let's Encrypt** để tích hợp với mọi AI Agent toàn cầu.
 
