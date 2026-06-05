@@ -361,7 +361,7 @@ export class AuthController {
     const secure = this.shouldUseSecureCookie(req);
     const configuredSameSite =
       process.env.REFRESH_TOKEN_COOKIE_SAMESITE?.toLowerCase();
-    const sameSite =
+    const requestedSameSite =
       configuredSameSite === 'strict' ||
       configuredSameSite === 'lax' ||
       configuredSameSite === 'none'
@@ -369,6 +369,8 @@ export class AuthController {
         : secure
           ? 'none'
           : 'lax';
+    const sameSite =
+      requestedSameSite === 'none' && !secure ? 'lax' : requestedSameSite;
     const domain = process.env.REFRESH_TOKEN_COOKIE_DOMAIN?.trim();
 
     return {
@@ -393,11 +395,7 @@ export class AuthController {
         ? forwardedProto.split(',')[0]?.trim()
         : undefined;
 
-    return (
-      process.env.NODE_ENV === 'production' ||
-      req.secure ||
-      firstForwardedProto === 'https'
-    );
+    return req.secure || firstForwardedProto === 'https';
   }
 
   private readCookie(req: Request, name: string): string | undefined {

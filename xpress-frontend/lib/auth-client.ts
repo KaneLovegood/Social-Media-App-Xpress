@@ -32,6 +32,7 @@ export const USER_UPDATED_EVENT = "xpress:user-updated";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
   'http://localhost:3001';
+const ACCESS_TOKEN_REFRESH_SKEW_MS = 30_000;
 let refreshPromise: Promise<string> | null = null;
 
 function isBrowser() {
@@ -57,6 +58,29 @@ async function fetchWithToken(
 
 export function getAccessToken(): string {
   return secureGetSync(ACCESS_TOKEN_KEY) ?? '';
+}
+
+function isJwtExpiredOrStale(token: string): boolean {
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment || typeof globalThis.atob !== 'function') {
+      return false;
+    }
+
+    const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedBase64 = base64.padEnd(
+      Math.ceil(base64.length / 4) * 4,
+      '=',
+    );
+    const payload = JSON.parse(globalThis.atob(paddedBase64)) as {
+      exp?: number;
+    };
+    if (!payload.exp) return false;
+
+    return payload.exp * 1000 - Date.now() < ACCESS_TOKEN_REFRESH_SKEW_MS;
+  } catch {
+    return false;
+  }
 }
 
 export function getStoredUser(): StoredUser | null {
@@ -208,7 +232,7 @@ export async function getValidAccessToken(): Promise<string> {
   }
 
   const accessToken = getAccessToken();
-  if (accessToken) return accessToken;
+  if (accessToken && !isJwtExpiredOrStale(accessToken)) return accessToken;
   return refreshAccessToken().catch(() => "");
 }
 
@@ -223,7 +247,10 @@ export async function authFetch(
   }
 
   let accessToken = getAccessToken();
-  if (!accessToken && retryOnUnauthorized) {
+  if (
+    retryOnUnauthorized &&
+    (!accessToken || isJwtExpiredOrStale(accessToken))
+  ) {
     accessToken = await refreshAccessToken().catch(() => "");
   }
 

@@ -34,6 +34,7 @@ import { JwtGuard } from '../src/middleware/jwt.guard';
 import { Public } from '../src/middleware/public.decorator';
 import { SessionRepository } from '../src/modules/auth/repositories/session.repository';
 import { JwtStrategy } from '../src/modules/auth/strategies/jwt.strategy';
+import { DeviceSessionService } from '../src/modules/device-session/device-session.service';
 
 interface AuthedReq extends Request {
   user?: {
@@ -66,6 +67,12 @@ class FakeSessionRepository {
 
   findSessionById(userId: string, sessionId: string) {
     return Promise.resolve(this.sessions.get(`${userId}#${sessionId}`) ?? null);
+  }
+}
+
+class FakeDeviceSessionService {
+  isSessionValid() {
+    return Promise.resolve(true);
   }
 }
 
@@ -135,6 +142,7 @@ class PublicController {
   providers: [
     JwtStrategy,
     { provide: SessionRepository, useClass: FakeSessionRepository },
+    { provide: DeviceSessionService, useClass: FakeDeviceSessionService },
     { provide: APP_GUARD, useClass: JwtGuard },
   ],
 })
