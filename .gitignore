@@ -63,3 +63,5 @@ dist
 .env.local
 
 .agents
+
+*.pem
