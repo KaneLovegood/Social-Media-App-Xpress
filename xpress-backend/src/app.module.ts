@@ -14,11 +14,12 @@ import { NewsFeedModule } from './modules/news-feed/news-feed.module';
 import { JwtGuard } from './middleware/jwt.guard';
 
 const mongoUri =
-  process.env.MONGODB_SESSION_URI ?? 'mongodb://localhost:27017/xpress-session';
+  process.env.MONGODB_URI ??
+  process.env.MONGODB_SESSION_URI ??
+  'mongodb://localhost:27017/xpress';
 @Module({
   imports: [
     MongooseModule.forRoot(mongoUri, {
-      // single-device-session collection is tiny; keep pool small.
       minPoolSize: 1,
       maxPoolSize: 5,
     }),

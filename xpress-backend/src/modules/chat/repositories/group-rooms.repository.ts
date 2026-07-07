@@ -1,16 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
 import { randomUUID } from 'crypto';
-import {
-  DynamoDBDocumentClient,
-  DeleteCommand,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  ScanCommand,
-  TransactWriteCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
+import { Model } from 'mongoose';
+import { XpressItem } from '../../../common/mongodb/xpress-item.schema';
 import {
   ChatGroupMemberEntity,
   ChatGroupRoomEntity,
@@ -23,11 +15,9 @@ export interface GroupMemberWithRoom extends ChatGroupMemberEntity {
 
 @Injectable()
 export class GroupRoomsRepository {
-  private readonly tableName = process.env.DDB_TABLE_NAME!;
-
   constructor(
-    @Inject(DYNAMODB_DOC_CLIENT)
-    private readonly ddbDocClient: DynamoDBDocumentClient,
+    @InjectModel(XpressItem.name)
+    private readonly itemModel: Model<Record<string, any>>,
   ) {}
 
   async createGroupRoom(input: {
@@ -70,73 +60,33 @@ export class GroupRoomsRepository {
       lastReadAt: now,
     };
 
-    await this.ddbDocClient.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          {
-            Put: {
-              TableName: this.tableName,
-              Item: room,
-              ConditionExpression: 'attribute_not_exists(PK)',
-            },
-          },
-          {
-            Put: {
-              TableName: this.tableName,
-              Item: creator,
-              ConditionExpression: 'attribute_not_exists(PK)',
-            },
-          },
-        ],
-      }),
-    );
+    await this.itemModel.insertMany([room, creator], { ordered: true });
 
     return room;
   }
 
   async findRoomById(roomId: string): Promise<ChatGroupRoomEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        ConsistentRead: true,
-        Key: {
-          PK: `ROOM#${roomId}`,
-          SK: `META#${roomId}`,
-        },
-      }),
-    );
-
-    return (result.Item as ChatGroupRoomEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `ROOM#${roomId}`,
+        SK: `META#${roomId}`,
+      })
+      .select('-_id')
+      .lean<ChatGroupRoomEntity>()
+      .exec();
   }
 
   async findRoomByInviteCode(
     inviteCode: string,
   ): Promise<ChatGroupRoomEntity | null> {
-    let exclusiveStartKey: Record<string, unknown> | undefined;
-
-    do {
-      const result = await this.ddbDocClient.send(
-        new ScanCommand({
-          TableName: this.tableName,
-          FilterExpression:
-            'entityType = :entityType AND inviteCode = :inviteCode',
-          ExpressionAttributeValues: {
-            ':entityType': 'CHAT_GROUP_ROOM',
-            ':inviteCode': inviteCode,
-          },
-          ExclusiveStartKey: exclusiveStartKey,
-        }),
-      );
-
-      const room = result.Items?.[0] as ChatGroupRoomEntity | undefined;
-      if (room) {
-        return room;
-      }
-
-      exclusiveStartKey = result.LastEvaluatedKey;
-    } while (exclusiveStartKey);
-
-    return null;
+    return this.itemModel
+      .findOne({
+        entityType: 'CHAT_GROUP_ROOM',
+        inviteCode,
+      })
+      .select('-_id')
+      .lean<ChatGroupRoomEntity>()
+      .exec();
   }
 
   async ensureInviteCode(roomId: string): Promise<ChatGroupRoomEntity> {
@@ -150,27 +100,24 @@ export class GroupRoomsRepository {
     }
 
     const inviteCode = randomUUID().replace(/-/g, '').slice(0, 12);
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const updated = await this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `ROOM#${roomId}`,
           SK: `META#${roomId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: 'SET inviteCode = :inviteCode, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':inviteCode': inviteCode,
-          ':updatedAt': new Date().toISOString(),
+        {
+          $set: {
+            inviteCode,
+            updatedAt: new Date().toISOString(),
+          },
         },
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
+        { new: true, projection: { _id: 0 } },
+      )
+      .lean<ChatGroupRoomEntity>()
+      .exec();
 
-    return (result.Attributes as ChatGroupRoomEntity) ?? {
-      ...room,
-      inviteCode,
-    };
+    return updated ?? { ...room, inviteCode };
   }
 
   async updateRoomMeta(
@@ -188,74 +135,52 @@ export class GroupRoomsRepository {
       >
     >,
   ): Promise<ChatGroupRoomEntity | null> {
-    const assignments: string[] = [];
-    const values: Record<string, unknown> = {
-      ':updatedAt': new Date().toISOString(),
+    const set: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
     };
 
-    if (updates.title !== undefined) {
-      assignments.push('title = :title');
-      values[':title'] = updates.title;
-    }
-    if (updates.description !== undefined) {
-      assignments.push('description = :description');
-      values[':description'] = updates.description;
-    }
-    if (updates.avatarUrl !== undefined) {
-      assignments.push('avatarUrl = :avatarUrl');
-      values[':avatarUrl'] = updates.avatarUrl;
-    }
-    if (updates.emoji !== undefined) {
-      assignments.push('emoji = :emoji');
-      values[':emoji'] = updates.emoji;
-    }
-    if (updates.lastMessageAt !== undefined) {
-      assignments.push('lastMessageAt = :lastMessageAt');
-      values[':lastMessageAt'] = updates.lastMessageAt;
-    }
-    if (updates.lastMessagePreview !== undefined) {
-      assignments.push('lastMessagePreview = :lastMessagePreview');
-      values[':lastMessagePreview'] = updates.lastMessagePreview;
-    }
-    if (updates.pinnedMessageId !== undefined) {
-      assignments.push('pinnedMessageId = :pinnedMessageId');
-      values[':pinnedMessageId'] = updates.pinnedMessageId;
+    for (const key of [
+      'title',
+      'description',
+      'avatarUrl',
+      'emoji',
+      'lastMessageAt',
+      'lastMessagePreview',
+      'pinnedMessageId',
+    ] as const) {
+      if (updates[key] !== undefined) {
+        set[key] = updates[key];
+      }
     }
 
-    if (assignments.length === 0) {
+    if (Object.keys(set).length === 1) {
       return this.findRoomById(roomId);
     }
 
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    return this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `ROOM#${roomId}`,
           SK: `META#${roomId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: `SET ${assignments.join(', ')}, updatedAt = :updatedAt`,
-        ExpressionAttributeValues: values,
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
-
-    return (result.Attributes as ChatGroupRoomEntity) ?? null;
+        { $set: set },
+        { new: true, projection: { _id: 0 } },
+      )
+      .lean<ChatGroupRoomEntity>()
+      .exec();
   }
 
   async listRoomsForUser(userId: string): Promise<GroupMemberWithRoom[]> {
-    const result = await this.ddbDocClient.send(
-      new ScanCommand({
-        TableName: this.tableName,
-        FilterExpression: 'entityType = :entityType AND userId = :userId',
-        ExpressionAttributeValues: {
-          ':entityType': 'CHAT_GROUP_MEMBER',
-          ':userId': userId,
-        },
-      }),
-    );
+    const members = await this.itemModel
+      .find({
+        entityType: 'CHAT_GROUP_MEMBER',
+        userId,
+      })
+      .sort({ updatedAt: -1 })
+      .select('-_id')
+      .lean<ChatGroupMemberEntity[]>()
+      .exec();
 
-    const members = (result.Items as ChatGroupMemberEntity[]) ?? [];
     const loaded = await Promise.all(
       members.map(async (member) => {
         const room = await this.findRoomById(member.roomId);
@@ -268,36 +193,30 @@ export class GroupRoomsRepository {
   }
 
   async listMembers(roomId: string): Promise<ChatGroupMemberEntity[]> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
-        ExpressionAttributeValues: {
-          ':pk': `ROOM#${roomId}`,
-          ':skPrefix': 'MEMBER#',
-        },
-      }),
-    );
-
-    return (result.Items as ChatGroupMemberEntity[]) ?? [];
+    return this.itemModel
+      .find({
+        PK: `ROOM#${roomId}`,
+        SK: { $regex: '^MEMBER#' },
+        entityType: 'CHAT_GROUP_MEMBER',
+      })
+      .sort({ joinedAt: 1 })
+      .select('-_id')
+      .lean<ChatGroupMemberEntity[]>()
+      .exec();
   }
 
   async findMember(
     roomId: string,
     userId: string,
   ): Promise<ChatGroupMemberEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        ConsistentRead: true,
-        Key: {
-          PK: `ROOM#${roomId}`,
-          SK: `MEMBER#${userId}`,
-        },
-      }),
-    );
-
-    return (result.Item as ChatGroupMemberEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `ROOM#${roomId}`,
+        SK: `MEMBER#${userId}`,
+      })
+      .select('-_id')
+      .lean<ChatGroupMemberEntity>()
+      .exec();
   }
 
   async addMember(
@@ -328,75 +247,60 @@ export class GroupRoomsRepository {
       lastReadAt: now,
     };
 
-    await this.ddbDocClient.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          {
-            Put: {
-              TableName: this.tableName,
-              Item: member,
-              ConditionExpression: 'attribute_not_exists(PK)',
-            },
-          },
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `META#${roomId}`,
-              },
-              UpdateExpression:
-                'SET memberCount = memberCount + :step, updatedAt = :updatedAt',
-              ExpressionAttributeValues: {
-                ':step': 1,
-                ':updatedAt': now,
-              },
-            },
-          },
-        ],
-      }),
-    );
+    try {
+      await this.itemModel.create(member);
+    } catch (error) {
+      const duplicate =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code: unknown }).code === 11000;
+      if (duplicate) {
+        const current = await this.findMember(roomId, userId);
+        if (current) return current;
+      }
+      throw error;
+    }
+
+    await this.itemModel
+      .updateOne(
+        {
+          PK: `ROOM#${roomId}`,
+          SK: `META#${roomId}`,
+        },
+        {
+          $inc: { memberCount: 1 },
+          $set: { updatedAt: now },
+        },
+      )
+      .exec();
 
     return member;
   }
 
   async removeMember(roomId: string, userId: string): Promise<void> {
-    const member = await this.findMember(roomId, userId);
-    if (!member) {
-      return;
-    }
-
     const now = new Date().toISOString();
-    await this.ddbDocClient.send(
-      new TransactWriteCommand({
-        TransactItems: [
+    const result = await this.itemModel
+      .deleteOne({
+        PK: `ROOM#${roomId}`,
+        SK: `MEMBER#${userId}`,
+      })
+      .exec();
+
+    if (result.deletedCount > 0) {
+      await this.itemModel
+        .updateOne(
           {
-            Delete: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `MEMBER#${userId}`,
-              },
-            },
+            PK: `ROOM#${roomId}`,
+            SK: `META#${roomId}`,
           },
           {
-            Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `META#${roomId}`,
-              },
-              UpdateExpression:
-                'SET memberCount = memberCount - :step, updatedAt = :updatedAt',
-              ExpressionAttributeValues: {
-                ':step': 1,
-                ':updatedAt': now,
-              },
-            },
+            $inc: { memberCount: -1 },
+            $set: { updatedAt: now },
           },
-        ],
-      }),
-    );
+        )
+        .exec();
+    }
   }
 
   async promoteMember(
@@ -408,28 +312,24 @@ export class GroupRoomsRepository {
       throw new Error('MEMBER_NOT_FOUND');
     }
 
-    const now = new Date().toISOString();
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const updated = await this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `ROOM#${roomId}`,
           SK: `MEMBER#${userId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: 'SET #role = :role, updatedAt = :updatedAt',
-        ExpressionAttributeNames: {
-          '#role': 'role',
+        {
+          $set: {
+            role: 'ADMIN',
+            updatedAt: new Date().toISOString(),
+          },
         },
-        ExpressionAttributeValues: {
-          ':role': 'ADMIN',
-          ':updatedAt': now,
-        },
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
+        { new: true, projection: { _id: 0 } },
+      )
+      .lean<ChatGroupMemberEntity>()
+      .exec();
 
-    return (result.Attributes as ChatGroupMemberEntity) ?? current;
+    return updated ?? current;
   }
 
   async transferAdminRole(
@@ -447,64 +347,26 @@ export class GroupRoomsRepository {
     }
 
     const now = new Date().toISOString();
-    await this.ddbDocClient.send(
-      new TransactWriteCommand({
-        TransactItems: [
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `MEMBER#${fromUserId}`,
-              },
-              ConditionExpression: 'attribute_exists(PK)',
-              UpdateExpression:
-                'SET #role = :memberRole, updatedAt = :updatedAt',
-              ExpressionAttributeNames: {
-                '#role': 'role',
-              },
-              ExpressionAttributeValues: {
-                ':memberRole': 'MEMBER',
-                ':updatedAt': now,
-              },
-            },
-          },
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `MEMBER#${toUserId}`,
-              },
-              ConditionExpression: 'attribute_exists(PK)',
-              UpdateExpression:
-                'SET #role = :adminRole, updatedAt = :updatedAt',
-              ExpressionAttributeNames: {
-                '#role': 'role',
-              },
-              ExpressionAttributeValues: {
-                ':adminRole': 'ADMIN',
-                ':updatedAt': now,
-              },
-            },
-          },
-          {
-            Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: `ROOM#${roomId}`,
-                SK: `META#${roomId}`,
-              },
-              ConditionExpression: 'attribute_exists(PK)',
-              UpdateExpression: 'SET updatedAt = :updatedAt',
-              ExpressionAttributeValues: {
-                ':updatedAt': now,
-              },
-            },
-          },
-        ],
-      }),
-    );
+    await Promise.all([
+      this.itemModel
+        .updateOne(
+          { PK: `ROOM#${roomId}`, SK: `MEMBER#${fromUserId}` },
+          { $set: { role: 'MEMBER', updatedAt: now } },
+        )
+        .exec(),
+      this.itemModel
+        .updateOne(
+          { PK: `ROOM#${roomId}`, SK: `MEMBER#${toUserId}` },
+          { $set: { role: 'ADMIN', updatedAt: now } },
+        )
+        .exec(),
+      this.itemModel
+        .updateOne(
+          { PK: `ROOM#${roomId}`, SK: `META#${roomId}` },
+          { $set: { updatedAt: now } },
+        )
+        .exec(),
+    ]);
   }
 
   async setMemberNickname(
@@ -513,76 +375,54 @@ export class GroupRoomsRepository {
     nickname: string | null,
   ): Promise<ChatGroupMemberEntity | null> {
     const now = new Date().toISOString();
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const update =
+      nickname === null
+        ? { $unset: { nickname: '' }, $set: { updatedAt: now } }
+        : { $set: { nickname, updatedAt: now } };
+
+    return this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `ROOM#${roomId}`,
           SK: `MEMBER#${userId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          nickname === null
-            ? 'REMOVE nickname SET updatedAt = :updatedAt'
-            : 'SET nickname = :nickname, updatedAt = :updatedAt',
-        ExpressionAttributeValues:
-          nickname === null
-            ? { ':updatedAt': now }
-            : { ':nickname': nickname, ':updatedAt': now },
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
-
-    return (result.Attributes as ChatGroupMemberEntity) ?? null;
+        update,
+        { new: true, projection: { _id: 0 } },
+      )
+      .lean<ChatGroupMemberEntity>()
+      .exec();
   }
 
   async markMemberRead(roomId: string, userId: string): Promise<void> {
     const now = new Date().toISOString();
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    await this.itemModel
+      .updateOne(
+        {
           PK: `ROOM#${roomId}`,
           SK: `MEMBER#${userId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          'SET lastReadAt = :lastReadAt, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':lastReadAt': now,
-          ':updatedAt': now,
+        {
+          $set: {
+            lastReadAt: now,
+            updatedAt: now,
+          },
         },
-      }),
-    );
+      )
+      .exec();
   }
 
   async deleteGroupRoom(roomId: string): Promise<string[]> {
     const members = await this.listMembers(roomId);
     const memberUserIds = members.map((member) => member.userId);
 
-    await Promise.all([
-      ...members.map((member) =>
-        this.ddbDocClient.send(
-          new DeleteCommand({
-            TableName: this.tableName,
-            Key: {
-              PK: `ROOM#${roomId}`,
-              SK: `MEMBER#${member.userId}`,
-            },
-          }),
-        ),
-      ),
-      this.ddbDocClient.send(
-        new DeleteCommand({
-          TableName: this.tableName,
-          Key: {
-            PK: `ROOM#${roomId}`,
-            SK: `META#${roomId}`,
-          },
-        }),
-      ),
-    ]);
+    await this.itemModel
+      .deleteMany({
+        PK: `ROOM#${roomId}`,
+        $or: [{ SK: `META#${roomId}` }, { SK: { $regex: '^MEMBER#' } }],
+      })
+      .exec();
 
     return memberUserIds;
   }
 }
+

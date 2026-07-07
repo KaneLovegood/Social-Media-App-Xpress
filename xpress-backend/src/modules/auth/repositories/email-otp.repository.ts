@@ -1,12 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { XpressItem } from '../../../common/mongodb/xpress-item.schema';
 import {
   EmailOtpEntity,
   EmailOtpPurpose,
@@ -14,70 +9,56 @@ import {
 
 @Injectable()
 export class EmailOtpRepository {
-  private readonly tableName = process.env.DDB_TABLE_NAME!;
-
   constructor(
-    @Inject(DYNAMODB_DOC_CLIENT)
-    private readonly ddbDocClient: DynamoDBDocumentClient,
+    @InjectModel(XpressItem.name)
+    private readonly itemModel: Model<Record<string, any>>,
   ) {}
 
   async upsertOtp(otp: EmailOtpEntity): Promise<void> {
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: otp,
-      }),
-    );
+    await this.itemModel
+      .replaceOne({ PK: otp.PK, SK: otp.SK }, otp, { upsert: true })
+      .exec();
   }
 
   async findOtp(
     email: string,
     purpose: EmailOtpPurpose,
   ): Promise<EmailOtpEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `OTP#${email}`,
-          SK: `OTP#${purpose}`,
-        },
-      }),
-    );
-
-    return (result.Item as EmailOtpEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `OTP#${email}`,
+        SK: `OTP#${purpose}`,
+      })
+      .select('-_id')
+      .lean<EmailOtpEntity>()
+      .exec();
   }
 
   async incrementAttempts(
     email: string,
     purpose: EmailOtpPurpose,
   ): Promise<void> {
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    await this.itemModel
+      .updateOne(
+        {
           PK: `OTP#${email}`,
           SK: `OTP#${purpose}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          'SET attempts = if_not_exists(attempts, :zero) + :one',
-        ExpressionAttributeValues: {
-          ':zero': 0,
-          ':one': 1,
+        {
+          $inc: { attempts: 1 },
+          $set: { updatedAt: new Date().toISOString() },
         },
-      }),
-    );
+      )
+      .exec();
   }
 
   async deleteOtp(email: string, purpose: EmailOtpPurpose): Promise<void> {
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `OTP#${email}`,
-          SK: `OTP#${purpose}`,
-        },
-      }),
-    );
+    await this.itemModel
+      .deleteOne({
+        PK: `OTP#${email}`,
+        SK: `OTP#${purpose}`,
+      })
+      .exec();
   }
 }
+

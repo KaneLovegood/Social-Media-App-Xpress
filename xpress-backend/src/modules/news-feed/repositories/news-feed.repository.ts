@@ -1,13 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
+  decodeOffsetCursor,
+  nextOffsetCursor,
+} from '../../../common/mongodb/mongo-repository.utils';
+import { XpressItem } from '../../../common/mongodb/xpress-item.schema';
 import {
   PostCommentEntity,
   PostEntity,
@@ -17,61 +15,47 @@ import {
 
 @Injectable()
 export class NewsFeedRepository {
-  private readonly tableName = process.env.DDB_TABLE_NAME!;
-
   constructor(
-    @Inject(DYNAMODB_DOC_CLIENT)
-    private readonly ddbDocClient: DynamoDBDocumentClient,
+    @InjectModel(XpressItem.name)
+    private readonly itemModel: Model<Record<string, any>>,
   ) {}
 
   async listFeedPage(
     limit: number,
     cursor?: string,
   ): Promise<{ items: PostEntity[]; nextCursor: string | null }> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: 'GSI1',
-        KeyConditionExpression: 'GSI1PK = :gsi1pk',
-        FilterExpression: 'entityType = :entityType',
-        ExpressionAttributeValues: {
-          ':gsi1pk': 'FEED',
-          ':entityType': 'POST',
-        },
-        ScanIndexForward: false,
-        Limit: limit,
-        ExclusiveStartKey: this.decodeCursor(cursor),
-      }),
-    );
+    const offset = decodeOffsetCursor(cursor);
+    const items = await this.itemModel
+      .find({
+        entityType: 'POST',
+        GSI1PK: 'FEED',
+      })
+      .sort({ GSI1SK: -1, createdAt: -1 })
+      .skip(offset)
+      .limit(limit)
+      .select('-_id')
+      .lean<PostEntity[]>()
+      .exec();
 
     return {
-      items: (result.Items as PostEntity[]) ?? [],
-      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+      items,
+      nextCursor: nextOffsetCursor(offset, items.length, limit),
     };
   }
 
   async createPost(item: PostEntity): Promise<void> {
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: item,
-        ConditionExpression: 'attribute_not_exists(PK)',
-      }),
-    );
+    await this.itemModel.create(item);
   }
 
   async getPost(postId: string): Promise<PostEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `POST#${postId}`,
-          SK: `POST#${postId}`,
-        },
-      }),
-    );
-
-    return (result.Item as PostEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `POST#${postId}`,
+        SK: `POST#${postId}`,
+      })
+      .select('-_id')
+      .lean<PostEntity>()
+      .exec();
   }
 
   async updatePost(
@@ -85,108 +69,79 @@ export class NewsFeedRepository {
       sharedFromPostId?: string;
     },
   ): Promise<void> {
-    const expressions: string[] = ['updatedAt = :updatedAt'];
-    const values: Record<string, unknown> = {
-      ':updatedAt': new Date().toISOString(),
+    const set: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
     };
 
-    if (data.content !== undefined) {
-      expressions.push('content = :content');
-      values[':content'] = data.content;
+    for (const key of [
+      'content',
+      'location',
+      'imageUrls',
+      'videoUrls',
+      'visibility',
+      'sharedFromPostId',
+    ] as const) {
+      if (data[key] !== undefined) {
+        set[key] = data[key];
+      }
     }
 
-    if (data.location !== undefined) {
-      expressions.push('location = :location');
-      values[':location'] = data.location;
-    }
-
-    if (data.imageUrls !== undefined) {
-      expressions.push('imageUrls = :imageUrls');
-      values[':imageUrls'] = data.imageUrls;
-    }
-
-    if (data.videoUrls !== undefined) {
-      expressions.push('videoUrls = :videoUrls');
-      values[':videoUrls'] = data.videoUrls;
-    }
-
-    if (data.visibility !== undefined) {
-      expressions.push('visibility = :visibility');
-      values[':visibility'] = data.visibility;
-    }
-
-    if (data.sharedFromPostId !== undefined) {
-      expressions.push('sharedFromPostId = :sharedFromPostId');
-      values[':sharedFromPostId'] = data.sharedFromPostId;
-    }
-
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    await this.itemModel
+      .updateOne(
+        {
           PK: `POST#${postId}`,
           SK: `POST#${postId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: `SET ${expressions.join(', ')}`,
-        ExpressionAttributeValues: values,
-      }),
-    );
+        { $set: set },
+      )
+      .exec();
   }
 
   async softDeletePost(postId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    await this.itemModel
+      .updateOne(
+        {
           PK: `POST#${postId}`,
           SK: `POST#${postId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: 'SET isDeleted = :isDeleted, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':isDeleted': true,
-          ':updatedAt': new Date().toISOString(),
+        {
+          $set: {
+            isDeleted: true,
+            updatedAt: new Date().toISOString(),
+          },
         },
-      }),
-    );
+      )
+      .exec();
   }
 
   async addShareCount(postId: string): Promise<number> {
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const updated = await this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `POST#${postId}`,
           SK: `POST#${postId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          'SET shareCount = if_not_exists(shareCount, :zero) + :inc, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':zero': 0,
-          ':inc': 1,
-          ':updatedAt': new Date().toISOString(),
+        {
+          $inc: { shareCount: 1 },
+          $set: { updatedAt: new Date().toISOString() },
         },
-        ReturnValues: 'UPDATED_NEW',
-      }),
-    );
+        { new: true, projection: { _id: 0, shareCount: 1 } },
+      )
+      .lean<{ shareCount?: number }>()
+      .exec();
 
-    return Number(result.Attributes?.shareCount ?? 0);
+    return Number(updated?.shareCount ?? 0);
   }
 
   async hasLike(postId: string, userId: string): Promise<boolean> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `POST#${postId}`,
-          SK: `LIKE#${userId}`,
-        },
-      }),
-    );
+    const item = await this.itemModel
+      .exists({
+        PK: `POST#${postId}`,
+        SK: `LIKE#${userId}`,
+      })
+      .exec();
 
-    return Boolean(result.Item);
+    return Boolean(item);
   }
 
   async createLike(postId: string, userId: string): Promise<void> {
@@ -199,14 +154,7 @@ export class NewsFeedRepository {
       createdAt: new Date().toISOString(),
     };
 
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: item,
-        ConditionExpression:
-          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-      }),
-    );
+    await this.itemModel.create(item);
   }
 
   async createIdempotencyRecord(
@@ -224,127 +172,90 @@ export class NewsFeedRepository {
       createdAt: new Date().toISOString(),
     };
 
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: item,
-        ConditionExpression:
-          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-      }),
-    );
+    await this.itemModel.create(item);
   }
 
   async getIdempotencyRecord(
     userId: string,
     idempotencyKey: string,
   ): Promise<PostIdempotencyEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${userId}`,
-          SK: `POST_IDEMPOTENCY#${idempotencyKey}`,
-        },
-      }),
-    );
-
-    return (result.Item as PostIdempotencyEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `USER#${userId}`,
+        SK: `POST_IDEMPOTENCY#${idempotencyKey}`,
+      })
+      .select('-_id')
+      .lean<PostIdempotencyEntity>()
+      .exec();
   }
 
   async deleteLike(postId: string, userId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `POST#${postId}`,
-          SK: `LIKE#${userId}`,
-        },
-        ConditionExpression: 'attribute_exists(PK)',
-      }),
-    );
+    await this.itemModel
+      .deleteOne({
+        PK: `POST#${postId}`,
+        SK: `LIKE#${userId}`,
+      })
+      .exec();
   }
 
   async updateLikeCount(postId: string, delta: 1 | -1): Promise<number> {
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const updated = await this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `POST#${postId}`,
           SK: `POST#${postId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          'SET likeCount = if_not_exists(likeCount, :zero) + :delta, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':zero': 0,
-          ':delta': delta,
-          ':updatedAt': new Date().toISOString(),
+        {
+          $inc: { likeCount: delta },
+          $set: { updatedAt: new Date().toISOString() },
         },
-        ReturnValues: 'UPDATED_NEW',
-      }),
-    );
+        { new: true, projection: { _id: 0, likeCount: 1 } },
+      )
+      .lean<{ likeCount?: number }>()
+      .exec();
 
-    return Number(result.Attributes?.likeCount ?? 0);
+    return Number(updated?.likeCount ?? 0);
   }
 
   async createComment(item: PostCommentEntity): Promise<void> {
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: item,
-        ConditionExpression:
-          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-      }),
-    );
+    await this.itemModel.create(item);
   }
 
   async getComment(
     postId: string,
     commentId: string,
   ): Promise<PostCommentEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `POST#${postId}`,
-          SK: `COMMENT#${commentId}`,
-        },
-      }),
-    );
-
-    return (result.Item as PostCommentEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `POST#${postId}`,
+        SK: `COMMENT#${commentId}`,
+      })
+      .select('-_id')
+      .lean<PostCommentEntity>()
+      .exec();
   }
 
   async deleteComment(postId: string, commentId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `POST#${postId}`,
-          SK: `COMMENT#${commentId}`,
-        },
-        ConditionExpression: 'attribute_exists(PK)',
-      }),
-    );
+    await this.itemModel
+      .deleteOne({
+        PK: `POST#${postId}`,
+        SK: `COMMENT#${commentId}`,
+      })
+      .exec();
   }
 
   async listComments(postId: string, limit = 20): Promise<PostCommentEntity[]> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        FilterExpression: 'entityType = :entityType',
-        ExpressionAttributeValues: {
-          ':pk': `POST#${postId}`,
-          ':sk': 'COMMENT#',
-          ':entityType': 'POST_COMMENT',
-        },
-        ScanIndexForward: true,
-        Limit: limit,
-      }),
-    );
-
-    return (result.Items as PostCommentEntity[]) ?? [];
+    return this.itemModel
+      .find({
+        PK: `POST#${postId}`,
+        SK: { $regex: '^COMMENT#' },
+        entityType: 'POST_COMMENT',
+      })
+      .sort({ createdAt: 1, commentId: 1 })
+      .limit(limit)
+      .select('-_id')
+      .lean<PostCommentEntity[]>()
+      .exec();
   }
 
   async listCommentsPage(
@@ -352,66 +263,43 @@ export class NewsFeedRepository {
     limit: number,
     cursor?: string,
   ): Promise<{ items: PostCommentEntity[]; nextCursor: string | null }> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        FilterExpression: 'entityType = :entityType',
-        ExpressionAttributeValues: {
-          ':pk': `POST#${postId}`,
-          ':sk': 'COMMENT#',
-          ':entityType': 'POST_COMMENT',
-        },
-        ScanIndexForward: true,
-        Limit: limit,
-        ExclusiveStartKey: this.decodeCursor(cursor),
-      }),
-    );
+    const offset = decodeOffsetCursor(cursor);
+    const items = await this.itemModel
+      .find({
+        PK: `POST#${postId}`,
+        SK: { $regex: '^COMMENT#' },
+        entityType: 'POST_COMMENT',
+      })
+      .sort({ createdAt: 1, commentId: 1 })
+      .skip(offset)
+      .limit(limit)
+      .select('-_id')
+      .lean<PostCommentEntity[]>()
+      .exec();
 
     return {
-      items: (result.Items as PostCommentEntity[]) ?? [],
-      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+      items,
+      nextCursor: nextOffsetCursor(offset, items.length, limit),
     };
   }
 
   async updateCommentCount(postId: string, delta: 1 | -1): Promise<number> {
-    const result = await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
+    const updated = await this.itemModel
+      .findOneAndUpdate(
+        {
           PK: `POST#${postId}`,
           SK: `POST#${postId}`,
         },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          'SET commentCount = if_not_exists(commentCount, :zero) + :delta, updatedAt = :updatedAt',
-        ExpressionAttributeValues: {
-          ':zero': 0,
-          ':delta': delta,
-          ':updatedAt': new Date().toISOString(),
+        {
+          $inc: { commentCount: delta },
+          $set: { updatedAt: new Date().toISOString() },
         },
-        ReturnValues: 'UPDATED_NEW',
-      }),
-    );
+        { new: true, projection: { _id: 0, commentCount: 1 } },
+      )
+      .lean<{ commentCount?: number }>()
+      .exec();
 
-    return Number(result.Attributes?.commentCount ?? 0);
-  }
-
-  encodeCursor(lastEvaluatedKey?: Record<string, unknown>): string | null {
-    if (!lastEvaluatedKey) return null;
-    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString(
-      'base64',
-    );
-  }
-
-  decodeCursor(cursor?: string): Record<string, unknown> | undefined {
-    if (!cursor) return undefined;
-
-    try {
-      const json = Buffer.from(cursor, 'base64').toString('utf8');
-      return JSON.parse(json) as Record<string, unknown>;
-    } catch {
-      return undefined;
-    }
+    return Number(updated?.commentCount ?? 0);
   }
 }
+

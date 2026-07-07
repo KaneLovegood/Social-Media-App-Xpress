@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { DynamoDbModule } from '../../common/dynamodb/dynamodb.module';
+import { MongoDbModule } from '../../common/mongodb/mongodb.module';
 import { DeviceSessionModule } from '../device-session/device-session.module';
 import { EmailOtpService } from './email-otp.service';
 import { AuthController } from './auth.controller';
@@ -19,7 +19,7 @@ if (!jwtSecret) {
 
 @Module({
   imports: [
-    DynamoDbModule,
+    MongoDbModule,
     DeviceSessionModule,
     PassportModule,
     JwtModule.register({

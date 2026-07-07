@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { DynamoDbModule } from '../../common/dynamodb/dynamodb.module';
+import { MongoDbModule } from '../../common/mongodb/mongodb.module';
 import { PresenceModule } from '../../common/presence/presence.module';
 import { AuthModule } from '../auth/auth.module';
 import { SocialModule } from '../social/social.module';
@@ -17,7 +17,7 @@ import { AgoraService } from './services/agora.service';
 
 @Module({
   imports: [
-    DynamoDbModule,
+    MongoDbModule,
     AuthModule,
     SocialModule,
     PresenceModule,

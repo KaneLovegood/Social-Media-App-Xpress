@@ -3,7 +3,7 @@
  * (và ngược lại) để gọi API "trục lợi", và whitelist public hoạt động đúng
  * theo cơ chế @Public() decorator + Reflector.
  *
- * Test này CỐ TÌNH KHÔNG load AppModule thật vì AppModule phụ thuộc DynamoDB +
+ * Test này CỐ TÌNH KHÔNG load AppModule thật vì AppModule phụ thuộc MongoDB +
  * nodemailer + Google client. Thay vào đó dựng 1 module test nhỏ với:
  *   - JwtGuard, JwtStrategy THẬT (đúng code đang chạy production)
  *   - SessionRepository được mock bằng in-memory store

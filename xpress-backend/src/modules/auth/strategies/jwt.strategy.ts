@@ -44,7 +44,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Single-device-session cross-check against MongoDB. Even if the JWT is
-    // cryptographically valid and the DynamoDB session is still ACTIVE, the
+    // cryptographically valid and the auth session is still ACTIVE, the
     // user might have signed in from a second device while this one was
     // backgrounded. In that case the Mongo binding now points at a different
     // sessionId and we must reject this request so the client logs out.

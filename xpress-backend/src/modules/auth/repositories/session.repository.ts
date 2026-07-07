@@ -1,88 +1,60 @@
-import { Inject, Injectable } from '@nestjs/common';
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { XpressItem } from '../../../common/mongodb/xpress-item.schema';
 import { SessionEntity } from '../interfaces/session.interface';
 
 @Injectable()
 export class SessionRepository {
-  private readonly tableName = process.env.DDB_TABLE_NAME!;
-
   constructor(
-    @Inject(DYNAMODB_DOC_CLIENT)
-    private readonly ddbDocClient: DynamoDBDocumentClient,
+    @InjectModel(XpressItem.name)
+    private readonly itemModel: Model<Record<string, any>>,
   ) {}
 
   async createSession(session: SessionEntity): Promise<void> {
-    await this.ddbDocClient.send(
-      new PutCommand({
-        TableName: this.tableName,
-        Item: session,
-        ConditionExpression:
-          'attribute_not_exists(PK) AND attribute_not_exists(SK)',
-      }),
-    );
+    await this.itemModel.create(session);
   }
 
   async findSessionById(
     userId: string,
     sessionId: string,
   ): Promise<SessionEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
-      }),
-    );
-    return (result.Item as SessionEntity) ?? null;
+    return this.itemModel
+      .findOne({ PK: `USER#${userId}`, SK: `SESSION#${sessionId}` })
+      .select('-_id')
+      .lean<SessionEntity>()
+      .exec();
   }
 
   async findActiveSessionByFingerprint(
     userId: string,
     deviceFingerprintHash: string,
   ): Promise<SessionEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
-        FilterExpression:
-          'entityType = :entityType AND deviceFingerprintHash = :fingerprint AND #status = :status',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':pk': `USER#${userId}`,
-          ':skPrefix': 'SESSION#',
-          ':entityType': 'SESSION',
-          ':fingerprint': deviceFingerprintHash,
-          ':status': 'ACTIVE',
-        },
-        Limit: 1,
-      }),
-    );
-    return (result.Items?.[0] as SessionEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `USER#${userId}`,
+        SK: { $regex: '^SESSION#' },
+        entityType: 'SESSION',
+        deviceFingerprintHash,
+        status: 'ACTIVE',
+      })
+      .select('-_id')
+      .lean<SessionEntity>()
+      .exec();
   }
 
   async findActiveSessions(userId: string): Promise<SessionEntity[]> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :skPrefix)',
-        FilterExpression: 'entityType = :entityType AND #status = :status',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':pk': `USER#${userId}`,
-          ':skPrefix': 'SESSION#',
-          ':entityType': 'SESSION',
-          ':status': 'ACTIVE',
-        },
-      }),
-    );
-
-    return (result.Items as SessionEntity[] | undefined) ?? [];
+    return this.itemModel
+      .find({
+        PK: `USER#${userId}`,
+        SK: { $regex: '^SESSION#' },
+        entityType: 'SESSION',
+        status: 'ACTIVE',
+      })
+      .sort({ lastSeenAt: -1 })
+      .select('-_id')
+      .lean<SessionEntity[]>()
+      .exec();
   }
 
   async updateSessionRefreshToken(
@@ -93,49 +65,53 @@ export class SessionRepository {
     authProvider?: SessionEntity['authProvider'],
   ): Promise<void> {
     const now = new Date().toISOString();
-    const authProviderUpdate =
-      authProvider == null ? '' : ', authProvider = :authProvider';
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression:
-          `SET refreshTokenHash = :refreshTokenHash, refreshTokenExpiresAt = :refreshTokenExpiresAt, lastSeenAt = :lastSeenAt, updatedAt = :updatedAt${authProviderUpdate}`,
-        ExpressionAttributeValues: {
-          ':refreshTokenHash': refreshTokenHash,
-          ':refreshTokenExpiresAt': refreshTokenExpiresAt,
-          ':lastSeenAt': now,
-          ':updatedAt': now,
-          ...(authProvider == null ? {} : { ':authProvider': authProvider }),
+    await this.itemModel
+      .updateOne(
+        { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
+        {
+          $set: {
+            refreshTokenHash,
+            refreshTokenExpiresAt,
+            lastSeenAt: now,
+            updatedAt: now,
+            ...(authProvider == null ? {} : { authProvider }),
+          },
         },
-      }),
-    );
+      )
+      .exec();
   }
 
   async deactivateSession(userId: string, sessionId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
-        ConditionExpression: 'attribute_exists(PK)',
-        UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: {
-          ':status': 'INACTIVE',
-          ':updatedAt': new Date().toISOString(),
+    await this.itemModel
+      .updateOne(
+        { PK: `USER#${userId}`, SK: `SESSION#${sessionId}` },
+        {
+          $set: {
+            status: 'INACTIVE',
+            updatedAt: new Date().toISOString(),
+          },
         },
-      }),
-    );
+      )
+      .exec();
   }
 
   async deactivateAllSessions(userId: string): Promise<void> {
-    const activeSessions = await this.findActiveSessions(userId);
-
-    await Promise.all(
-      activeSessions.map((session) =>
-        this.deactivateSession(userId, session.sessionId),
-      ),
-    );
+    await this.itemModel
+      .updateMany(
+        {
+          PK: `USER#${userId}`,
+          SK: { $regex: '^SESSION#' },
+          entityType: 'SESSION',
+          status: 'ACTIVE',
+        },
+        {
+          $set: {
+            status: 'INACTIVE',
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      )
+      .exec();
   }
 }
+

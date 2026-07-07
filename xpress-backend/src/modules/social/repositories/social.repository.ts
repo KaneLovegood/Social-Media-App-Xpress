@@ -1,12 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DYNAMODB_DOC_CLIENT } from '../../../common/dynamodb/dynamodb.constants';
+  decodeOffsetCursor,
+  nextOffsetCursor,
+} from '../../../common/mongodb/mongo-repository.utils';
+import { XpressItem } from '../../../common/mongodb/xpress-item.schema';
 import {
   BlockEntity,
   FriendEntity,
@@ -15,28 +14,23 @@ import {
 
 @Injectable()
 export class SocialRepository {
-  private readonly tableName = process.env.DDB_TABLE_NAME!;
-
   constructor(
-    @Inject(DYNAMODB_DOC_CLIENT)
-    private readonly ddbDocClient: DynamoDBDocumentClient,
+    @InjectModel(XpressItem.name)
+    private readonly itemModel: Model<Record<string, any>>,
   ) {}
 
   async getFriend(
     ownerUserId: string,
     targetUserId: string,
   ): Promise<FriendEntity | null> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${ownerUserId}`,
-          SK: `FRIEND#${targetUserId}`,
-        },
-      }),
-    );
-
-    return (result.Item as FriendEntity) ?? null;
+    return this.itemModel
+      .findOne({
+        PK: `USER#${ownerUserId}`,
+        SK: `FRIEND#${targetUserId}`,
+      })
+      .select('-_id')
+      .lean<FriendEntity>()
+      .exec();
   }
 
   async saveFriendPair(
@@ -71,34 +65,29 @@ export class SocialRepository {
       updatedAt: now,
     };
 
-    await this.ddbDocClient.send(
-      new PutCommand({ TableName: this.tableName, Item: actorItem }),
-    );
-    await this.ddbDocClient.send(
-      new PutCommand({ TableName: this.tableName, Item: targetItem }),
-    );
+    await Promise.all([
+      this.itemModel
+        .replaceOne({ PK: actorItem.PK, SK: actorItem.SK }, actorItem, {
+          upsert: true,
+        })
+        .exec(),
+      this.itemModel
+        .replaceOne({ PK: targetItem.PK, SK: targetItem.SK }, targetItem, {
+          upsert: true,
+        })
+        .exec(),
+    ]);
   }
 
   async removeFriendPair(userAId: string, userBId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${userAId}`,
-          SK: `FRIEND#${userBId}`,
-        },
-      }),
-    );
-
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${userBId}`,
-          SK: `FRIEND#${userAId}`,
-        },
-      }),
-    );
+    await this.itemModel
+      .deleteMany({
+        $or: [
+          { PK: `USER#${userAId}`, SK: `FRIEND#${userBId}` },
+          { PK: `USER#${userBId}`, SK: `FRIEND#${userAId}` },
+        ],
+      })
+      .exec();
   }
 
   async listFriendsByStatus(
@@ -107,28 +96,24 @@ export class SocialRepository {
     limit = 20,
     cursor?: string,
   ): Promise<{ items: FriendEntity[]; nextCursor: string | null }> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        FilterExpression: 'entityType = :entityType AND #status = :status',
-        ExpressionAttributeNames: {
-          '#status': 'status',
-        },
-        ExpressionAttributeValues: {
-          ':pk': `USER#${ownerUserId}`,
-          ':sk': 'FRIEND#',
-          ':entityType': 'FRIEND',
-          ':status': status,
-        },
-        Limit: limit,
-        ExclusiveStartKey: this.decodeCursor(cursor),
-      }),
-    );
+    const offset = decodeOffsetCursor(cursor);
+    const items = await this.itemModel
+      .find({
+        PK: `USER#${ownerUserId}`,
+        SK: { $regex: '^FRIEND#' },
+        entityType: 'FRIEND',
+        status,
+      })
+      .sort({ updatedAt: -1, targetUserId: 1 })
+      .skip(offset)
+      .limit(limit)
+      .select('-_id')
+      .lean<FriendEntity[]>()
+      .exec();
 
     return {
-      items: (result.Items as FriendEntity[]) ?? [],
-      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+      items,
+      nextCursor: nextOffsetCursor(offset, items.length, limit),
     };
   }
 
@@ -137,24 +122,23 @@ export class SocialRepository {
     limit = 20,
     cursor?: string,
   ): Promise<{ items: BlockEntity[]; nextCursor: string | null }> {
-    const result = await this.ddbDocClient.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        FilterExpression: 'entityType = :entityType',
-        ExpressionAttributeValues: {
-          ':pk': `USER#${ownerUserId}`,
-          ':sk': 'BLOCK#',
-          ':entityType': 'BLOCK',
-        },
-        Limit: limit,
-        ExclusiveStartKey: this.decodeCursor(cursor),
-      }),
-    );
+    const offset = decodeOffsetCursor(cursor);
+    const items = await this.itemModel
+      .find({
+        PK: `USER#${ownerUserId}`,
+        SK: { $regex: '^BLOCK#' },
+        entityType: 'BLOCK',
+      })
+      .sort({ createdAt: -1, targetUserId: 1 })
+      .skip(offset)
+      .limit(limit)
+      .select('-_id')
+      .lean<BlockEntity[]>()
+      .exec();
 
     return {
-      items: (result.Items as BlockEntity[]) ?? [],
-      nextCursor: this.encodeCursor(result.LastEvaluatedKey),
+      items,
+      nextCursor: nextOffsetCursor(offset, items.length, limit),
     };
   }
 
@@ -168,35 +152,29 @@ export class SocialRepository {
       createdAt: new Date().toISOString(),
     };
 
-    await this.ddbDocClient.send(
-      new PutCommand({ TableName: this.tableName, Item: block }),
-    );
+    await this.itemModel
+      .replaceOne({ PK: block.PK, SK: block.SK }, block, { upsert: true })
+      .exec();
   }
 
   async unblock(ownerUserId: string, targetUserId: string): Promise<void> {
-    await this.ddbDocClient.send(
-      new DeleteCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${ownerUserId}`,
-          SK: `BLOCK#${targetUserId}`,
-        },
-      }),
-    );
+    await this.itemModel
+      .deleteOne({
+        PK: `USER#${ownerUserId}`,
+        SK: `BLOCK#${targetUserId}`,
+      })
+      .exec();
   }
 
   async isBlocked(ownerUserId: string, targetUserId: string): Promise<boolean> {
-    const result = await this.ddbDocClient.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `USER#${ownerUserId}`,
-          SK: `BLOCK#${targetUserId}`,
-        },
-      }),
-    );
+    const item = await this.itemModel
+      .exists({
+        PK: `USER#${ownerUserId}`,
+        SK: `BLOCK#${targetUserId}`,
+      })
+      .exec();
 
-    return Boolean(result.Item);
+    return Boolean(item);
   }
 
   async isEitherBlocked(userAId: string, userBId: string): Promise<boolean> {
@@ -207,24 +185,5 @@ export class SocialRepository {
 
     return a || b;
   }
-
-  private encodeCursor(
-    lastEvaluatedKey?: Record<string, unknown>,
-  ): string | null {
-    if (!lastEvaluatedKey) return null;
-    return Buffer.from(JSON.stringify(lastEvaluatedKey), 'utf8').toString(
-      'base64',
-    );
-  }
-
-  private decodeCursor(cursor?: string): Record<string, unknown> | undefined {
-    if (!cursor) return undefined;
-
-    try {
-      const json = Buffer.from(cursor, 'base64').toString('utf8');
-      return JSON.parse(json) as Record<string, unknown>;
-    } catch {
-      return undefined;
-    }
-  }
 }
+
