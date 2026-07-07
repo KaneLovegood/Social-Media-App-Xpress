@@ -1,0 +1,44 @@
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { MongooseModule } from '@nestjs/mongoose';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { FirebaseModule } from './common/firebase/firebase.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { DeviceSessionModule } from './modules/device-session/device-session.module';
+import { SocialModule } from './modules/social/social.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { McpModule } from './modules/mcp/mcp.module';
+import { NewsFeedModule } from './modules/news-feed/news-feed.module';
+import { JwtGuard } from './middleware/jwt.guard';
+
+const mongoUri =
+  process.env.MONGODB_URI ??
+  process.env.MONGODB_SESSION_URI ??
+  'mongodb://localhost:27017/xpress';
+@Module({
+  imports: [
+    MongooseModule.forRoot(mongoUri, {
+      minPoolSize: 1,
+      maxPoolSize: 5,
+    }),
+    FirebaseModule,
+    DeviceSessionModule,
+    AuthModule,
+    ChatModule,
+    SocialModule,
+    StorageModule,
+    McpModule,
+    NewsFeedModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtGuard,
+    },
+  ],
+})
+export class AppModule {}

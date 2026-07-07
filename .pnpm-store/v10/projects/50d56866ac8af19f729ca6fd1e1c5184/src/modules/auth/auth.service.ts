@@ -1,0 +1,1228 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+import { createHash, randomInt, randomUUID } from 'crypto';
+import * as admin from 'firebase-admin';
+import { JwtService } from '@nestjs/jwt';
+import { FirebaseAdminService } from '../../common/firebase/firebase-admin.service';
+import { DeviceSessionService } from '../device-session/device-session.service';
+import { AuthSessionGateway } from './auth-session.gateway';
+import { EmailOtpService } from './email-otp.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RegisterDto } from './dto/register.dto';
+import { SendEmailOtpDto } from './dto/send-email-otp.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { VerifyEmailOtpDto } from './dto/verify-email-otp.dto';
+import { VerifyTwoFactorLoginDto } from './dto/verify-two-factor-login.dto';
+import { VerifyTwoFactorSetupDto } from './dto/verify-two-factor-setup.dto';
+import {
+  EmailOtpEntity,
+  EmailOtpPurpose,
+} from './interfaces/email-otp.interface';
+import { SessionEntity } from './interfaces/session.interface';
+import { EmailOtpRepository } from './repositories/email-otp.repository';
+import { UsersRepository } from './repositories/users.repository';
+import { SessionRepository } from './repositories/session.repository';
+import { AuthProvider, UserEntity } from './interfaces/user.interface';
+
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+  sid?: string;
+  type?: 'refresh' | 'access';
+  exp?: number;
+}
+
+interface OtpTokenPayload {
+  type: 'otp';
+  email: string;
+  purpose: EmailOtpPurpose;
+}
+
+interface TwoFactorTokenPayload {
+  type: '2fa';
+  sub: string;
+  email: string;
+  deviceId: string;
+  authProvider?: AuthProvider;
+  deviceName?: string;
+  timezone?: string;
+}
+
+interface SessionClientContext {
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+interface LogoutContext {
+  authorizationHeader?: string;
+}
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  private readonly accessTokenExpiresIn = '10m';
+  private readonly otpTokenExpiresIn = '10m';
+  private readonly twoFactorTokenExpiresIn = '10m';
+  private readonly emailOtpExpiresInMs = 10 * 60 * 1000;
+  private readonly emailOtpMaxAttempts = 5;
+  private readonly refreshTokenExpiresInMs = 7 * 24 * 60 * 60 * 1000;
+  private readonly refreshTokenExpiresIn =
+    process.env.REFRESH_TOKEN_EXPIRES_IN ?? '7d';
+  private readonly refreshTokenSecret =
+    process.env.REFRESH_TOKEN_SECRET ?? process.env.JWT_SECRET ?? '';
+
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly emailOtpRepository: EmailOtpRepository,
+    private readonly sessionRepository: SessionRepository,
+    private readonly authSessionGateway: AuthSessionGateway,
+    private readonly emailOtpService: EmailOtpService,
+    private readonly jwtService: JwtService,
+    private readonly deviceSessionService: DeviceSessionService,
+    private readonly firebaseAdmin: FirebaseAdminService,
+  ) {}
+
+  async register(dto: RegisterDto, context: SessionClientContext = {}) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const otpToken = `${dto.otpToken}`;
+    await this.assertVerifiedOtpToken(normalizedEmail, otpToken, 'REGISTER');
+
+    const existed = await this.usersRepository.findByEmail(dto.email);
+    if (existed) throw new ConflictException('Email đã tồn tại');
+
+    const userId = randomUUID();
+    const now = new Date().toISOString();
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.password, rounds);
+
+    const user: UserEntity = {
+      PK: `USER#${userId}`,
+      SK: `PROFILE#${userId}`,
+      GSI1PK: `EMAIL#${normalizedEmail}`,
+      GSI1SK: `USER#${userId}`,
+      entityType: 'USER',
+      userId,
+      name: dto.name,
+      email: normalizedEmail,
+      passwordHash,
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      authProvider: 'LOCAL',
+      passwordAuthEnabled: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.usersRepository.createUser(user);
+
+    const deviceId =
+      dto.deviceId && dto.deviceId.trim().length > 0
+        ? dto.deviceId.trim()
+        : `register-${randomUUID()}`;
+    const deviceName =
+      dto.deviceName && dto.deviceName.trim().length > 0
+        ? dto.deviceName.trim()
+        : 'Thiết bị đăng ký';
+    const timezone =
+      dto.timezone && dto.timezone.trim().length > 0
+        ? dto.timezone.trim()
+        : 'UTC';
+
+    return this.buildAuthResponse(user, {
+      deviceId,
+      deviceName,
+      timezone,
+      authProvider: 'LOCAL',
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
+  }
+
+  async login(dto: LoginDto, context: SessionClientContext = {}) {
+    const user = await this.usersRepository.findByEmail(dto.email);
+    if (!user) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+
+    if (!this.canUsePasswordAuth(user)) {
+      throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+    }
+
+    const ok = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!ok) throw new UnauthorizedException('Sai tài khoản hoặc mật khẩu');
+
+    if (user.twoFactorEnabled) {
+      return this.startTwoFactorLoginChallenge(user, {
+        deviceId: dto.deviceId,
+        deviceName: dto.deviceName,
+        timezone: dto.timezone,
+        authProvider: 'LOCAL',
+      });
+    }
+
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
+
+    return this.buildAuthResponse(user, {
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName,
+      timezone: dto.timezone,
+      authProvider: 'LOCAL',
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
+  }
+
+  async sendEmailOtp(dto: SendEmailOtpDto) {
+    const purpose: EmailOtpPurpose = dto.purpose ?? 'REGISTER';
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+
+    if (purpose === 'REGISTER') {
+      const existed = await this.usersRepository.findByEmail(normalizedEmail);
+      if (existed) {
+        throw new ConflictException('Email đã tồn tại');
+      }
+    }
+
+    if (purpose === 'LOGIN' || purpose === 'CHANGE_PASSWORD') {
+      const existed = await this.usersRepository.findByEmail(normalizedEmail);
+      if (!existed) {
+        throw new BadRequestException('Email chưa được đăng ký');
+      }
+      if (purpose === 'CHANGE_PASSWORD' && !this.canUsePasswordAuth(existed)) {
+        throw new BadRequestException(
+          'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+        );
+      }
+    }
+
+    return this.createAndSendEmailOtp(normalizedEmail, purpose);
+  }
+
+  async verifyEmailOtp(dto: VerifyEmailOtpDto) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    await this.consumeEmailOtp(normalizedEmail, dto.purpose, dto.code);
+    const otpToken = await this.jwtService.signAsync<OtpTokenPayload>(
+      {
+        type: 'otp',
+        email: normalizedEmail,
+        purpose: dto.purpose,
+      },
+      {
+        expiresIn: this.otpTokenExpiresIn,
+      },
+    );
+
+    void this.emailOtpService
+      .sendOtpVerifiedEmail(normalizedEmail, dto.purpose)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `sendOtpVerifiedEmail failed for ${normalizedEmail} (${dto.purpose}): ${message}`,
+        );
+      });
+
+    return {
+      verified: true,
+      otpToken,
+      purpose: dto.purpose,
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const normalizedEmail = this.usersRepository.normalizeEmail(dto.email);
+    const user = await this.usersRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      throw new BadRequestException('Email chưa được đăng ký');
+    }
+    if (!this.canUsePasswordAuth(user)) {
+      throw new BadRequestException(
+        'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+      );
+    }
+
+    let payload: OtpTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<OtpTokenPayload>(
+        dto.otpToken,
+      );
+    } catch {
+      throw new BadRequestException('OTP token không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (
+      payload.type !== 'otp' ||
+      payload.email !== normalizedEmail ||
+      payload.purpose !== 'CHANGE_PASSWORD'
+    ) {
+      throw new BadRequestException('OTP token không hợp lệ');
+    }
+
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, rounds);
+
+    await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
+    await this.sessionRepository.deactivateAllSessions(user.userId);
+    await this.deviceSessionService.revokeSession(user.userId);
+
+    return {
+      success: true,
+    };
+  }
+
+  async changePassword(
+    userId: string,
+    currentSessionId: string,
+    dto: ChangePasswordDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+    if (
+      currentSession?.authProvider === 'GOOGLE' ||
+      !this.canUsePasswordAuth(user)
+    ) {
+      throw new BadRequestException(
+        'Không thể đổi mật khẩu vì bạn đang dùng Google Authen',
+      );
+    }
+
+    const currentPasswordMatched = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!currentPasswordMatched) {
+      throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
+    }
+
+    const isReusingCurrentPassword = await bcrypt.compare(
+      dto.newPassword,
+      user.passwordHash,
+    );
+    if (isReusingCurrentPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại');
+    }
+
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, rounds);
+    await this.usersRepository.updatePasswordHash(user.userId, passwordHash);
+
+    const activeSessions = await this.sessionRepository.findActiveSessions(
+      user.userId,
+    );
+    const otherSessions = activeSessions.filter(
+      (session) => session.sessionId !== currentSessionId,
+    );
+
+    await Promise.all(
+      otherSessions.map(async (session) => {
+        await this.sessionRepository.deactivateSession(
+          user.userId,
+          session.sessionId,
+        );
+        this.authSessionGateway.notifySessionRevoked(user.userId, {
+          sessionId: session.sessionId,
+          revokedAt: new Date().toISOString(),
+        });
+      }),
+    );
+
+    return {
+      success: true,
+    };
+  }
+
+  async sendTwoFactorSetupOtp(userId: string) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố đã được bật');
+    }
+
+    return this.createAndSendEmailOtp(user.email, 'TWO_FACTOR_SETUP');
+  }
+
+  async sendTwoFactorDisableOtp(userId: string) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố chưa được bật');
+    }
+
+    return this.createAndSendEmailOtp(user.email, 'TWO_FACTOR_DISABLE');
+  }
+
+  async enableTwoFactor(
+    userId: string,
+    currentSessionId: string,
+    dto: VerifyTwoFactorSetupDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+
+    if (!user.twoFactorEnabled) {
+      await this.consumeEmailOtp(user.email, 'TWO_FACTOR_SETUP', dto.code);
+      await this.usersRepository.updateTwoFactorEnabled(user.userId, true);
+    }
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: true,
+      },
+    };
+  }
+
+  async disableTwoFactor(
+    userId: string,
+    currentSessionId: string,
+    dto: VerifyTwoFactorSetupDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Xác thực 2 yếu tố chưa được bật');
+    }
+
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+    await this.consumeEmailOtp(user.email, 'TWO_FACTOR_DISABLE', dto.code);
+    await this.usersRepository.updateTwoFactorEnabled(user.userId, false);
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: false,
+      },
+    };
+  }
+
+  async verifyTwoFactorLogin(
+    dto: VerifyTwoFactorLoginDto,
+    context: SessionClientContext = {},
+  ) {
+    const payload = await this.verifyTwoFactorToken(dto.twoFactorToken);
+    const user = await this.usersRepository.findByUserId(payload.sub);
+    if (!user || user.email !== payload.email) {
+      throw new UnauthorizedException('Xác thực 2 yếu tố không hợp lệ');
+    }
+
+    if (!user.twoFactorEnabled) {
+      throw new BadRequestException('Tài khoản chưa bật xác thực 2 yếu tố');
+    }
+
+    await this.consumeEmailOtp(user.email, 'LOGIN', dto.code);
+    await this.releaseOtherDeviceSessions(user.userId, payload.deviceId);
+
+    return this.buildAuthResponse(user, {
+      deviceId: payload.deviceId,
+      deviceName: payload.deviceName,
+      timezone: payload.timezone,
+      authProvider: payload.authProvider ?? 'LOCAL',
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
+  }
+
+  /**
+   * Sign in / sign up via a Firebase ID token.
+   *
+   * Flow:
+   *   1. Client authenticates with Firebase (Google provider) and obtains a
+   *      Firebase ID token.
+   *   2. We verify the ID token with the Firebase Admin SDK. This validates
+   *      signature, `aud` (project id), issuer, expiry, and that the user has
+   *      not been disabled/revoked.
+   *   3. We require the token to have been minted via the Google provider.
+   *   4. We find-or-create a local user by email and return our own JWT pair.
+   */
+  async loginWithGoogle(
+    dto: GoogleAuthDto,
+    context: SessionClientContext = {},
+  ) {
+    const decoded = await this.verifyFirebaseIdToken(dto.idToken, dto.platform);
+
+    const signInProvider = decoded.firebase?.sign_in_provider;
+    if (signInProvider && signInProvider !== 'google.com') {
+      throw new UnauthorizedException(
+        `Nhà cung cấp đăng nhập không hỗ trợ: ${signInProvider}`,
+      );
+    }
+    if (!decoded.email) {
+      throw new UnauthorizedException('Firebase token không chứa email');
+    }
+    if (decoded.email_verified === false) {
+      throw new UnauthorizedException('Email Firebase chưa được xác thực');
+    }
+
+    const normalizedEmail = this.usersRepository.normalizeEmail(decoded.email);
+    let user = await this.usersRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      const userId = randomUUID();
+      const now = new Date().toISOString();
+      const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+      const passwordHash = await bcrypt.hash(randomUUID(), rounds);
+      const nameFromToken =
+        typeof decoded.name === 'string' ? decoded.name.trim() : '';
+      const displayName =
+        nameFromToken || normalizedEmail.split('@')[0] || 'User';
+
+      user = {
+        PK: `USER#${userId}`,
+        SK: `PROFILE#${userId}`,
+        GSI1PK: `EMAIL#${normalizedEmail}`,
+        GSI1SK: `USER#${userId}`,
+        entityType: 'USER',
+        userId,
+        name: displayName,
+        email: normalizedEmail,
+        passwordHash,
+        role: 'CUSTOMER',
+        status: 'ACTIVE',
+        avatarUrl: decoded.picture,
+        authProvider: 'GOOGLE',
+        passwordAuthEnabled: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await this.usersRepository.createUser(user);
+      this.logger.log(
+        `Created new user from Firebase auth: ${user.userId} (uid=${decoded.uid})`,
+      );
+    }
+
+    if (user.twoFactorEnabled) {
+      return this.startTwoFactorLoginChallenge(user, {
+        deviceId: dto.deviceId,
+        deviceName: dto.deviceName ?? 'Google Sign-in',
+        timezone: dto.timezone,
+        authProvider: 'GOOGLE',
+      });
+    }
+
+    await this.releaseOtherDeviceSessions(user.userId, dto.deviceId);
+
+    return this.buildAuthResponse(user, {
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName ?? 'Google Sign-in',
+      timezone: dto.timezone,
+      authProvider: 'GOOGLE',
+      ipAddress: context.ipAddress ?? '',
+      userAgent: context.userAgent ?? '',
+    });
+  }
+
+  private async verifyFirebaseIdToken(
+    idToken: string,
+    platform?: string,
+  ): Promise<admin.auth.DecodedIdToken> {
+    try {
+      return await this.firebaseAdmin.verifyIdToken(idToken);
+    } catch (error) {
+      const code =
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        typeof (error as { code: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+      this.logger.warn(
+        `Firebase token verification failed (platform=${platform ?? 'unknown'}${code ? `, code=${code}` : ''}): ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      throw new UnauthorizedException('Firebase token không hợp lệ');
+    }
+  }
+
+  async updateAvatar(
+    userId: string,
+    currentSessionId: string,
+    dto: UpdateAvatarDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+
+    const avatarUrl = dto.avatarUrl.trim();
+    await this.usersRepository.updateAvatarUrl(userId, avatarUrl);
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl,
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
+      },
+    };
+  }
+
+  async updateProfile(
+    userId: string,
+    currentSessionId: string,
+    dto: UpdateProfileDto,
+  ) {
+    const user = await this.usersRepository.findByUserId(userId);
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    const currentSession = await this.sessionRepository.findSessionById(
+      user.userId,
+      currentSessionId,
+    );
+
+    const name = dto.name.trim();
+    await this.usersRepository.updateProfile(userId, { name });
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider:
+          currentSession?.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          currentSession?.authProvider !== 'GOOGLE' &&
+          this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
+      },
+    };
+  }
+
+  async refresh(dto: RefreshTokenDto) {
+    if (!this.refreshTokenSecret) {
+      throw new UnauthorizedException('Refresh token chưa được cấu hình');
+    }
+    if (!dto.refreshToken) {
+      throw new UnauthorizedException('Refresh token không hợp lệ');
+    }
+
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(
+        dto.refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
+    } catch {
+      throw new UnauthorizedException('Refresh token không hợp lệ');
+    }
+
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Token không đúng loại');
+    }
+    if (!payload.sid) {
+      throw new UnauthorizedException('Token session không hợp lệ');
+    }
+
+    const user = await this.usersRepository.findByUserId(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
+    }
+
+    const session = await this.sessionRepository.findSessionById(
+      payload.sub,
+      payload.sid,
+    );
+    if (!session || session.status !== 'ACTIVE' || !session.refreshTokenHash) {
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
+    }
+
+    const matched = await bcrypt.compare(
+      dto.refreshToken,
+      session.refreshTokenHash,
+    );
+    if (!matched) {
+      throw new UnauthorizedException('Refresh token không hợp lệ');
+    }
+
+    return this.buildAuthResponseFromSession(user, session);
+  }
+
+  async logout(dto: LogoutDto, context: LogoutContext = {}) {
+    const fromRefreshToken = await this.resolveLogoutSessionFromRefreshToken(
+      dto.refreshToken,
+    );
+    const fromAccessToken =
+      fromRefreshToken == null
+        ? await this.resolveLogoutSessionFromAccessToken(
+            context.authorizationHeader,
+          )
+        : null;
+
+    const session = fromRefreshToken ?? fromAccessToken;
+    if (!session) {
+      throw new UnauthorizedException('Token đăng xuất không hợp lệ');
+    }
+
+    await this.sessionRepository.deactivateAllSessions(session.userId);
+    await this.deviceSessionService.revokeSession(session.userId);
+    this.authSessionGateway.notifySessionRevoked(session.userId, {
+      sessionId: session.sessionId,
+      revokedAt: new Date().toISOString(),
+    });
+
+    return { success: true };
+  }
+
+  async listUserSessions(userId: string, currentSessionId: string) {
+    const sessions = await this.sessionRepository.findActiveSessions(userId);
+    const sortedSessions = [...sessions].sort((a, b) =>
+      b.lastSeenAt.localeCompare(a.lastSeenAt),
+    );
+
+    return {
+      items: sortedSessions.map((session) => ({
+        sessionId: session.sessionId,
+        deviceName: session.deviceName ?? 'Thiết bị không xác định',
+        ipAddress: session.ipAddress ?? '',
+        userAgent: session.userAgent ?? '',
+        timezone: session.timezone ?? '',
+        lastSeenAt: session.lastSeenAt,
+        createdAt: session.createdAt,
+        isCurrent: session.sessionId === currentSessionId,
+      })),
+    };
+  }
+
+  async revokeSession(
+    userId: string,
+    targetSessionId: string,
+    currentSessionId: string,
+  ) {
+    const targetSession = await this.sessionRepository.findSessionById(
+      userId,
+      targetSessionId,
+    );
+    if (!targetSession || targetSession.status !== 'ACTIVE') {
+      throw new ForbiddenException('Phiên đăng nhập không tồn tại');
+    }
+
+    await this.sessionRepository.deactivateSession(userId, targetSessionId);
+    this.authSessionGateway.notifySessionRevoked(userId, {
+      sessionId: targetSessionId,
+      revokedAt: new Date().toISOString(),
+    });
+
+    return {
+      success: true,
+      revokedSessionId: targetSessionId,
+      isCurrentSession: targetSessionId === currentSessionId,
+    };
+  }
+
+  private async buildAuthResponse(
+    user: UserEntity,
+    sessionContext: {
+      deviceId: string;
+      deviceName?: string;
+      timezone?: string;
+      authProvider: AuthProvider;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+  ) {
+    const deviceFingerprintHash = this.hashDeviceFingerprint(
+      sessionContext.deviceId,
+    );
+    const activeSessions = await this.sessionRepository.findActiveSessions(
+      user.userId,
+    );
+    const existingSession =
+      await this.sessionRepository.findActiveSessionByFingerprint(
+        user.userId,
+        deviceFingerprintHash,
+      );
+
+    const now = new Date().toISOString();
+    const sessionId = existingSession?.sessionId ?? randomUUID();
+    const session: SessionEntity = existingSession
+      ? {
+          ...existingSession,
+          authProvider: sessionContext.authProvider,
+        }
+      : {
+          PK: `USER#${user.userId}`,
+          SK: `SESSION#${sessionId}`,
+          entityType: 'SESSION',
+          userId: user.userId,
+          sessionId,
+          status: 'ACTIVE',
+          authProvider: sessionContext.authProvider,
+          refreshTokenHash: '',
+          refreshTokenExpiresAt: now,
+          deviceFingerprintHash,
+          deviceName: sessionContext.deviceName,
+          userAgent: sessionContext.userAgent,
+          ipAddress: sessionContext.ipAddress,
+          timezone: sessionContext.timezone,
+          createdAt: now,
+          updatedAt: now,
+          lastSeenAt: now,
+        };
+
+    const response = await this.buildAuthResponseFromSession(user, session);
+
+    // Bind the (userId, deviceId, sessionId) triple in MongoDB. If this
+    // replaces a previous device binding, the service will emit FORCE_LOGOUT
+    // to that device's /device-sessions socket so a live mobile/web app
+    // can clear its tokens and redirect to /login immediately. If the old
+    // device is backgrounded/offline, its next API call will 401 because
+    // JwtStrategy double-checks `currentSessionId` in MongoDB.
+    await this.deviceSessionService.bindDevice({
+      userId: user.userId,
+      deviceId: sessionContext.deviceId,
+      sessionId,
+      deviceName: sessionContext.deviceName,
+      platform: this.inferPlatform(sessionContext.userAgent),
+    });
+
+    const isNewDeviceLogin = !existingSession;
+    if (isNewDeviceLogin && activeSessions.length > 0) {
+      this.authSessionGateway.notifyNewLogin(user.userId, {
+        sessionId,
+        deviceName: sessionContext.deviceName,
+        ipAddress: sessionContext.ipAddress,
+        loggedInAt: now,
+      });
+    }
+
+    return response;
+  }
+
+  private async startTwoFactorLoginChallenge(
+    user: UserEntity,
+    sessionContext: {
+      deviceId: string;
+      deviceName?: string;
+      timezone?: string;
+      authProvider: AuthProvider;
+    },
+  ) {
+    const otp = await this.createAndSendEmailOtp(user.email, 'LOGIN');
+    const twoFactorToken =
+      await this.jwtService.signAsync<TwoFactorTokenPayload>(
+        {
+          type: '2fa',
+          sub: user.userId,
+          email: user.email,
+          deviceId: sessionContext.deviceId,
+          authProvider: sessionContext.authProvider,
+          deviceName: sessionContext.deviceName,
+          timezone: sessionContext.timezone,
+        },
+        {
+          expiresIn: this.twoFactorTokenExpiresIn,
+        },
+      );
+
+    return {
+      requiresTwoFactor: true as const,
+      email: user.email,
+      twoFactorToken,
+      expiresAt: otp.expiresAt,
+    };
+  }
+
+  private async verifyTwoFactorToken(
+    token: string,
+  ): Promise<TwoFactorTokenPayload> {
+    let payload: TwoFactorTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<TwoFactorTokenPayload>(token);
+    } catch {
+      throw new UnauthorizedException(
+        'Phiên xác thực 2 yếu tố không hợp lệ hoặc đã hết hạn',
+      );
+    }
+
+    if (
+      payload.type !== '2fa' ||
+      !payload.sub ||
+      !payload.email ||
+      !payload.deviceId
+    ) {
+      throw new UnauthorizedException('Phiên xác thực 2 yếu tố không hợp lệ');
+    }
+
+    return payload;
+  }
+
+  private async createAndSendEmailOtp(
+    normalizedEmail: string,
+    purpose: EmailOtpPurpose,
+  ) {
+    const code = this.generateOtpCode();
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const codeHash = await bcrypt.hash(code, rounds);
+    const now = new Date().toISOString();
+    const expiresAt = new Date(
+      Date.now() + this.emailOtpExpiresInMs,
+    ).toISOString();
+
+    const otp: EmailOtpEntity = {
+      PK: `OTP#${normalizedEmail}`,
+      SK: `OTP#${purpose}`,
+      entityType: 'EMAIL_OTP',
+      email: normalizedEmail,
+      purpose,
+      codeHash,
+      expiresAt,
+      attempts: 0,
+      maxAttempts: this.emailOtpMaxAttempts,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.emailOtpRepository.upsertOtp(otp);
+    const channel = await this.emailOtpService.sendOtpEmail(
+      normalizedEmail,
+      code,
+      purpose,
+    );
+
+    return {
+      success: true,
+      purpose,
+      expiresAt,
+      channel,
+    };
+  }
+
+  private async consumeEmailOtp(
+    normalizedEmail: string,
+    purpose: EmailOtpPurpose,
+    code: string,
+  ): Promise<void> {
+    const otp = await this.emailOtpRepository.findOtp(normalizedEmail, purpose);
+    if (!otp) {
+      throw new BadRequestException('OTP không tồn tại hoặc đã hết hạn');
+    }
+
+    if (Date.parse(otp.expiresAt) <= Date.now()) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
+      throw new BadRequestException('OTP đã hết hạn');
+    }
+
+    if (otp.attempts >= otp.maxAttempts) {
+      await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
+      throw new BadRequestException('OTP đã vượt quá số lần thử');
+    }
+
+    const matched = await bcrypt.compare(code, otp.codeHash);
+    if (!matched) {
+      await this.emailOtpRepository.incrementAttempts(normalizedEmail, purpose);
+      throw new BadRequestException('OTP không chính xác');
+    }
+
+    await this.emailOtpRepository.deleteOtp(normalizedEmail, purpose);
+  }
+
+  private inferPlatform(userAgent?: string): string {
+    if (!userAgent) return 'unknown';
+    const ua = userAgent.toLowerCase();
+    if (ua.includes('android')) return 'android';
+    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+    if (ua.includes('capacitor')) return 'native';
+    return 'web';
+  }
+
+  private async buildAuthResponseFromSession(
+    user: UserEntity,
+    session: SessionEntity,
+  ) {
+    const payload: JwtPayload = {
+      sub: user.userId,
+      email: user.email,
+      role: user.role,
+      sid: session.sessionId,
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload, {
+      expiresIn: this.accessTokenExpiresIn,
+    });
+
+    if (!this.refreshTokenSecret) {
+      throw new UnauthorizedException('Refresh token chưa được cấu hình');
+    }
+
+    const refreshToken = await this.jwtService.signAsync(
+      { ...payload, type: 'refresh' },
+      {
+        secret: this.refreshTokenSecret,
+        expiresIn: this.refreshTokenExpiresIn as never,
+      },
+    );
+
+    const decodedRefreshUnknown: unknown = this.jwtService.decode(refreshToken);
+    const decodedRefresh =
+      decodedRefreshUnknown !== null &&
+      typeof decodedRefreshUnknown === 'object'
+        ? (decodedRefreshUnknown as { exp?: number })
+        : null;
+    const refreshTokenExpiresAt =
+      decodedRefresh?.exp != null
+        ? new Date(decodedRefresh.exp * 1000).toISOString()
+        : new Date(Date.now() + this.refreshTokenExpiresInMs).toISOString();
+    const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 10);
+    const refreshTokenHash = await bcrypt.hash(refreshToken, rounds);
+    await this.upsertSession({
+      ...session,
+      refreshTokenHash,
+      refreshTokenExpiresAt,
+      status: 'ACTIVE',
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      tokenType: 'Bearer',
+      session: {
+        sessionId: session.sessionId,
+        deviceName: session.deviceName ?? 'Thiết bị không xác định',
+      },
+      user: {
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? '',
+        authProvider: session.authProvider ?? user.authProvider ?? 'LOCAL',
+        passwordAuthEnabled:
+          session.authProvider !== 'GOOGLE' && this.canUsePasswordAuth(user),
+        twoFactorEnabled: !!user.twoFactorEnabled,
+      },
+    };
+  }
+
+  private async upsertSession(session: SessionEntity): Promise<void> {
+    const existed = await this.sessionRepository.findSessionById(
+      session.userId,
+      session.sessionId,
+    );
+    if (!existed) {
+      await this.sessionRepository.createSession(session);
+      return;
+    }
+
+    await this.sessionRepository.updateSessionRefreshToken(
+      session.userId,
+      session.sessionId,
+      session.refreshTokenHash,
+      session.refreshTokenExpiresAt,
+      session.authProvider,
+    );
+  }
+
+  private canUsePasswordAuth(user: UserEntity): boolean {
+    return user.passwordAuthEnabled !== false && user.authProvider !== 'GOOGLE';
+  }
+
+  /**
+   * Single-device-session policy.
+   *
+   * Previous behaviour threw a 403 when another device was already active.
+   * The new policy is "last login wins": we deactivate every session except
+   * the one tied to the incoming deviceId (if any). The FORCE_LOGOUT socket
+   * notification is handled separately by `DeviceSessionService.bindDevice`
+   * (invoked from `buildAuthResponse`).
+   */
+  private async releaseOtherDeviceSessions(
+    userId: string,
+    deviceId: string,
+  ): Promise<void> {
+    const deviceFingerprintHash = this.hashDeviceFingerprint(deviceId);
+    const activeSessions =
+      await this.sessionRepository.findActiveSessions(userId);
+
+    if (activeSessions.length === 0) {
+      return;
+    }
+
+    const staleSessions = activeSessions.filter(
+      (session) => session.deviceFingerprintHash !== deviceFingerprintHash,
+    );
+    if (staleSessions.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      staleSessions.map((session) =>
+        this.sessionRepository.deactivateSession(userId, session.sessionId),
+      ),
+    );
+  }
+
+  private async resolveLogoutSessionFromRefreshToken(
+    refreshToken?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    if (!refreshToken || !this.refreshTokenSecret) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(
+        refreshToken,
+        {
+          secret: this.refreshTokenSecret,
+        },
+      );
+
+      if (payload.type !== 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveLogoutSessionFromAccessToken(
+    authorizationHeader?: string,
+  ): Promise<{ userId: string; sessionId: string } | null> {
+    const token = this.extractBearerToken(authorizationHeader);
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+      if (payload.type === 'refresh' || !payload.sid || !payload.sub) {
+        return null;
+      }
+
+      return {
+        userId: payload.sub,
+        sessionId: payload.sid,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private extractBearerToken(authorizationHeader?: string): string | null {
+    if (!authorizationHeader) {
+      return null;
+    }
+
+    const trimmed = authorizationHeader.trim();
+    if (!trimmed.toLowerCase().startsWith('bearer ')) {
+      return null;
+    }
+
+    const token = trimmed.slice(7).trim();
+    return token.length > 0 ? token : null;
+  }
+
+  private async assertVerifiedOtpToken(
+    email: string,
+    otpToken: string,
+    expectedPurpose: EmailOtpPurpose,
+  ): Promise<void> {
+    let payload: OtpTokenPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<OtpTokenPayload>(otpToken);
+    } catch {
+      throw new UnauthorizedException('OTP token không hợp lệ');
+    }
+
+    if (payload.type !== 'otp') {
+      throw new UnauthorizedException('OTP token không đúng loại');
+    }
+    if (payload.purpose !== expectedPurpose) {
+      throw new UnauthorizedException('OTP token không đúng mục đích');
+    }
+    if (payload.email !== email) {
+      throw new UnauthorizedException('OTP token không khớp email');
+    }
+  }
+
+  private generateOtpCode(): string {
+    return String(randomInt(0, 10000)).padStart(4, '0');
+  }
+
+  private hashDeviceFingerprint(deviceId: string): string {
+    return createHash('sha256').update(deviceId.trim()).digest('hex');
+  }
+}
