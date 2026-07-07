@@ -418,15 +418,15 @@ export default function ChatContainer({
     });
 
     return [
-      {
-        id: "AI_ASSISTANT",
-        roomType: "PRIVATE",
-        title: "Logistics AI Assistant",
-        preview: "Trợ lý ảo phân tích Logistics",
-        age: "",
-        unreadCount: 0,
-        isOnline: true,
-      },
+      // {
+      //   id: "AI_ASSISTANT",
+      //   roomType: "PRIVATE",
+      //   title: "Logistics AI Assistant",
+      //   preview: "Trợ lý ảo phân tích Logistics",
+      //   age: "",
+      //   unreadCount: 0,
+      //   isOnline: true,
+      // },
       ...dbRooms,
     ];
   }, [clearedRoomAtById, presenceByUser, rooms]);
